@@ -127,6 +127,19 @@ function path_is_inside(child_path, parent_path) {
     return Boolean(relative_path) && !relative_path.startsWith('..') && !path.isAbsolute(relative_path);
 }
 
+function path_is_at_or_inside(child_path, parent_path) {
+    const relative_path = path.relative(parent_path, child_path);
+    return relative_path === '' || (Boolean(relative_path) && !relative_path.startsWith('..') && !path.isAbsolute(relative_path));
+}
+
+function real_path_or_null(target_path) {
+    try {
+        return fs.realpathSync(target_path);
+    } catch (error) {
+        return null;
+    }
+}
+
 function unique_paths(paths) {
     return [...new Set(paths.filter(Boolean))];
 }
@@ -379,18 +392,23 @@ class Bot extends EventEmitter {
         console.log(`[${timestamp('HH:mm:ss')}][${this.name}][${this.state}] ${message}`);
     }
 
-    shouldSetupSteamapps() {
-        try {
-            return fs.existsSync(this.steamApps) && !fs.lstatSync(this.steamApps).isSymbolicLink();
-        } catch (error) {
+    ensureSteamappsLink() {
+        if (fs.existsSync(this.steamApps))
+            return true;
+
+        if (!fs.existsSync('/opt/steamapps'))
+            return false;
+
+        const steamapps_parent = path.dirname(this.steamApps);
+        const home_real_path = real_path_or_null(this.home);
+        const parent_real_path = real_path_or_null(steamapps_parent);
+        if (!home_real_path || (parent_real_path && !path_is_at_or_inside(parent_real_path, home_real_path))) {
+            this.log(`[ERROR] Refusing to create steamapps link outside bot home: ${this.steamApps}`);
             return false;
         }
-    }
 
-    setupSteamapps() {
-        // I'm scared of doing recursive deletes in nodejs
-        fs.renameSync(this.steamApps, path.resolve(this.steamApps, '..', 'steamapps_old'));
-        fs.symlinkSync("/opt/steamapps/", this.steamApps);
+        fs.mkdirSync(steamapps_parent, { recursive: true });
+        fs.symlinkSync('/opt/steamapps/', this.steamApps);
         return true;
     }
 
@@ -399,8 +417,7 @@ class Bot extends EventEmitter {
             path.join(this.home, '.steam/steam'),
             path.join(this.home, '.steam/debian-installation'),
             path.join(this.home, '.steam/root'),
-            path.join(this.home, '.local/share/Steam'),
-            '/opt/CATHOOK_steam_root'
+            path.join(this.home, '.local/share/Steam')
         ];
     }
 
@@ -414,32 +431,29 @@ class Bot extends EventEmitter {
         ];
     }
 
-    sharedSteamRoot() {
-        for (const steam_root of this.hostSteamRootPaths()) {
-            if (fs.existsSync(path.join(steam_root, 'linux64/steamclient.so')) ||
-                fs.existsSync(path.join(steam_root, 'ubuntu12_64/steamclient.so'))) {
-                return steam_root;
-            }
-        }
-
-        return null;
-    }
-
     ensureSteamRootLinks() {
-        const shared_root = this.sharedSteamRoot();
-        if (!shared_root)
-            return;
-
         const steam_dir = path.join(this.home, '.steam');
         ensure_directory_not_symlink(steam_dir);
 
+        const home_real_path = real_path_or_null(this.home);
         for (const link_name of ['steam', 'root', 'debian-installation']) {
             const link_path = path.join(steam_dir, link_name);
             try {
+                const link_status = fs.lstatSync(link_path);
+                if (!link_status.isSymbolicLink())
+                    continue;
+
+                const link_real_path = real_path_or_null(link_path);
+                if (home_real_path && link_real_path && path_is_at_or_inside(link_real_path, home_real_path))
+                    continue;
+
                 fs.rmSync(link_path, { recursive: true, force: true });
-                fs.symlinkSync(shared_root, link_path, 'dir');
+                fs.mkdirSync(link_path, { recursive: true });
+                chown_tree(link_path, USER.uid, USER.uid);
+                this.log(`Replaced unsafe Steam root symlink with local directory: ${link_path}`);
             } catch (error) {
-                this.log(`[ERROR] Failed to link ${link_path} -> ${shared_root}: ${error.message}`);
+                if (error.code !== 'ENOENT')
+                    this.log(`[ERROR] Failed to sanitize ${link_path}: ${error.message}`);
             }
         }
     }
@@ -554,20 +568,15 @@ class Bot extends EventEmitter {
             this.steamPath = path.join(this.home, '.steam/steam');
 
         this.steamApps = path.join(this.steamPath, 'steamapps');
-        if (this.shouldSetupSteamapps()) {
-            this.setupSteamapps();
-        } else if (!fs.existsSync(this.steamApps) && fs.existsSync('/opt/steamapps')) {
-            fs.mkdirSync(path.dirname(this.steamApps), { recursive: true });
-            fs.symlinkSync('/opt/steamapps/', this.steamApps);
-        }
+        this.ensureSteamappsLink();
 
         const tf2_candidates = [
             process.env.TF2_PATH,
+            '/opt/steamapps/common/Team Fortress 2',
+            path.join(this.steamApps, 'common/Team Fortress 2'),
             path.join(USER.home, '.steam/steam/steamapps/common/Team Fortress 2'),
             path.join(USER.home, '.steam/debian-installation/steamapps/common/Team Fortress 2'),
-            path.join(USER.home, '.local/share/Steam/steamapps/common/Team Fortress 2'),
-            '/opt/steamapps/common/Team Fortress 2',
-            path.join(this.steamApps, 'common/Team Fortress 2')
+            path.join(USER.home, '.local/share/Steam/steamapps/common/Team Fortress 2')
         ].filter(Boolean);
         this.tf2Path = tf2_candidates.find(tf2_install_ready) || tf2_candidates[tf2_candidates.length - 1];
         this.repairSteamSdk64();
@@ -663,11 +672,6 @@ class Bot extends EventEmitter {
         }
         self.ensureSteamRootLinks();
 
-        /*if (!fs.existsSync(self.steamApps)) {
-            fs.mkdirSync(path.join(self.steamApps, ".."), { recursive: true });
-            fs.symlinkSync("/opt/steamapps/", self.steamApps);
-            chownr.sync(self.steamPath, USER.uid, USER.uid);
-        }*/
         var steambin = this.nativeSteam ? "steam-native" : "steam";
 
         self.procFirejailSteam = child_process.spawn(([this.shouldResetSteam, this.shouldResetSteam = 0][0] ? LAUNCH_OPTIONS_STEAM_RESET : LAUNCH_OPTIONS_STEAM)

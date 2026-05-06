@@ -16,6 +16,7 @@ Use --dev to skip repository/navmesh update checks and never reset local changes
 
 Environment:
   CATHOOK_DEV_MODE=1
+  CAT_UPDATE_HOST_NAVMESHES=1  Copy navmeshes into the host TF2 maps directory.
 EOF
 }
 
@@ -157,16 +158,25 @@ prepare_firejail() {
 }
 
 update_navmeshes() {
-    local tf2_maps="$HOME/.steam/steam/steamapps/common/Team Fortress 2/tf/maps"
+    local host_tf2_maps="$HOME/.steam/steam/steamapps/common/Team Fortress 2/tf/maps"
+    local overlay_tf2_maps="/opt/CATHOOK_steamapps_upper/common/Team Fortress 2/tf/maps"
+    local tf2_maps="$overlay_tf2_maps"
 
     if is_dev_mode; then
         echo "Dev mode enabled; skipping navmesh update."
         return
     fi
 
-    if [ ! -d "$tf2_maps" ]; then
-        echo "TF2 maps directory not found at $tf2_maps; skipping navmesh copy."
+    if [ ! -d "$host_tf2_maps" ]; then
+        echo "TF2 maps directory not found at $host_tf2_maps; skipping navmesh copy."
         return
+    fi
+
+    if is_enabled "${CAT_UPDATE_HOST_NAVMESHES:-0}"; then
+        tf2_maps="$host_tf2_maps"
+        echo "CAT_UPDATE_HOST_NAVMESHES is enabled; navmeshes will be copied to the host TF2 install."
+    else
+        echo "Copying navmeshes into the botpanel steamapps overlay, not the host TF2 install."
     fi
 
     echo "Fetching navmeshes..."
@@ -181,8 +191,9 @@ update_navmeshes() {
     fi
 
     echo "Copying navmeshes..."
+    run_as_root mkdir -p "$tf2_maps"
     run_as_root rsync "$database_root/nav meshes/"*.nav "$tf2_maps/"
-    run_as_root chmod 755 "$tf2_maps/"*.nav
+    run_as_root find "$tf2_maps" -maxdepth 1 -type f -name '*.nav' -exec chmod 755 {} +
 }
 
 parse_args "$@"

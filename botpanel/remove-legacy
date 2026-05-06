@@ -35,5 +35,8 @@ sudo groupdel "$(cat kisak)s"
 rm steams
 rm users
 rm kisak
-sudo rm /opt/steamapps
+if mountpoint -q /opt/steamapps; then
+    sudo umount /opt/steamapps
+fi
+sudo rmdir /opt/steamapps 2>/dev/null || true
 exit 0
