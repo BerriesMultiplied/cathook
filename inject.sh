@@ -176,6 +176,15 @@ run_repo_git() {
     git -C "$SCRIPT_DIR" -c "safe.directory=$SCRIPT_DIR" "$@"
 }
 
+discard_local_tracked_changes() {
+    if [ -z "$(run_repo_git status --porcelain --untracked-files=no)" ]; then
+        return
+    fi
+
+    echo "Discarding local tracked changes before updating..."
+    run_repo_git reset --hard
+}
+
 rebuild_after_update() {
     local build_arg="--default"
 
@@ -226,6 +235,7 @@ check_for_updates() {
 
     if run_repo_git merge-base --is-ancestor "$local_rev" "$upstream_rev"; then
         echo "Update found. Downloading latest changes..."
+        discard_local_tracked_changes
         if ! run_repo_git pull --ff-only --quiet; then
             echo "Auto update failed: could not fast-forward from $upstream."
             return 1
@@ -245,8 +255,19 @@ check_for_updates() {
         return 0
     fi
 
-    echo "Auto update failed: local checkout has diverged from $upstream."
-    return 1
+    echo "Local checkout has diverged from $upstream; resetting to upstream."
+    if ! run_repo_git reset --hard "$upstream"; then
+        echo "Auto update failed: could not reset to $upstream."
+        return 1
+    fi
+
+    if ! rebuild_after_update; then
+        echo "Auto update failed: rebuild failed."
+        return 1
+    fi
+
+    echo "Auto update finished."
+    return 0
 }
 
 maybe_auto_update() {
