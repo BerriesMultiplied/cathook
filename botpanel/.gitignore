@@ -1,0 +1,17 @@
+cathook-location
+catbot-ipc-server
+catbot-ipc-web-panel
+account-generator
+catbot-database
+catbot
+just-disable-vac
+inject.log
+core
+forever/node_modules
+build
+build-debug
+kisak
+users
+steams
+package-lock\.json
+user_instances

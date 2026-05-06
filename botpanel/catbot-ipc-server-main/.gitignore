@@ -1,0 +1,5 @@
+/Debug/
+bin/
+*.d
+*.o
+.idea

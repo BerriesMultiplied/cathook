@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "$EUID" -eq 0 ]; then
+    echo "This script must not be run as root"
+    exit 1
+fi
+
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+CATHOOK_ROOT=${CATHOOK_ROOT:-/opt/cathook}
+CATHOOK_BINARY=${CATHOOK_BINARY:-libcathook.so}
+
+if [ "${CATHOOK_TEXTMODE:-0}" = "1" ] || [ "${TEXTMODE:-0}" = "1" ]; then
+    CATHOOK_BINARY=libcathooktextmode.so
+fi
+
+LIB_PATH="$CATHOOK_ROOT/bin/$CATHOOK_BINARY"
+if [ ! -f "$LIB_PATH" ] && [ -f "$SCRIPT_DIR/bin/$CATHOOK_BINARY" ]; then
+    LIB_PATH="$SCRIPT_DIR/bin/$CATHOOK_BINARY"
+fi
+
+if [ ! -f "$LIB_PATH" ]; then
+    echo "Missing $CATHOOK_BINARY. Run ./build.sh first."
+    exit 1
+fi
+
+if pgrep -u "$USER" -x tf_linux64 >/dev/null 2>&1 || pgrep -u "$USER" -x hl2_linux >/dev/null 2>&1; then
+    echo "TF2 is already running"
+    exit 1
+fi
+
+if ! pgrep -u "$USER" -x steam >/dev/null 2>&1; then
+    echo "Steam is not running; starting it"
+    steam >/dev/null 2>&1 &
+    sleep 30
+fi
+
+TF2_PATH=${TF2_PATH:-"$HOME/.steam/steam/steamapps/common/Team Fortress 2"}
+TF2_PATH=$(realpath "$TF2_PATH")
+
+if [ -x "$TF2_PATH/tf_linux64" ]; then
+    GAME_BIN="$TF2_PATH/tf_linux64"
+elif [ -x "$TF2_PATH/hl2_linux" ]; then
+    GAME_BIN="$TF2_PATH/hl2_linux"
+else
+    echo "Could not find a TF2 Linux executable in $TF2_PATH"
+    exit 1
+fi
+
+TMP_LIB=$(mktemp /tmp/.glXXXXXX)
+cp "$LIB_PATH" "$TMP_LIB"
+chmod 0755 "$TMP_LIB"
+
+echo "Preloading $CATHOOK_BINARY as $TMP_LIB"
+(
+    cd "$TF2_PATH"
+    CATHOOK_AUTO_ATTACH=1 LD_PRELOAD="$TMP_LIB" LD_LIBRARY_PATH="$TF2_PATH/bin:${LD_LIBRARY_PATH:-}" "$GAME_BIN" -game tf >/dev/null 2>&1 &
+)
+
+sleep 10
+rm -f "$TMP_LIB"
+echo "Game preloading"

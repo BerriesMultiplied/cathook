@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+echo "botpanel/start.legacy has been retired because the botpanel is now bundled in one repository."
+echo "Run: $script_dir/start"

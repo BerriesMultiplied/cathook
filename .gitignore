@@ -1,0 +1,54 @@
+# Editors
+*~
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Build outputs
+tf2.so
+obj/
+*.o
+*.so
+*.a
+
+# Fetched/build-time dependencies
+libs/
+externalprojects/
+
+# Botpanel fetched/runtime artifacts
+/botpanel/cathook-location
+/botpanel/catbot-ipc-server/
+/botpanel/catbot-ipc-web-panel/
+/botpanel/account-generator/
+/botpanel/catbot-database/
+/botpanel/catbot/
+/botpanel/just-disable-vac/
+/botpanel/kisak/
+/botpanel/users/
+/botpanel/steams/
+/botpanel/user_instances/
+/botpanel/build/
+/botpanel/build-debug/
+/botpanel/**/node_modules/
+/botpanel/**/package-lock.json
+/botpanel/**/apikey
+
+# Botpanel build outputs
+/botpanel/catbot-ipc-server-main/Debug/
+/botpanel/catbot-ipc-server-main/bin/
+/botpanel/catbot-ipc-server-main/**/*.d
+/botpanel/catbot-ipc-server-main/**/*.o
+/botpanel/catbot-ipc-server-main/simple-ipc/build/
+/botpanel/catbot-ipc-web-panel-main/public/bundle*
+
+# Logs and dumps
+nohup.out
+*.log
+*.stackdump
+/botpanel/**/logs/
+/botpanel/**/inject.log
+/botpanel/**/core
+
+# Local runtime/config artifacts
+/opt/

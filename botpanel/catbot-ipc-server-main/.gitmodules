@@ -1,0 +1,3 @@
+[submodule "simple-ipc"]
+	path = simple-ipc
+	url = https://github.com/MistakesMultiplied/simple-ipc

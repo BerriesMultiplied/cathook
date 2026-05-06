@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd -- "$script_dir/.." && pwd)"
+web_panel_root="$script_dir/catbot-ipc-web-panel-main"
+ipc_server_root="$script_dir/catbot-ipc-server-main"
+database_root="$script_dir/catbot-database"
+repo_url="${CAT_REPO_URL:-https://github.com/pupnoodle/cathook}"
+
+run_as_root() {
+    if [ "$(id -u)" -eq 0 ]; then
+        "$@"
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo "$@"
+    else
+        echo "sudo is required for system setup steps." >&2
+        exit 1
+    fi
+}
+
+update_origin_url() {
+    local current_url
+
+    current_url="$(git -C "$repo_root" config --get remote.origin.url || true)"
+    if [ -n "$repo_url" ] && [ "$current_url" != "$repo_url" ]; then
+        git -C "$repo_root" remote set-url origin "$repo_url"
+        echo "Updated origin remote to $repo_url"
+    fi
+}
+
+update_repo() {
+    local old_script=""
+    local new_script=""
+
+    if git -C "$repo_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        old_script="$(git -C "$repo_root" rev-parse HEAD:botpanel/update 2>/dev/null || true)"
+        update_origin_url
+        git -C "$repo_root" pull --ff-only
+        git -C "$repo_root" submodule update --init --recursive
+        new_script="$(git -C "$repo_root" rev-parse HEAD:botpanel/update 2>/dev/null || true)"
+
+        if [ -n "$old_script" ] && [ -n "$new_script" ] && [ "$old_script" != "$new_script" ]; then
+            echo "Update script changed during pull; restarting."
+            exec "$0" "$@"
+        fi
+    else
+        echo "Warning: $repo_root is not a git checkout, skipping git pull."
+    fi
+}
+
+install_dependencies() {
+    if [ -x "$repo_root/install-deps" ]; then
+        bash "$repo_root/install-deps"
+    else
+        bash "$repo_root/packages/packages.sh"
+    fi
+}
+
+build_and_install_runtime() {
+    CAT_BUILD_MODE="${CAT_BUILD_MODE:-both}" bash "$repo_root/build.sh" --both
+}
+
+build_web_panel() {
+    mkdir -p "$web_panel_root/logs" "$web_panel_root/public"
+    touch "$web_panel_root/logs/main.log"
+
+    if command -v npm >/dev/null 2>&1; then
+        ( cd "$web_panel_root" && npm install )
+    else
+        echo "npm is missing after dependency install." >&2
+        exit 1
+    fi
+
+    if [ ! -x "$web_panel_root/node_modules/.bin/browserify" ]; then
+        echo "browserify is missing after npm install." >&2
+        exit 1
+    fi
+
+    ( cd "$web_panel_root" && ./node_modules/.bin/browserify script.js -o public/bundle.js )
+}
+
+prepare_botpanel_state() {
+    mkdir -p "$script_dir/user_instances"
+
+    if [ ! -f "$script_dir/accounts.txt" ]; then
+        cat > "$script_dir/accounts.txt" <<'EOF'
+# Add one Steam account per line:
+# username:password
+EOF
+        chmod 600 "$script_dir/accounts.txt" 2>/dev/null || true
+        echo "Created $script_dir/accounts.txt"
+    fi
+}
+
+prepare_firejail() {
+    local config_path="/etc/firejail/firejail.config"
+
+    if [ ! -f "$config_path" ]; then
+        return
+    fi
+
+    run_as_root cp -n "$config_path" "$config_path.CATHOOK.bak" 2>/dev/null || true
+    run_as_root sed -i -E 's/^[[:space:]]*restricted-network[[:space:]]+yes/# restricted-network yes/' "$config_path"
+}
+
+update_navmeshes() {
+    local tf2_maps="$HOME/.steam/steam/steamapps/common/Team Fortress 2/tf/maps"
+
+    if [ ! -d "$tf2_maps" ]; then
+        echo "TF2 maps directory not found at $tf2_maps; skipping navmesh copy."
+        return
+    fi
+
+    echo "Fetching navmeshes..."
+    if [ -d "$database_root/.git" ]; then
+        git -C "$database_root" fetch --depth 1
+        git -C "$database_root" reset --hard origin/master
+    elif [ -d "$database_root" ]; then
+        echo "$database_root exists but is not a git checkout; skipping navmesh update." >&2
+        return
+    else
+        git clone --depth 1 https://github.com/MistakesMultiplied/catbot-database "$database_root"
+    fi
+
+    echo "Copying navmeshes..."
+    run_as_root rsync "$database_root/nav meshes/"*.nav "$tf2_maps/"
+    run_as_root chmod 755 "$tf2_maps/"*.nav
+}
+
+if [ "$(uname -s)" != "Linux" ]; then
+    echo "./botpanel/update must run on Linux." >&2
+    exit 1
+fi
+
+if [ "$(id -u)" -eq 0 ]; then
+    echo "Run this script as your normal Linux user, not root." >&2
+    exit 1
+fi
+
+if [ ! -d "$web_panel_root" ] || [ ! -d "$ipc_server_root" ]; then
+    echo "Missing bundled botpanel directories. Expected:" >&2
+    echo "  $web_panel_root" >&2
+    echo "  $ipc_server_root" >&2
+    exit 1
+fi
+
+update_repo "$@"
+install_dependencies
+build_and_install_runtime
+build_web_panel
+prepare_botpanel_state
+prepare_firejail
+update_navmeshes
+
+echo
+echo "Done. Start the panel with ./botpanel/start"

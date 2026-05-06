@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+read -r -p "This removes generated botpanel/runtime files, not bundled source. Press ENTER to continue"
+
+echo "Removing legacy..."
+
+./remove-legacy
+
+rm -rf ./user_instances
+rm -rf ./catbot-database
+rm -rf ./catbot-ipc-web-panel-main/node_modules
+rm -f ./catbot-ipc-web-panel-main/public/bundle.js
+rm -f ./catbot-ipc-web-panel-main/logs/main.log
+sudo rm -rf /opt/cathook/ipc
+sudo rm -f /opt/cathook/bin/libcathook-textmode.so
+sudo rm -f /opt/cathook/bin/libcathooktextmode.so
