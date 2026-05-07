@@ -52,6 +52,10 @@ struct aimbot_candidate {
   float projectile_splash_radius = 0.0f;
   Vec3 projectile_target_base_origin{};
   Vec3 projectile_target_offset{};
+  bool melee_has_prediction = false;
+  float melee_impact_time = 0.0f;
+  Vec3 melee_swing_start{};
+  Vec3 melee_target_origin{};
 };
 
 struct aimbot_point {
@@ -495,52 +499,85 @@ inline bool aimbot_segment_intersects_aabb(const Vec3& start,
          clip_axis(start.z, delta.z, mins.z, maxs.z);
 }
 
+inline bool aimbot_is_repair_wrench(Weapon* weapon) {
+  if (weapon == nullptr) {
+    return false;
+  }
+
+  switch (weapon->get_def_id()) {
+  case Engi_t_Wrench:
+  case Engi_t_WrenchR:
+  case Engi_t_TheGunslinger:
+  case Engi_t_TheSouthernHospitality:
+  case Engi_t_GoldenWrench:
+  case Engi_t_TheJag:
+  case Engi_t_TheEurekaEffect:
+  case Engi_t_FestiveWrench:
+  case Engi_t_SilverBotkillerWrenchMkI:
+  case Engi_t_GoldBotkillerWrenchMkI:
+  case Engi_t_RustBotkillerWrenchMkI:
+  case Engi_t_BloodBotkillerWrenchMkI:
+  case Engi_t_CarbonadoBotkillerWrenchMkI:
+  case Engi_t_DiamondBotkillerWrenchMkI:
+  case Engi_t_SilverBotkillerWrenchMkII:
+  case Engi_t_GoldBotkillerWrenchMkII:
+    return true;
+  default:
+    return false;
+  }
+}
+
+inline bool aimbot_is_sword_melee(Weapon* weapon) {
+  if (weapon == nullptr) {
+    return false;
+  }
+
+  switch (weapon->get_def_id()) {
+  case Demoman_t_TheEyelander:
+  case Demoman_t_TheScotsmansSkullcutter:
+  case Demoman_t_HorselessHeadlessHorsemannsHeadtaker:
+  case Demoman_t_TheClaidheamhMor:
+  case Demoman_t_TheHalfZatoichi:
+  case Demoman_t_ThePersianPersuader:
+  case Demoman_t_NessiesNineIron:
+  case Demoman_t_FestiveEyelander:
+    return true;
+  default:
+    return false;
+  }
+}
+
+inline float aimbot_get_base_melee_range(Player* localplayer, Weapon* weapon) {
+  if (localplayer != nullptr && localplayer->in_cond(TF_COND_SHIELD_CHARGE)) {
+    return 128.0f;
+  }
+
+  return aimbot_is_sword_melee(weapon) ? 72.0f : 48.0f;
+}
+
 inline float aimbot_get_melee_range(Player* localplayer, Weapon* weapon, Player* target) {
   if (weapon == nullptr) {
     return 0.0f;
   }
 
-  float melee_range = 48.0f * 2.0f;
-  if (attribute_manager != nullptr) {
-    melee_range = attribute_manager->attrib_hook_value(melee_range, "melee_range_multiplier", weapon->to_entity());
-  }
+  float melee_range = aimbot_get_base_melee_range(localplayer, weapon);
 
   if (localplayer != nullptr && localplayer->get_model_scale() > 1.0f) {
     melee_range *= localplayer->get_model_scale();
   }
 
-  const auto is_repair_wrench = [weapon]() {
-    switch (weapon->get_def_id()) {
-    case Engi_t_Wrench:
-    case Engi_t_WrenchR:
-    case Engi_t_TheGunslinger:
-    case Engi_t_TheSouthernHospitality:
-    case Engi_t_GoldenWrench:
-    case Engi_t_TheJag:
-    case Engi_t_TheEurekaEffect:
-    case Engi_t_FestiveWrench:
-    case Engi_t_SilverBotkillerWrenchMkI:
-    case Engi_t_GoldBotkillerWrenchMkI:
-    case Engi_t_RustBotkillerWrenchMkI:
-    case Engi_t_BloodBotkillerWrenchMkI:
-    case Engi_t_CarbonadoBotkillerWrenchMkI:
-    case Engi_t_DiamondBotkillerWrenchMkI:
-    case Engi_t_SilverBotkillerWrenchMkII:
-    case Engi_t_GoldBotkillerWrenchMkII:
-      return true;
-    default:
-      return false;
-    }
-  };
+  if (attribute_manager != nullptr) {
+    melee_range = attribute_manager->attrib_hook_value(melee_range, "melee_range_multiplier", weapon->to_entity());
+  }
 
   if (target != nullptr &&
       localplayer != nullptr &&
       target->get_team() == localplayer->get_team() &&
-      is_repair_wrench()) {
+      aimbot_is_repair_wrench(weapon)) {
     melee_range = 70.0f;
   }
 
-  return melee_range;
+  return std::max(melee_range - 4.0f, 0.0f);
 }
 
 inline float aimbot_get_melee_hull(Player* localplayer, Weapon* weapon, Player* target) {
@@ -557,34 +594,10 @@ inline float aimbot_get_melee_hull(Player* localplayer, Weapon* weapon, Player* 
     melee_hull *= localplayer->get_model_scale();
   }
 
-  const auto is_repair_wrench = [weapon]() {
-    switch (weapon->get_def_id()) {
-    case Engi_t_Wrench:
-    case Engi_t_WrenchR:
-    case Engi_t_TheGunslinger:
-    case Engi_t_TheSouthernHospitality:
-    case Engi_t_GoldenWrench:
-    case Engi_t_TheJag:
-    case Engi_t_TheEurekaEffect:
-    case Engi_t_FestiveWrench:
-    case Engi_t_SilverBotkillerWrenchMkI:
-    case Engi_t_GoldBotkillerWrenchMkI:
-    case Engi_t_RustBotkillerWrenchMkI:
-    case Engi_t_BloodBotkillerWrenchMkI:
-    case Engi_t_CarbonadoBotkillerWrenchMkI:
-    case Engi_t_DiamondBotkillerWrenchMkI:
-    case Engi_t_SilverBotkillerWrenchMkII:
-    case Engi_t_GoldBotkillerWrenchMkII:
-      return true;
-    default:
-      return false;
-    }
-  };
-
   if (target != nullptr &&
       localplayer != nullptr &&
       target->get_team() == localplayer->get_team() &&
-      is_repair_wrench()) {
+      aimbot_is_repair_wrench(weapon)) {
     melee_hull = 18.0f;
   }
 

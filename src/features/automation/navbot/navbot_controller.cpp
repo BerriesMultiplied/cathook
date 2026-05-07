@@ -1162,6 +1162,16 @@ bool navbot_controller::should_suppress_aimbot() const
   return config.misc.automation.navbot_enabled && suppress_aimbot_for_reload_;
 }
 
+bool navbot_controller::should_prioritize_danger_movement() const
+{
+  if (!config.misc.automation.navbot_enabled)
+  {
+    return false;
+  }
+
+  return active_goal_.valid && active_goal_.goal.type == goal_type::escape_danger;
+}
+
 void navbot_controller::ensure_started()
 {
   if (jobs_started_)

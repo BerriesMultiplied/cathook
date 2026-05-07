@@ -1310,6 +1310,7 @@ static void draw_aimbot_content() {
     cat_menu::multi_select_combo("Aim at", &config.aimbot.aim_at, aim_at_items, aim_at_bits, IM_ARRAYSIZE(aim_at_items));
     cat_menu::multi_select_combo("Hitscan hitboxes", &config.aimbot.hitscan_hitboxes, hitbox_items, hitbox_bits, IM_ARRAYSIZE(hitbox_items));
     cat_menu::multi_select_combo("Melee hitboxes", &config.aimbot.melee_hitboxes, hitbox_items, hitbox_bits, IM_ARRAYSIZE(hitbox_items));
+    cat_menu::checkbox("Melee walk to target", &config.aimbot.melee_walk_to_target);
     cat_menu::multi_select_combo("Projectile hitboxes", &config.aimbot.projectile_hitboxes, projectile_hitbox_items, projectile_hitbox_bits, IM_ARRAYSIZE(projectile_hitbox_items));
     cat_menu::checkbox("Ignore friends", &config.aimbot.ignore_friends);
   });

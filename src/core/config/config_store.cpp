@@ -182,6 +182,7 @@ void config_store::import_config(const Config& config)
     set_bool("aimbot.shoot_through_glass", config.aimbot.shoot_through_glass);
     set_int("aimbot.hitscan_hitboxes", static_cast<int>(config.aimbot.hitscan_hitboxes));
     set_int("aimbot.melee_hitboxes", static_cast<int>(config.aimbot.melee_hitboxes));
+    set_bool("aimbot.melee_walk_to_target", config.aimbot.melee_walk_to_target);
     set_int("aimbot.projectile_mode", static_cast<int>(config.aimbot.projectile_mode));
     set_int("aimbot.projectile_hitboxes", static_cast<int>(config.aimbot.projectile_hitboxes));
     set_bool("aimbot.projectile_wall_splash", config.aimbot.projectile_wall_splash);
@@ -492,6 +493,7 @@ void config_store::export_config(Config& config) const
     config.aimbot.shoot_through_glass = get_bool("aimbot.shoot_through_glass", config.aimbot.shoot_through_glass);
     config.aimbot.hitscan_hitboxes = static_cast<uint32_t>(get_int("aimbot.hitscan_hitboxes", static_cast<int>(config.aimbot.hitscan_hitboxes)));
     config.aimbot.melee_hitboxes = static_cast<uint32_t>(get_int("aimbot.melee_hitboxes", static_cast<int>(config.aimbot.melee_hitboxes)));
+    config.aimbot.melee_walk_to_target = get_bool("aimbot.melee_walk_to_target", config.aimbot.melee_walk_to_target);
     config.aimbot.projectile_mode = static_cast<Aim::ProjectileMode>(std::clamp(
         get_int("aimbot.projectile_mode", static_cast<int>(config.aimbot.projectile_mode)),
         0,

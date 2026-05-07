@@ -125,7 +125,8 @@ static bool run_move_features(user_cmd* user_cmd) {
   navbot::controller().on_create_move(user_cmd);
   const bool suppress_aimbot = navbot::controller().should_suppress_aimbot();
 
-  if (should_block_menu_movement()) {
+  const bool menu_movement_blocked = should_block_menu_movement();
+  if (menu_movement_blocked) {
     user_cmd->sidemove = 0.0f;
     user_cmd->forwardmove = 0.0f;
   }
@@ -148,6 +149,9 @@ static bool run_move_features(user_cmd* user_cmd) {
   start_engine_prediction(user_cmd);
   const bool use_psilent = suppress_aimbot ? false : aimbot(user_cmd, original_view_angles);
   movement_fix(user_cmd, original_view_angles, corrected_forward_move, corrected_side_move);
+  if (!menu_movement_blocked && !suppress_aimbot && !navbot::controller().should_prioritize_danger_movement()) {
+    aimbot_apply_walk_to_target(entity_list->get_localplayer(), user_cmd);
+  }
 
   end_engine_prediction();
 

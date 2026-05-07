@@ -33,6 +33,12 @@ namespace
 {
 
 bool g_aimbot_requested_shot = false;
+bool g_aimbot_walk_to_target = false;
+Vec3 g_aimbot_walk_target{};
+float g_aimbot_walk_locked_until = 0.0f;
+float g_aimbot_walk_blocked_until = 0.0f;
+Vec3 g_aimbot_walk_last_origin{};
+float g_aimbot_walk_last_progress_time = 0.0f;
 
 using aimbot_random_seed_fn = void (*)(int);
 using aimbot_random_float_fn = float (*)(float, float);
@@ -40,6 +46,14 @@ using aimbot_random_float_fn = float (*)(float, float);
 aimbot_random_seed_fn aimbot_random_seed = nullptr;
 aimbot_random_float_fn aimbot_random_float = nullptr;
 bool aimbot_random_initialized = false;
+
+void aimbot_clear_walk_to_target()
+{
+  g_aimbot_walk_to_target = false;
+  g_aimbot_walk_target = {};
+  g_aimbot_walk_last_origin = {};
+  g_aimbot_walk_last_progress_time = 0.0f;
+}
 
 bool aimbot_init_random()
 {
@@ -361,6 +375,33 @@ aimbot_candidate aimbot_find_best_projectile_candidate(Player* localplayer,
   return best_candidate;
 }
 
+void aimbot_request_walk_to_target(Player* localplayer, Weapon* weapon, const aimbot_candidate& candidate)
+{
+  const float current_time = global_vars != nullptr ? global_vars->curtime : 0.0f;
+  if (current_time >= g_aimbot_walk_locked_until) {
+    aimbot_clear_walk_to_target();
+  }
+
+  if (!config.aimbot.melee_walk_to_target) {
+    aimbot_clear_walk_to_target();
+    return;
+  }
+
+  if (localplayer == nullptr || weapon == nullptr || !aimbot_is_melee_weapon(weapon) || candidate.player == nullptr) {
+    return;
+  }
+
+  constexpr float walk_to_target_distance = 82.0f;
+  const float distance = distance_3d(localplayer->get_origin(), candidate.player->get_origin());
+  if (distance > walk_to_target_distance) {
+    return;
+  }
+
+  g_aimbot_walk_to_target = true;
+  g_aimbot_walk_target = candidate.player->get_origin();
+  g_aimbot_walk_locked_until = current_time + 0.18f;
+}
+
 }
 
 static void aimbot_apply_visible_view(user_cmd* user_cmd) {
@@ -442,7 +483,7 @@ static aimbot_candidate aimbot_find_best_candidate(Player* localplayer, Weapon* 
 
       aimbot_candidate candidate{};
       if (aimbot_is_melee_weapon(weapon)) {
-        candidate = melee_aim_find_candidate(localplayer, weapon, player, original_view_angles);
+        candidate = melee_aim_find_candidate(localplayer, weapon, player, user_cmd, original_view_angles);
       } else {
         candidate = hitscan_aim_find_candidate(localplayer, weapon, player, original_view_angles);
       }
@@ -651,6 +692,8 @@ bool aimbot(user_cmd* user_cmd, Vec3 original_view_angles) {
     return false;
   }
 
+  aimbot_request_walk_to_target(localplayer, weapon, best_candidate);
+
   if (!weapon->can_primary_attack() || !aimbot_scoped_only_ready(localplayer, weapon)) {
     store_aimbot_input_angles(source_view_angles);
     return false;
@@ -677,6 +720,20 @@ bool aimbot(user_cmd* user_cmd, Vec3 original_view_angles) {
     projectile_view_angles);
   const bool hitscan_solution = !aimbot_is_projectile_weapon(weapon) && !aimbot_is_melee_weapon(weapon);
   const bool hitscan_ready = !hitscan_solution || hitscan_aim_trace_candidate(localplayer, best_candidate, user_cmd->view_angles);
+  const bool melee_solution = aimbot_is_melee_weapon(weapon);
+  const bool melee_ready = !melee_solution ||
+    (best_candidate.player != nullptr &&
+      best_candidate.melee_has_prediction &&
+      melee_aim_trace_candidate(
+        localplayer,
+        weapon,
+        best_candidate.player,
+        best_candidate.melee_target_origin,
+        best_candidate.melee_swing_start,
+        user_cmd->view_angles)) ||
+    (best_candidate.player == nullptr &&
+      best_candidate.entity != nullptr &&
+      aimbot_entity_melee_reachable(localplayer, weapon, best_candidate.entity, best_candidate.aim_position, user_cmd->view_angles));
 
   const bool headshot_ready = aimbot_wait_for_headshot_ready(localplayer, weapon);
   if (!headshot_ready) {
@@ -686,6 +743,7 @@ bool aimbot(user_cmd* user_cmd, Vec3 original_view_angles) {
   const bool attack_ready = localplayer->can_shoot(best_candidate.entity) &&
     projectile_ready &&
     hitscan_ready &&
+    melee_ready &&
     headshot_ready &&
     !(user_cmd->buttons & IN_ATTACK2);
   if (config.aimbot.auto_shoot && attack_ready) {
@@ -704,4 +762,68 @@ bool aimbot(user_cmd* user_cmd, Vec3 original_view_angles) {
 
 bool aimbot_requested_shot() {
   return g_aimbot_requested_shot;
+}
+
+void aimbot_apply_walk_to_target(Player* localplayer, user_cmd* user_cmd) {
+  if (!g_aimbot_walk_to_target || localplayer == nullptr || user_cmd == nullptr) {
+    return;
+  }
+
+  if (!config.aimbot.melee_walk_to_target) {
+    aimbot_clear_walk_to_target();
+    return;
+  }
+
+  const float current_time = global_vars != nullptr ? global_vars->curtime : 0.0f;
+  if (current_time >= g_aimbot_walk_locked_until) {
+    aimbot_clear_walk_to_target();
+    return;
+  }
+
+  if (current_time < g_aimbot_walk_blocked_until) {
+    return;
+  }
+
+  const Vec3 local_origin = localplayer->get_origin();
+  if (g_aimbot_walk_last_progress_time <= 0.0f || aimbot_distance_squared(local_origin, g_aimbot_walk_last_origin) > 4.0f) {
+    g_aimbot_walk_last_origin = local_origin;
+    g_aimbot_walk_last_progress_time = current_time;
+  } else if (current_time - g_aimbot_walk_last_progress_time > 0.35f) {
+    g_aimbot_walk_blocked_until = current_time + 0.3f;
+    user_cmd->buttons |= IN_JUMP;
+    return;
+  }
+
+  const Vec3 delta{
+    g_aimbot_walk_target.x - local_origin.x,
+    g_aimbot_walk_target.y - local_origin.y,
+    0.0f
+  };
+  const float planar_distance = std::sqrt((delta.x * delta.x) + (delta.y * delta.y));
+  if (planar_distance <= 1.0f) {
+    aimbot_clear_walk_to_target();
+    return;
+  }
+
+  constexpr float walk_to_target_distance = 82.0f;
+  constexpr float walk_to_target_release_distance = 96.0f;
+  if (planar_distance > walk_to_target_release_distance) {
+    aimbot_clear_walk_to_target();
+    return;
+  }
+
+  constexpr float walk_to_target_speed = 450.0f;
+  const float yaw = std::atan2(delta.y, delta.x) * radpi;
+  const float yaw_delta = (yaw - user_cmd->view_angles.y) * pideg;
+  const float speed_scale = std::clamp(planar_distance / walk_to_target_distance, 0.35f, 1.0f);
+  const float move_speed = walk_to_target_speed * speed_scale;
+  user_cmd->forwardmove = std::cos(yaw_delta) * move_speed;
+  user_cmd->sidemove = -std::sin(yaw_delta) * move_speed;
+
+  user_cmd->buttons &= ~(IN_BACK | IN_MOVELEFT | IN_MOVERIGHT);
+  user_cmd->buttons |= IN_FORWARD;
+
+  if (g_aimbot_walk_target.z - local_origin.z > 24.0f && planar_distance < 72.0f && localplayer->is_on_ground()) {
+    user_cmd->buttons |= IN_JUMP;
+  }
 }

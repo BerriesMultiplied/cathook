@@ -38,6 +38,7 @@ public:
 
   [[nodiscard]] const navbot_debug_state& debug_state() const;
   [[nodiscard]] bool should_suppress_aimbot() const;
+  [[nodiscard]] bool should_prioritize_danger_movement() const;
 
 private:
   struct crumb_failure_state

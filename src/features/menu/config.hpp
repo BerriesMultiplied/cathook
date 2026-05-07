@@ -90,6 +90,7 @@ struct Aim {
 
   uint32_t hitscan_hitboxes = aim_hitbox_mask_default_hitscan;
   uint32_t melee_hitboxes = aim_hitbox_mask_default_melee;
+  bool melee_walk_to_target = true;
 
   ProjectileMode projectile_mode = ProjectileMode::DIRECT_THEN_SPLASH;
   uint32_t projectile_hitboxes = aim_hitbox_mask_auto;

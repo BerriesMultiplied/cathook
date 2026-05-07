@@ -22,6 +22,7 @@ V  o o  V  file: src/games/tf2/sdk/entities/weapon.hpp
 #include "core/print.hpp"
 
 #include <algorithm>
+#include <cmath>
 
 #define TICK_INTERVAL 0.015
 
@@ -761,6 +762,7 @@ public:
   static constexpr int weapon_data_damage_offset = 0;
   static constexpr int weapon_data_bullets_per_shot_offset = 4;
   static constexpr int weapon_data_fire_delay_offset = 24;
+  static constexpr int weapon_data_smack_delay_offset = 56;
   static constexpr int weapon_data_rapid_fire_offset = 60;
   static constexpr int base_weapon_info_offset_from_last_crit_check = -40;
   static constexpr int melee_weapon_info_offset_from_last_crit_check = 240;
@@ -782,6 +784,12 @@ public:
   static auto observed_crit_chance_offset() -> int
   {
     static const int offset = tf2_netvars::find_offset("DT_TFWeaponBase", {"m_flObservedCritChance"});
+    return offset;
+  }
+
+  static auto inspect_stage_offset() -> int
+  {
+    static const int offset = tf2_netvars::find_offset("DT_TFWeaponBase", {"m_nInspectStage"});
     return offset;
   }
 
@@ -1178,6 +1186,25 @@ public:
     }
 
     return *reinterpret_cast<float*>(weapon_data + weapon_data_fire_delay_offset);
+  }
+
+  float get_smack_delay() {
+    const uintptr_t weapon_data = get_weapon_data();
+    if (weapon_data == 0) {
+      return 0.2f;
+    }
+
+    const float smack_delay = *reinterpret_cast<float*>(weapon_data + weapon_data_smack_delay_offset);
+    return std::isfinite(smack_delay) ? std::clamp(smack_delay, 0.0f, 1.0f) : 0.2f;
+  }
+
+  float get_smack_time() {
+    const int offset = inspect_stage_offset();
+    if (offset <= 0) {
+      return -1.0f;
+    }
+
+    return *reinterpret_cast<float*>(reinterpret_cast<uintptr_t>(this) + offset + 28);
   }
 
   bool is_rapid_fire() {

@@ -159,8 +159,9 @@ struct trace_t {
 
 //add a namespace or class for these functions and vars
 inline bool should_hit_entity(struct trace_filter* interface, Entity* entity, int contents_mask) {
+  if (entity == nullptr) return false;
   if (entity->get_class_id() == class_id::RESPAWN_ROOM_VISUALIZER) return false;  
-  return entity != interface->skip;
+  return interface == nullptr || entity != interface->skip;
 }
 
 inline enum trace_type_t get_type(struct trace_filter* interface) {

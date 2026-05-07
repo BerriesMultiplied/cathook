@@ -279,6 +279,7 @@ inline void register_builtin_targets() {
   register_target("aimbot.assist_strength", "Assist strength", &config.aimbot.assist_strength);
   register_target("aimbot.target_type", "Target", reinterpret_cast<int*>(&config.aimbot.target_type));
   register_target("aimbot.projectile_mode", "Projectile mode", reinterpret_cast<int*>(&config.aimbot.projectile_mode));
+  register_target("aimbot.melee_walk_to_target", "Melee walk to target", &config.aimbot.melee_walk_to_target);
   register_target("aimbot.projectile_wall_splash", "Wall splash", &config.aimbot.projectile_wall_splash);
   register_target("aimbot.projectile_seam_shot", "Seam shot", &config.aimbot.projectile_seam_shot);
   register_target("aimbot.projectile_splash_radius_scale", "Splash radius scale", &config.aimbot.projectile_splash_radius_scale);

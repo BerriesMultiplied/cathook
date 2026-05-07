@@ -394,6 +394,17 @@ void report_resource_status(const glow_resource_status status)
   return texture;
 }
 
+[[nodiscard]] MaterialVar* find_bloom_amount()
+{
+  if (g_blur_y_material == nullptr) {
+    return nullptr;
+  }
+
+  auto found = false;
+  auto* bloom_amount = g_blur_y_material->find_var("$bloomamount", &found);
+  return found ? bloom_amount : nullptr;
+}
+
 [[nodiscard]] bool get_render_size(int* width, int* height)
 {
   if (width == nullptr || height == nullptr || engine == nullptr) {
@@ -475,10 +486,9 @@ void report_resource_status(const glow_resource_status status)
   "$bloomamount" "1"
 }
 )#");
-    if (g_blur_y_material != nullptr) {
-      g_bloom_amount = g_blur_y_material->find_var("$bloomamount");
-    }
   }
+
+  g_bloom_amount = needs_blur ? find_bloom_amount() : nullptr;
 
   if (g_glow_color_material == nullptr) {
     return glow_resource_status::missing_glow_color_material;
@@ -620,7 +630,7 @@ void second_end(RenderContext* render_context)
   render_context->set_stencil_enable(false);
 
   const auto blur = glow_blur_scale();
-  if (blur > 0.0f) {
+  if (blur > 0.0f && g_bloom_amount != nullptr) {
     g_bloom_amount->set_float_value(blur);
 
     render_context->push_render_target_and_viewport();
