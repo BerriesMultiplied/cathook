@@ -1259,6 +1259,28 @@ class Bot extends EventEmitter {
         return collect_descendant_pids(this.procFirejailGame.pid, processes).includes(pid);
     }
 
+    ipc_peer_match_score(id, data) {
+        if (!data)
+            return 0;
+
+        if (this.ipcID == id)
+            return 120;
+
+        if (this.ipcState)
+            return 0;
+
+        if (data.name && data.name === this.name)
+            return 100;
+
+        if (this.startTime && data.starttime && this.startTime == data.starttime)
+            return 80;
+
+        if (!this.ipcState && this.owns_process_pid(data.pid))
+            return 60;
+
+        return 0;
+    }
+
     accept_ipc_peer(id, data) {
         if (!data)
             return;

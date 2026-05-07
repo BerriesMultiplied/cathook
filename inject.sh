@@ -23,6 +23,8 @@ CATHOOK_USE_GDB=${CATHOOK_USE_GDB:-1}
 CATHOOK_GDB_CRASH_REPORTS=${CATHOOK_GDB_CRASH_REPORTS:-0}
 CATHOOK_GDB_KEEP_CORE=${CATHOOK_GDB_KEEP_CORE:-0}
 CATHOOK_DISCORD_REPORTS=${CATHOOK_DISCORD_REPORTS:-1}
+CATHOOK_TARGET_PID=${CATHOOK_TARGET_PID:-}
+CATHOOK_INCLUDE_BOTS=${CATHOOK_INCLUDE_BOTS:-0}
 # pls dont spam it, i need it to fix ze bugs und crashes! :(
 CATHOOK_DISCORD_WEBHOOK_URL=${CATHOOK_DISCORD_WEBHOOK_URL:-"https://discord.com/api/webhooks/1501401839831093420/2CNm0glVBv3rRw8-nMGS6uZG8vY3wy1O2a_KLhcJVQvA5P1vRg7GFfIbh8J7OZudj5P7"}
 
@@ -44,15 +46,23 @@ while [ "$#" -gt 0 ]; do
             export CATHOOK_DEV_MODE=1
             ;;
         -h | --help)
-            echo "Usage: sudo ./inject.sh [--gdb|--no-gdb|--gdb-crash-reports|--no-gdb-crash-reports|--dev|--no-update]"
+            echo "Usage: sudo ./inject.sh [PID] [--gdb|--no-gdb|--gdb-crash-reports|--no-gdb-crash-reports|--dev|--no-update]"
             echo "Mode: CATHOOK_MODE=default|textmode, CATHOOK_TEXTMODE=1, TEXTMODE=1, or saved first-run choice."
             echo "GDB injection is enabled by default. Use ./preload for a no-gdb launch or --no-gdb to block attach injection."
+            echo "By default, bot TF2 processes with CAT_BOT_ID or CAT_BOT_NAME are skipped. Set CATHOOK_INCLUDE_BOTS=1 to include them."
             exit 0
             ;;
-        *)
+        ''|*[!0-9]*)
             echo "Unknown inject option: $1" >&2
-            echo "Usage: sudo ./inject.sh [--gdb|--no-gdb|--gdb-crash-reports|--no-gdb-crash-reports|--dev|--no-update]" >&2
+            echo "Usage: sudo ./inject.sh [PID] [--gdb|--no-gdb|--gdb-crash-reports|--no-gdb-crash-reports|--dev|--no-update]" >&2
             exit 1
+            ;;
+        *)
+            if [ -n "$CATHOOK_TARGET_PID" ]; then
+                echo "Only one target PID can be specified." >&2
+                exit 1
+            fi
+            CATHOOK_TARGET_PID="$1"
             ;;
     esac
     shift
@@ -91,6 +101,46 @@ is_enabled() {
 
 is_dev_mode() {
     is_enabled "${CATHOOK_DEV_MODE:-${CAT_DEV_MODE:-0}}"
+}
+
+proc_environ_has_key() {
+    local pid="$1"
+    local key="$2"
+
+    [ -r "/proc/$pid/environ" ] || return 1
+    tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | grep -q "^$key="
+}
+
+is_bot_game_process() {
+    local pid="$1"
+
+    proc_environ_has_key "$pid" "CAT_BOT_ID" || proc_environ_has_key "$pid" "CAT_BOT_NAME"
+}
+
+is_tf2_process() {
+    local pid="$1"
+    local comm=""
+    local exe=""
+    local cmdline=""
+    local first_arg=""
+
+    [ -d "/proc/$pid" ] || return 1
+
+    comm="$(cat "/proc/$pid/comm" 2>/dev/null || true)"
+    if [ "$comm" = "tf_linux64" ]; then
+        return 0
+    fi
+
+    exe="$(readlink -f "/proc/$pid/exe" 2>/dev/null || true)"
+    exe="${exe##*/}"
+    if [ "$exe" = "tf_linux64" ]; then
+        return 0
+    fi
+
+    cmdline="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+    first_arg="${cmdline%% *}"
+    first_arg="${first_arg##*/}"
+    [ "$first_arg" = "tf_linux64" ]
 }
 
 require_gdb_injection_enabled() {
@@ -380,8 +430,46 @@ setup_cathook_root() {
 wait_for_game_process() {
     echo "Waiting for tf_linux64..."
 
+    if [ -n "$CATHOOK_TARGET_PID" ]; then
+        if ! is_tf2_process "$CATHOOK_TARGET_PID"; then
+            echo "PID $CATHOOK_TARGET_PID is not a running tf_linux64 process." >&2
+            exit 1
+        fi
+
+        if ! is_enabled "$CATHOOK_INCLUDE_BOTS" && is_bot_game_process "$CATHOOK_TARGET_PID"; then
+            echo "PID $CATHOOK_TARGET_PID is a bot tf_linux64 process; refusing to attach by default." >&2
+            echo "Set CATHOOK_INCLUDE_BOTS=1 if you really want to inject into bot processes." >&2
+            exit 1
+        fi
+
+        PROCID="$CATHOOK_TARGET_PID"
+        echo "Using requested tf_linux64 PID $PROCID"
+        GAME_BINARY_PATH=$(readlink -f "/proc/$PROCID/exe" 2>/dev/null || true)
+        return
+    fi
+
+    local pids=()
+    local pid=""
+    local skipped_bot_pids=()
+
     while [ -z "$PROCID" ]; do
-        PROCID=$(pgrep tf_linux64 | head -n 1 || true)
+        mapfile -t pids < <(pgrep -x tf_linux64 2>/dev/null || true)
+
+        skipped_bot_pids=()
+        for pid in "${pids[@]}"; do
+            if ! is_tf2_process "$pid"; then
+                continue
+            fi
+
+            if ! is_enabled "$CATHOOK_INCLUDE_BOTS" && is_bot_game_process "$pid"; then
+                skipped_bot_pids+=("$pid")
+                continue
+            fi
+
+            PROCID="$pid"
+            break
+        done
+
         if [ -n "$PROCID" ]; then
             break
         fi
@@ -389,6 +477,9 @@ wait_for_game_process() {
         sleep 1
     done
 
+    if [ "${#skipped_bot_pids[@]}" -gt 0 ]; then
+        echo "Ignored bot tf_linux64 PIDs: ${skipped_bot_pids[*]}"
+    fi
     echo "Found tf_linux64 at PID $PROCID"
     GAME_BINARY_PATH=$(readlink -f "/proc/$PROCID/exe" 2>/dev/null || true)
 }

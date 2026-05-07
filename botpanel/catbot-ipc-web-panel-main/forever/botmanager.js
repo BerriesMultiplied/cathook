@@ -49,14 +49,18 @@ class BotManager {
                 if (data.result) {
                     for (var q in data.result) {
                         const peer = data.result[q];
+                        var best_bot = null;
+                        var best_score = 0;
                         for (var b of self.bots) {
-                            if (b.startTime && b.startTime == peer.starttime) {
-                                b.accept_ipc_peer(q, peer);
-                            }
-                            else if (!b.ipcState && b.owns_process_pid(peer.pid)) {
-                                b.accept_ipc_peer(q, peer);
+                            const score = b.ipc_peer_match_score(q, peer);
+                            if (score > best_score) {
+                                best_bot = b;
+                                best_score = score;
                             }
                         }
+
+                        if (best_bot)
+                            best_bot.accept_ipc_peer(q, peer);
                     }
                 }
             });
