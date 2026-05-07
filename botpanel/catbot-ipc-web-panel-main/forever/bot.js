@@ -3,7 +3,6 @@ const child_process = require('child_process');
 
 const timestamp = require('time-stamp');
 const fs = require('fs');
-const procfs = require('procfs-stats');
 const path = require("path");
 const { Tail } = require("tail");
 
@@ -194,6 +193,20 @@ function read_process_table() {
     } catch (error) { }
 
     return processes;
+}
+
+function process_command_executable(info) {
+    if (!info)
+        return '';
+
+    const command = info.cmdline || '';
+    const first_arg = command.split(/\s+/)[0] || '';
+    return path.basename(first_arg || info.comm || '');
+}
+
+function is_game_process(info, game_binary) {
+    const executable = process_command_executable(info);
+    return executable === game_binary || info.comm === game_binary || executable === 'tf_linux64' || info.comm === 'tf_linux64';
 }
 
 function collect_descendant_pids(root_pid, processes) {
@@ -1091,27 +1104,68 @@ class Bot extends EventEmitter {
     }
 
     gameCheck() {
-        try {
-            var gamepid = Number.parseInt(child_process.execSync(`pgrep -P ${this.procFirejailGame.pid}`).toString().trim());
-            this.gamePid = gamepid;
+        const game_process = this.findGameProcess();
+        if (!game_process) {
+            if (this.ipcState && this.ipcState.pid) {
+                this.gamePid = this.ipcState.pid;
+                this.startTime = this.ipcState.starttime || this.startTime;
+                this.log(`Found game from IPC (${this.gamePid})`);
+                this.emit('start-game', this.procFirejailGame.pid);
+                clearSourceLockFiles();
+                return true;
+            }
 
-            var self = this;
-            procfs(gamepid).stat(function (err, ret) {
-                if (err) {
-                    self.log("Error while getting stat.");
-                } else {
-                    self.startTime = ret.starttime;
-                }
-            })
-
-            this.log(`Found game (${gamepid})`);
-            this.emit('start-game', this.procFirejailGame.pid);
-            clearSourceLockFiles();
-        } catch (error) {
             this.log('[ERROR] Could not find running game!');
             return false;
         }
+
+        this.gamePid = game_process.pid;
+        this.startTime = game_process.starttime;
+        this.log(`Found game (${game_process.pid})`);
+        this.emit('start-game', this.procFirejailGame.pid);
+        clearSourceLockFiles();
         return true;
+    }
+
+    findGameProcess() {
+        if (!this.procFirejailGame)
+            return null;
+
+        const processes = read_process_table();
+        const game_binary = this.gameBinary();
+        const descendant_pids = collect_descendant_pids(this.procFirejailGame.pid, processes);
+        const candidates = descendant_pids
+            .map((pid) => processes.get(pid))
+            .filter((info) => is_game_process(info, game_binary));
+
+        candidates.sort((left, right) => (right.starttime - left.starttime) || (right.pid - left.pid));
+        return candidates[0] || null;
+    }
+
+    owns_process_pid(pid) {
+        if (!this.procFirejailGame || !pid || pid <= 0)
+            return false;
+
+        if (pid === this.procFirejailGame.pid)
+            return true;
+
+        const processes = read_process_table();
+        return collect_descendant_pids(this.procFirejailGame.pid, processes).includes(pid);
+    }
+
+    accept_ipc_peer(id, data) {
+        if (!data)
+            return;
+
+        if (!this.startTime && data.starttime)
+            this.startTime = data.starttime;
+        if (data.pid)
+            this.gamePid = data.pid;
+
+        this.emit('ipc-data', {
+            id: id,
+            data: data
+        });
     }
 
     // Apply current state

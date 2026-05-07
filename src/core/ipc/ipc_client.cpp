@@ -19,9 +19,11 @@ V  o o  V  file: src/core/ipc/ipc_client.cpp
 #include "games/tf2/sdk/interfaces/client_state.hpp"
 #include "games/tf2/sdk/interfaces/engine.hpp"
 #include "games/tf2/sdk/interfaces/entity_list.hpp"
+#include "games/tf2/sdk/interfaces/steam_runtime.hpp"
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <optional>
 #include <string>
@@ -50,6 +52,7 @@ std::time_t injected_time = 0;
 bool ipc_enabled = true;
 bool auto_ignore_enabled = true;
 bool was_connected_to_server = false;
+std::uint32_t cached_local_account_id = 0;
 std::chrono::steady_clock::time_point next_connect_attempt{};
 std::unordered_set<std::uint32_t> local_ipc_friends{};
 
@@ -76,6 +79,30 @@ std::unordered_set<std::uint32_t> local_ipc_friends{};
   }
 
   return info;
+}
+
+[[nodiscard]] auto local_account_id_from_steam() -> std::uint32_t
+{
+  if (cached_local_account_id != 0)
+  {
+    return cached_local_account_id;
+  }
+
+  auto* user = steam_runtime::resolve_steam_user();
+  if (user == nullptr)
+  {
+    return 0;
+  }
+
+  const auto steam_id = user->get_steam_id();
+  cached_local_account_id = static_cast<std::uint32_t>(steam_id & 0xffffffffull);
+  return cached_local_account_id;
+}
+
+[[nodiscard]] auto bot_name_from_environment() -> std::string_view
+{
+  const auto* name = std::getenv("CAT_BOT_NAME");
+  return name != nullptr ? std::string_view{name} : std::string_view{};
 }
 
 [[nodiscard]] auto sanitize_map_name(const char* raw_name) -> std::string_view
@@ -217,6 +244,8 @@ void mark_peer_free()
   data.textmode = textmode_build();
   data.heartbeat = now;
   data.ts_injected = now;
+  data.friendid = local_account_id_from_steam();
+  copy_cstr(data.name, sizeof(data.name), bot_name_from_environment());
   return true;
 }
 
@@ -353,8 +382,25 @@ void update_telemetry_locked()
 
   if (const auto info = local_player_info())
   {
-    data.friendid = static_cast<unsigned int>(info->friends_id);
+    if (info->friends_id != 0)
+    {
+      cached_local_account_id = static_cast<std::uint32_t>(info->friends_id);
+      data.friendid = static_cast<unsigned int>(cached_local_account_id);
+    }
     copy_cstr(data.name, sizeof(data.name), info->name);
+  }
+  else
+  {
+    const auto account_id = local_account_id_from_steam();
+    if (account_id != 0)
+    {
+      data.friendid = static_cast<unsigned int>(account_id);
+    }
+
+    if (data.name[0] == '\0')
+    {
+      copy_cstr(data.name, sizeof(data.name), bot_name_from_environment());
+    }
   }
 
   copy_cstr(data.ingame.server, sizeof(data.ingame.server), server_address());

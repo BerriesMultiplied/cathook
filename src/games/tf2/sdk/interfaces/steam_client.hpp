@@ -12,6 +12,7 @@ V  o o  V  file: src/games/tf2/sdk/interfaces/steam_client.hpp
 #ifndef STEAM_CLIENT_HPP
 #define STEAM_CLIENT_HPP
 
+#include "games/tf2/sdk/interfaces/steam_user.hpp"
 #include "games/tf2/sdk/interfaces/steam_user_stats.hpp"
 
 class SteamClient {
@@ -38,6 +39,14 @@ public:
     void* (*get_steam_friends_interface_fn)(void*, int, int, const char*) = (void* (*)(void*, int, int, const char*))vtable[8];
 
     return get_steam_friends_interface_fn(this, steam_user, steam_pipe, version);
+  }
+
+  steam_user* get_steam_user_interface(int steam_user_handle, int steam_pipe, const char* version) {
+    void** vtable = *(void***)this;
+
+    auto get_steam_user_interface_fn = reinterpret_cast<steam_user* (*)(void*, int, int, const char*)>(vtable[5]);
+
+    return get_steam_user_interface_fn(this, steam_user_handle, steam_pipe, version);
   }
 
   steam_user_stats* get_steam_user_stats_interface(int steam_user, int steam_pipe, const char* version) {

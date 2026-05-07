@@ -19,6 +19,7 @@ V  o o  V  file: src/games/tf2/sdk/interfaces/steam_runtime.hpp
 #include <dlfcn.h>
 
 #include "games/tf2/sdk/interfaces/steam_client.hpp"
+#include "games/tf2/sdk/interfaces/steam_user.hpp"
 #include "games/tf2/sdk/interfaces/steam_user_stats.hpp"
 
 void* get_interface(const char* lib_path, const char* version);
@@ -109,6 +110,107 @@ inline SteamClient* resolve_steam_client()
   return nullptr;
 }
 
+inline auto steam_pipe_handle() -> int
+{
+  static int steam_pipe = 0;
+
+  if (steam_pipe == 0)
+  {
+    auto* steam_client_interface = resolve_steam_client();
+    if (steam_client_interface != nullptr)
+    {
+      steam_pipe = steam_client_interface->create_steam_pipe();
+    }
+  }
+
+  return steam_pipe;
+}
+
+inline auto steam_user_handle() -> int
+{
+  static int steam_user = 0;
+
+  if (steam_user == 0)
+  {
+    auto* steam_client_interface = resolve_steam_client();
+    const auto steam_pipe = steam_pipe_handle();
+    if (steam_client_interface != nullptr && steam_pipe != 0)
+    {
+      steam_user = steam_client_interface->connect_to_global_user(steam_pipe);
+    }
+  }
+
+  return steam_user;
+}
+
+inline steam_user* resolve_steam_user_from_api()
+{
+  using steam_user_factory_fn = steam_user* (*)();
+
+  constexpr std::array factory_names = {
+    "SteamAPI_SteamUser_v023",
+    "SteamAPI_SteamUser_v022",
+    "SteamAPI_SteamUser_v021",
+    "SteamAPI_SteamUser_v020",
+  };
+
+  for (const char* factory_name : factory_names)
+  {
+    auto* factory = resolve_loaded_symbol<steam_user_factory_fn>(factory_name);
+    if (factory == nullptr)
+    {
+      continue;
+    }
+
+    if (auto* user = factory())
+    {
+      return user;
+    }
+  }
+
+  return nullptr;
+}
+
+inline steam_user* resolve_steam_user()
+{
+  if (steam_user_interface != nullptr)
+  {
+    return steam_user_interface;
+  }
+
+  if (auto* user = resolve_steam_user_from_api())
+  {
+    steam_user_interface = user;
+    return steam_user_interface;
+  }
+
+  auto* steam_client_interface = resolve_steam_client();
+  const auto steam_pipe = steam_pipe_handle();
+  const auto steam_user_handle_value = steam_user_handle();
+  if (steam_client_interface == nullptr || steam_pipe == 0 || steam_user_handle_value == 0)
+  {
+    return nullptr;
+  }
+
+  constexpr std::array user_versions = {
+    "SteamUser023",
+    "SteamUser022",
+    "SteamUser021",
+    "SteamUser020",
+  };
+
+  for (const char* version : user_versions)
+  {
+    steam_user_interface = steam_client_interface->get_steam_user_interface(steam_user_handle_value, steam_pipe, version);
+    if (steam_user_interface != nullptr)
+    {
+      return steam_user_interface;
+    }
+  }
+
+  return nullptr;
+}
+
 inline steam_user_stats* resolve_steam_user_stats_from_api()
 {
   using steam_user_stats_factory_fn = steam_user_stats* (*)();
@@ -154,25 +256,9 @@ inline steam_user_stats* resolve_steam_user_stats()
     return nullptr;
   }
 
-  static int steam_pipe = 0;
-  static int steam_user = 0;
-
-  if (steam_pipe == 0)
-  {
-    steam_pipe = steam_client_interface->create_steam_pipe();
-  }
-
-  if (steam_pipe == 0)
-  {
-    return nullptr;
-  }
-
-  if (steam_user == 0)
-  {
-    steam_user = steam_client_interface->connect_to_global_user(steam_pipe);
-  }
-
-  if (steam_user == 0)
+  const auto steam_pipe = steam_pipe_handle();
+  const auto steam_user_handle_value = steam_user_handle();
+  if (steam_pipe == 0 || steam_user_handle_value == 0)
   {
     return nullptr;
   }
@@ -184,7 +270,7 @@ inline steam_user_stats* resolve_steam_user_stats()
 
   for (const char* version : user_stats_versions)
   {
-    steam_user_stats_interface = steam_client_interface->get_steam_user_stats_interface(steam_user, steam_pipe, version);
+    steam_user_stats_interface = steam_client_interface->get_steam_user_stats_interface(steam_user_handle_value, steam_pipe, version);
     if (steam_user_stats_interface != nullptr)
     {
       return steam_user_stats_interface;

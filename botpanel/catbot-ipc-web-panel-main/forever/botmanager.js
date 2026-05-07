@@ -48,12 +48,13 @@ class BotManager {
                 self.lastQuery = data;
                 if (data.result) {
                     for (var q in data.result) {
+                        const peer = data.result[q];
                         for (var b of self.bots) {
-                            if (b.startTime && b.startTime == data.result[q].starttime) {
-                                b.emit('ipc-data', {
-                                    id: q,
-                                    data: data.result[q]
-                                })
+                            if (b.startTime && b.startTime == peer.starttime) {
+                                b.accept_ipc_peer(q, peer);
+                            }
+                            else if (!b.ipcState && b.owns_process_pid(peer.pid)) {
+                                b.accept_ipc_peer(q, peer);
                             }
                         }
                     }
