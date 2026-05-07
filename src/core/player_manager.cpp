@@ -129,7 +129,11 @@ void shutdown()
 
 void tick()
 {
-  if (engine == nullptr || entity_list == nullptr)
+  if (engine == nullptr ||
+      entity_list == nullptr ||
+      !engine->is_connected() ||
+      !engine->is_in_game() ||
+      engine->is_drawing_loading_image())
   {
     return;
   }

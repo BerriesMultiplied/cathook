@@ -55,6 +55,7 @@ bool auto_ignore_enabled = true;
 bool was_connected_to_server = false;
 std::uint32_t cached_local_account_id = 0;
 std::chrono::steady_clock::time_point next_connect_attempt{};
+std::chrono::steady_clock::time_point game_telemetry_ready_since{};
 std::unordered_set<std::uint32_t> local_ipc_friends{};
 
 [[nodiscard]] auto textmode_build() -> bool
@@ -152,6 +153,39 @@ std::unordered_set<std::uint32_t> local_ipc_friends{};
   }
 
   return count;
+}
+
+[[nodiscard]] auto game_state_ready_for_telemetry() -> bool
+{
+  return engine != nullptr &&
+         entity_list != nullptr &&
+         engine->is_connected() &&
+         engine->is_in_game() &&
+         !engine->is_drawing_loading_image();
+}
+
+[[nodiscard]] auto settled_game_state_ready_for_telemetry() -> bool
+{
+  constexpr auto settle_time = std::chrono::seconds(1);
+  if (!game_state_ready_for_telemetry())
+  {
+    game_telemetry_ready_since = {};
+    return false;
+  }
+
+  const auto now = std::chrono::steady_clock::now();
+  if (game_telemetry_ready_since.time_since_epoch().count() == 0)
+  {
+    game_telemetry_ready_since = now;
+    return false;
+  }
+
+  return now - game_telemetry_ready_since >= settle_time;
+}
+
+void reset_ingame_telemetry(user_data_s& data)
+{
+  std::memset(&data.ingame, 0, sizeof(data.ingame));
 }
 
 [[nodiscard]] auto count_local_ipc_bots_on_server() -> int
@@ -380,13 +414,13 @@ void update_telemetry_locked()
   auto& peer = ipc_state->peer_data[local_peer_id];
   auto& data = ipc_state->peer_user_data[local_peer_id];
   const auto now = now_seconds();
-  const auto in_game = engine != nullptr && engine->is_in_game();
   const auto connected_to_server = engine != nullptr && engine->is_connected();
+  const auto ready_for_game_telemetry = settled_game_state_ready_for_telemetry();
 
   peer.heartbeat = now;
   data.heartbeat = now;
   data.textmode = textmode_build();
-  data.connected = in_game;
+  data.connected = ready_for_game_telemetry;
   data.ts_injected = injected_time;
 
   if (connected_to_server && !was_connected_to_server)
@@ -399,39 +433,41 @@ void update_telemetry_locked()
   }
   was_connected_to_server = connected_to_server;
 
-  if (const auto info = local_player_info())
+  if (ready_for_game_telemetry)
   {
-    if (info->friends_id != 0)
+    if (const auto info = local_player_info())
     {
-      cached_local_account_id = static_cast<std::uint32_t>(info->friends_id);
-      data.friendid = static_cast<unsigned int>(cached_local_account_id);
+      if (info->friends_id != 0)
+      {
+        cached_local_account_id = static_cast<std::uint32_t>(info->friends_id);
+        data.friendid = static_cast<unsigned int>(cached_local_account_id);
+      }
+      copy_cstr(data.name, sizeof(data.name), info->name);
     }
-    copy_cstr(data.name, sizeof(data.name), info->name);
   }
-  else
+
+  if (data.friendid == 0)
   {
     const auto account_id = local_account_id_from_steam();
     if (account_id != 0)
     {
       data.friendid = static_cast<unsigned int>(account_id);
     }
+  }
 
-    if (data.name[0] == '\0')
-    {
-      copy_cstr(data.name, sizeof(data.name), bot_name_from_environment());
-    }
+  if (data.name[0] == '\0')
+  {
+    copy_cstr(data.name, sizeof(data.name), bot_name_from_environment());
+  }
+
+  reset_ingame_telemetry(data);
+  if (!ready_for_game_telemetry)
+  {
+    return;
   }
 
   copy_cstr(data.ingame.server, sizeof(data.ingame.server), server_address());
   copy_cstr(data.ingame.mapname, sizeof(data.ingame.mapname), sanitize_map_name(engine != nullptr ? engine->get_level_name() : nullptr));
-  data.ingame.good = false;
-  data.ingame.player_count = 0;
-  data.ingame.bot_count = 0;
-
-  if (!in_game || entity_list == nullptr)
-  {
-    return;
-  }
 
   auto* localplayer = entity_list->get_localplayer();
   if (localplayer == nullptr)
@@ -595,6 +631,7 @@ void shutdown()
   ipc_state = nullptr;
   local_peer_id = -1;
   last_command = 0;
+  game_telemetry_ready_since = {};
   local_ipc_friends.clear();
 }
 
