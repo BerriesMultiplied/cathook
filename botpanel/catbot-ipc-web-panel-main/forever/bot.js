@@ -464,6 +464,14 @@ class Bot extends EventEmitter {
         ];
     }
 
+    hostSteamInstallCandidates() {
+        return [
+            path.join(USER.home, '.steam/steam'),
+            path.join(USER.home, '.steam/debian-installation'),
+            path.join(USER.home, '.local/share/Steam')
+        ];
+    }
+
     steamid32FromLoginUsers() {
         if (!this.account || !this.account.login)
             return null;
@@ -522,7 +530,7 @@ class Bot extends EventEmitter {
     }
 
     steamSdk64Source() {
-        const steam_paths = unique_paths([this.steamPath, ...this.steamInstallCandidates()]);
+        const steam_paths = unique_paths([this.steamPath, ...this.steamInstallCandidates(), ...this.hostSteamInstallCandidates()]);
         for (const steam_path of steam_paths) {
             for (const sdk_dir_name of ['ubuntu12_64', 'linux64']) {
                 const sdk_dir = path.join(steam_path, sdk_dir_name);
@@ -621,13 +629,17 @@ class Bot extends EventEmitter {
         if (!tf2_install_ready(this.tf2Path) && tf2_install_ready('/opt/steamapps/common/Team Fortress 2'))
             this.tf2Path = '/opt/steamapps/common/Team Fortress 2';
 
-        this.repairSteamSdk64();
+        if (!this.repairSteamSdk64())
+            return false;
+
         this.isSteamWorking = true;
 
         if (!this.steamReadyLogged) {
             this.log(`Steam ready, steam_path=${this.steamPath}, steamapps=${this.steamApps}, tf2_path=${this.tf2Path}`);
             this.steamReadyLogged = true;
         }
+
+        return true;
     }
 
     gameLaunchPath() {
@@ -1257,7 +1269,7 @@ class Bot extends EventEmitter {
                         this.reset();
                         this.spawnSteam();
                         this.time_steamWorking = time + TIMEOUT_STEAM_RUNNING;
-                        this.time_steamAssumeReady = time + TIMEOUT_STEAM_ASSUME_READY;
+                        this.time_steamAssumeReady = TIMEOUT_STEAM_ASSUME_READY ? time + TIMEOUT_STEAM_ASSUME_READY : 0;
                     }
                 }
             }
