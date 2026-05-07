@@ -7,6 +7,7 @@ web_panel_root="$script_dir/catbot-ipc-web-panel-main"
 ipc_server_root="$script_dir/catbot-ipc-server-main"
 database_root="$script_dir/catbot-database"
 repo_url="${CAT_REPO_URL:-https://github.com/pupnoodle/cathook}"
+steamapps_detect_log="${CAT_STEAMAPPS_DETECT_LOG:-/tmp/cat-steamapps-detect.log}"
 
 usage() {
     cat <<'EOF'
@@ -17,6 +18,8 @@ Use --dev to skip repository/navmesh update checks and never reset local changes
 Environment:
   CATHOOK_DEV_MODE=1
   CAT_UPDATE_HOST_NAVMESHES=1  Copy navmeshes into the host TF2 maps directory.
+  CAT_STEAMAPPS_PATH=/path/to/steamapps
+  CAT_STEAM_ROOT=/path/to/steam
 EOF
 }
 
@@ -63,6 +66,74 @@ run_as_root() {
         echo "sudo is required for system setup steps." >&2
         exit 1
     fi
+}
+
+user_home_path() {
+    local user_name="${SUDO_USER:-$USER}"
+
+    if command -v getent >/dev/null 2>&1; then
+        getent passwd "$user_name" | awk -F: '{ print $6; exit }'
+        return
+    fi
+
+    printf '%s\n' "$HOME"
+}
+
+write_steamapps_detect_log() {
+    local user_home="$1"
+    shift
+
+    {
+        echo "Failed to automatically find Steam steamapps."
+        echo "user=${SUDO_USER:-$USER}"
+        echo "user_home=$user_home"
+        echo "HOME=$HOME"
+        echo "CAT_STEAM_ROOT=${CAT_STEAM_ROOT:-}"
+        echo "CAT_STEAMAPPS_PATH=${CAT_STEAMAPPS_PATH:-}"
+        echo
+        echo "Checked paths:"
+        for candidate in "$@"; do
+            if [ -d "$candidate" ]; then
+                echo "  ok:      $candidate"
+            else
+                echo "  missing: $candidate"
+            fi
+        done
+    } >"$steamapps_detect_log" 2>/dev/null || true
+}
+
+find_host_steamapps() {
+    local user_home
+    local candidate
+    local -a candidates=()
+
+    user_home="$(user_home_path)"
+    if [ -n "${CAT_STEAMAPPS_PATH:-}" ]; then
+        candidates+=("$CAT_STEAMAPPS_PATH")
+    fi
+
+    if [ -n "${CAT_STEAM_ROOT:-}" ]; then
+        candidates+=("$CAT_STEAM_ROOT/steamapps")
+    fi
+
+    candidates+=(
+        "$user_home/.steam/steam/steamapps" \
+        "$user_home/.steam/debian-installation/steamapps" \
+        "$user_home/.local/share/Steam/steamapps" \
+        "$HOME/.steam/steam/steamapps" \
+        "$HOME/.steam/debian-installation/steamapps" \
+        "$HOME/.local/share/Steam/steamapps"
+    )
+
+    for candidate in "${candidates[@]}"; do
+        if [ -d "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return
+        fi
+    done
+
+    write_steamapps_detect_log "$user_home" "${candidates[@]}"
+    return 1
 }
 
 update_origin_url() {
@@ -158,9 +229,20 @@ prepare_firejail() {
 }
 
 update_navmeshes() {
-    local host_tf2_maps="$HOME/.steam/steam/steamapps/common/Team Fortress 2/tf/maps"
-    local overlay_tf2_maps="/opt/CATHOOK_steamapps_upper/common/Team Fortress 2/tf/maps"
-    local tf2_maps="$overlay_tf2_maps"
+    local host_steamapps
+    local host_tf2_maps
+    local shared_tf2_maps="/opt/steamapps/common/Team Fortress 2/tf/maps"
+    local tf2_maps="$shared_tf2_maps"
+
+    if ! host_steamapps="$(find_host_steamapps)"; then
+        echo "Error: could not automatically find the host Steam steamapps directory." >&2
+        echo "Detection log: $steamapps_detect_log" >&2
+        cat "$steamapps_detect_log" >&2 2>/dev/null || true
+        echo "Skipping navmesh copy because TF2 maps could not be located." >&2
+        return
+    fi
+
+    host_tf2_maps="$host_steamapps/common/Team Fortress 2/tf/maps"
 
     if is_dev_mode; then
         echo "Dev mode enabled; skipping navmesh update."
@@ -176,7 +258,7 @@ update_navmeshes() {
         tf2_maps="$host_tf2_maps"
         echo "CAT_UPDATE_HOST_NAVMESHES is enabled; navmeshes will be copied to the host TF2 install."
     else
-        echo "Copying navmeshes into the botpanel steamapps overlay, not the host TF2 install."
+        echo "Copying navmeshes into /opt/steamapps, matching the shared potionhook steamapps path."
     fi
 
     echo "Fetching navmeshes..."

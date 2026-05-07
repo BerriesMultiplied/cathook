@@ -10,9 +10,6 @@ accounts_file="$setup_root/accounts.txt"
 user_instances_dir="$setup_root/user_instances"
 install_root="${CATHOOK_ROOT:-/opt/cathook}"
 steamapps_mount="/opt/steamapps"
-steamapps_upper="/opt/CATHOOK_steamapps_upper"
-steamapps_work="/opt/CATHOOK_steamapps_work"
-steam_root_mount="/opt/CATHOOK_steam_root"
 requested_visible_windows="${CAT_VISIBLE_WINDOWS:-0}"
 if [ "$requested_visible_windows" = "1" ]; then
     visible_windows=1
@@ -26,6 +23,7 @@ fi
 port="${CAT_IPC_PORT:-7655}"
 launcher_version="legacy_style_runtime_bundle_xpra"
 xpra_log="${CAT_XPRA_LOG:-/tmp/cat-catbot-xpra.log}"
+steamapps_detect_log="${CAT_STEAMAPPS_DETECT_LOG:-/tmp/cat-steamapps-detect.log}"
 
 run_as_root() {
     if [ "$(id -u)" -eq 0 ]; then
@@ -67,6 +65,36 @@ fix_workspace_permissions() {
     \) -exec chmod 0755 {} +
 }
 
+cleanup_legacy_helper_directories() {
+    local old_path
+
+    for old_path in \
+        "/opt/CATHOOK_steamapps_upper" \
+        "/opt/CATHOOK_steamapps_work" \
+        "/opt/CATHOOK_steam_root" \
+        "/opt/.cathook/steamapps_upper" \
+        "/opt/.cathook/steamapps_work" \
+        "/opt/.cathook/steam_root"; do
+        if [ ! -e "$old_path" ]; then
+            continue
+        fi
+
+        if mountpoint -q "$old_path"; then
+            echo "Leaving mounted legacy helper directory in place: $old_path"
+            continue
+        fi
+
+        if run_as_root rmdir "$old_path" 2>/dev/null; then
+            echo "Removed empty legacy helper directory: $old_path"
+            continue
+        fi
+
+        echo "Legacy helper directory still exists because it is not empty: $old_path" >&2
+    done
+
+    run_as_root rmdir "/opt/.cathook" 2>/dev/null || true
+}
+
 ensure_mount_directory() {
     local target="$1"
 
@@ -83,20 +111,11 @@ ensure_mount_directory() {
     run_as_root mkdir -p "$target"
 }
 
-remount_read_only() {
-    local target="$1"
-
-    run_as_root mount -o remount,bind,ro "$target" 2>/dev/null ||
-        run_as_root mount -o remount,ro "$target" 2>/dev/null ||
-        echo "Warning: could not remount $target read-only." >&2
-}
-
-mount_read_only_bind() {
+mount_bind() {
     local source="$1"
     local target="$2"
 
     run_as_root mount --bind "$source" "$target"
-    remount_read_only "$target"
 }
 
 need_command() {
@@ -117,6 +136,74 @@ node_command() {
 
 npm_command() {
     command -v npm >/dev/null 2>&1
+}
+
+user_home_path() {
+    local user_name="${SUDO_USER:-$USER}"
+
+    if command -v getent >/dev/null 2>&1; then
+        getent passwd "$user_name" | awk -F: '{ print $6; exit }'
+        return
+    fi
+
+    printf '%s\n' "$HOME"
+}
+
+write_steamapps_detect_log() {
+    local user_home="$1"
+    shift
+
+    {
+        echo "Failed to automatically find Steam steamapps."
+        echo "user=${SUDO_USER:-$USER}"
+        echo "user_home=$user_home"
+        echo "HOME=$HOME"
+        echo "CAT_STEAM_ROOT=${CAT_STEAM_ROOT:-}"
+        echo "CAT_STEAMAPPS_PATH=${CAT_STEAMAPPS_PATH:-}"
+        echo
+        echo "Checked paths:"
+        for candidate in "$@"; do
+            if [ -d "$candidate" ]; then
+                echo "  ok:      $candidate"
+            else
+                echo "  missing: $candidate"
+            fi
+        done
+    } >"$steamapps_detect_log" 2>/dev/null || true
+}
+
+find_host_steamapps() {
+    local user_home
+    local candidate
+    local -a candidates=()
+
+    user_home="$(user_home_path)"
+    if [ -n "${CAT_STEAMAPPS_PATH:-}" ]; then
+        candidates+=("$CAT_STEAMAPPS_PATH")
+    fi
+
+    if [ -n "${CAT_STEAM_ROOT:-}" ]; then
+        candidates+=("$CAT_STEAM_ROOT/steamapps")
+    fi
+
+    candidates+=(
+        "$user_home/.steam/steam/steamapps" \
+        "$user_home/.steam/debian-installation/steamapps" \
+        "$user_home/.local/share/Steam/steamapps" \
+        "$HOME/.steam/steam/steamapps" \
+        "$HOME/.steam/debian-installation/steamapps" \
+        "$HOME/.local/share/Steam/steamapps"
+    )
+
+    for candidate in "${candidates[@]}"; do
+        if [ -d "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return
+        fi
+    done
+
+    write_steamapps_detect_log "$user_home" "${candidates[@]}"
+    return 1
 }
 
 make_shell_path() {
@@ -464,58 +551,36 @@ ensure_firejail_config() {
 }
 
 ensure_steamapps_mount() {
-    local source="$HOME/.steam/steam/steamapps"
+    local source
 
-    if [ ! -d "$source" ]; then
-        echo "Warning: Steam steamapps directory was not found at $source."
-        return
+    if ! source="$(find_host_steamapps)"; then
+        echo "Error: could not automatically find the host Steam steamapps directory." >&2
+        echo "Detection log: $steamapps_detect_log" >&2
+        cat "$steamapps_detect_log" >&2 2>/dev/null || true
+        echo "Set CAT_STEAMAPPS_PATH to the real steamapps path only if auto-detect cannot see it." >&2
+        return 1
     fi
 
     ensure_mount_directory "$steamapps_mount"
     if mountpoint -q "$steamapps_mount"; then
-        if command -v findmnt >/dev/null 2>&1 &&
-            [ "$(findmnt -n -o FSTYPE --target "$steamapps_mount" 2>/dev/null | head -n 1)" = "overlay" ]; then
-            return
+        if command -v findmnt >/dev/null 2>&1; then
+            local mounted_source
+
+            mounted_source="$(findmnt -n -o SOURCE --target "$steamapps_mount" 2>/dev/null | head -n 1)"
+            case "$mounted_source" in
+                "" | "$source" | *"[$source]"*)
+                    ;;
+                *)
+                    echo "Warning: $steamapps_mount is already mounted from $mounted_source, expected $source." >&2
+                    echo "If that is wrong, stop bots and run: sudo umount $steamapps_mount" >&2
+                    ;;
+            esac
         fi
-
-        remount_read_only "$steamapps_mount"
         return
     fi
 
-    run_as_root mkdir -p "$steamapps_upper" "$steamapps_work"
-    if run_as_root mount -t overlay overlay \
-        -o "lowerdir=$source,upperdir=$steamapps_upper,workdir=$steamapps_work" \
-        "$steamapps_mount" 2>/dev/null; then
-        echo "Mounted protected steamapps overlay at $steamapps_mount."
-        return
-    fi
-
-    echo "Warning: overlay mount failed; using read-only steamapps bind mount." >&2
-    mount_read_only_bind "$source" "$steamapps_mount"
-}
-
-ensure_steam_root_mount() {
-    local source=""
-
-    for candidate in "$HOME/.steam/steam" "$HOME/.steam/debian-installation" "$HOME/.local/share/Steam"; do
-        if [ -f "$candidate/linux64/steamclient.so" ] || [ -f "$candidate/ubuntu12_64/steamclient.so" ]; then
-            source="$candidate"
-            break
-        fi
-    done
-
-    if [ -z "$source" ]; then
-        echo "Warning: Steam root directory was not found."
-        return
-    fi
-
-    ensure_mount_directory "$steam_root_mount"
-    if mountpoint -q "$steam_root_mount"; then
-        remount_read_only "$steam_root_mount"
-        return
-    fi
-
-    mount_read_only_bind "$source" "$steam_root_mount"
+    mount_bind "$source" "$steamapps_mount"
+    echo "Mounted host Steam steamapps from $source at $steamapps_mount."
 }
 
 xpra_display_running() {
@@ -722,6 +787,8 @@ start_panel() {
             CAT_STEAMWEBHELPER_CLEANUP="${CAT_STEAMWEBHELPER_CLEANUP:-1}" \
             CAT_STEAMWEBHELPER_CLEANUP_SECONDS="${CAT_STEAMWEBHELPER_CLEANUP_SECONDS:-10}" \
             CAT_STEAM_WEB_API_KEY="${CAT_STEAM_WEB_API_KEY:-}" \
+            CAT_STEAM_ROOT="${CAT_STEAM_ROOT:-}" \
+            CAT_STEAMAPPS_PATH="${CAT_STEAMAPPS_PATH:-}" \
             STEAM_LD_PRELOAD="${STEAM_LD_PRELOAD:-}" \
             CATHOOK_ROOT="$install_root" \
             bash ./run.sh &
@@ -739,6 +806,8 @@ start_panel() {
         CAT_STEAMWEBHELPER_CLEANUP="${CAT_STEAMWEBHELPER_CLEANUP:-1}" \
         CAT_STEAMWEBHELPER_CLEANUP_SECONDS="${CAT_STEAMWEBHELPER_CLEANUP_SECONDS:-10}" \
         CAT_STEAM_WEB_API_KEY="${CAT_STEAM_WEB_API_KEY:-}" \
+        CAT_STEAM_ROOT="${CAT_STEAM_ROOT:-}" \
+        CAT_STEAMAPPS_PATH="${CAT_STEAMAPPS_PATH:-}" \
         STEAM_LD_PRELOAD="${STEAM_LD_PRELOAD:-}" \
         CATHOOK_ROOT="$install_root" \
         bash ./run.sh &
@@ -768,6 +837,7 @@ fi
 
 install_missing_dependencies
 fix_workspace_permissions
+cleanup_legacy_helper_directories
 ensure_binaries
 install_runtime
 ensure_node_dependencies
@@ -776,7 +846,6 @@ ensure_accounts_file
 ensure_user_instances
 ensure_firejail_config
 ensure_steamapps_mount
-ensure_steam_root_mount
 ensure_xpra_config
 start_xpra
 start_ipc_server

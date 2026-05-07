@@ -27,12 +27,13 @@ USERNAME:PASSWORD
 - Disable helper cleanup: `CAT_STEAMWEBHELPER_CLEANUP=0 ./botpanel/start`
 - Override helper cleanup delay: `CAT_STEAMWEBHELPER_CLEANUP_SECONDS=15 ./botpanel/start`
 - Optional ban tracker API key: `CAT_STEAM_WEB_API_KEY=... ./botpanel/start`; without it, the panel falls back to Steam Community profile HTML checks.
-- Host Steam content is protected by mounting `steamapps` through an overlay at `/opt/steamapps`; if overlayfs is unavailable the launcher falls back to a read-only bind mount.
+- Host Steam content is shared at `/opt/steamapps`, matching the potionhook panel layout. Bot instances symlink their `steamapps` directory to that shared path.
+- The host Steam path is detected automatically. If detection fails, the launcher prints and writes `/tmp/cat-steamapps-detect.log` with every checked path.
 
 `./botpanel/stop` stops the matching xpra display unless `CAT_VISIBLE_WINDOWS=1` is set.
 
 `./botpanel/update` updates this single repository, installs dependencies,
 builds Cat default/textmode libraries, builds the bundled IPC server, installs
-web panel npm dependencies, and refreshes navmeshes in the botpanel steamapps
-overlay when TF2 is installed. Set `CAT_UPDATE_HOST_NAVMESHES=1` only if you
-explicitly want navmeshes copied into the host TF2 maps directory.
+web panel npm dependencies, and refreshes navmeshes in `/opt/steamapps` when
+TF2 is installed. Set `CAT_UPDATE_HOST_NAVMESHES=1` to copy navmeshes directly
+through the host Steam path instead.
