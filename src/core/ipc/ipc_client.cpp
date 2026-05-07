@@ -424,8 +424,8 @@ void update_telemetry_locked()
   copy_cstr(data.ingame.server, sizeof(data.ingame.server), server_address());
   copy_cstr(data.ingame.mapname, sizeof(data.ingame.mapname), sanitize_map_name(engine != nullptr ? engine->get_level_name() : nullptr));
   data.ingame.good = false;
-  data.ingame.player_count = count_players();
-  data.ingame.bot_count = count_local_ipc_bots_on_server();
+  data.ingame.player_count = 0;
+  data.ingame.bot_count = 0;
 
   if (!in_game || entity_list == nullptr)
   {
@@ -439,6 +439,8 @@ void update_telemetry_locked()
   }
 
   data.ingame.good = true;
+  data.ingame.player_count = count_players();
+  data.ingame.bot_count = count_local_ipc_bots_on_server();
   data.ingame.team = static_cast<int>(localplayer->get_team());
   data.ingame.role = static_cast<int>(localplayer->get_tf_class());
   data.ingame.life_state = static_cast<char>(localplayer->get_lifestate());
