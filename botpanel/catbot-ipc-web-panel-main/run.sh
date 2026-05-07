@@ -1,6 +1,6 @@
 #!/bin/bash
 
-LOG=logs/main.log
+log_path=logs/main.log
 
 if [ $EUID != 0 ]; then
 	echo "0"
@@ -8,4 +8,11 @@ if [ $EUID != 0 ]; then
 fi
 
 mkdir -p logs
-$(which node || which nodejs) app.js >$LOG
+
+node_path="$(command -v node || command -v nodejs || true)"
+if [ -z "$node_path" ]; then
+	echo "node or nodejs is required to run the web panel." >&2
+	exit 1
+fi
+
+"$node_path" app.js >"$log_path" 2>&1

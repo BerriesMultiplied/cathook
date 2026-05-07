@@ -67,6 +67,25 @@ run_as_root() {
     fi
 }
 
+make_shell_path() {
+    if [ -x /bin/sh ]; then
+        printf '%s\n' /bin/sh
+        return
+    fi
+
+    if command -v bash >/dev/null 2>&1; then
+        command -v bash
+        return
+    fi
+
+    echo "No usable shell found for make. Install dash or bash, then run ./build.sh again." >&2
+    exit 1
+}
+
+run_make() {
+    make SHELL="$(make_shell_path)" "$@"
+}
+
 fix_install_permissions() {
     if [ ! -d "$install_root" ]; then
         return
@@ -299,18 +318,18 @@ build_cat() {
 
     case "$mode" in
         default)
-            make -C "$project_root" CATHOOK_DEBUG_SYMBOLS=1
+            run_make -C "$project_root" CATHOOK_DEBUG_SYMBOLS=1
             ;;
         textmode)
-            make -C "$project_root" TEXTMODE=1
+            run_make -C "$project_root" TEXTMODE=1
             ;;
         both)
-            make -C "$project_root" CATHOOK_DEBUG_SYMBOLS=1
-            make -C "$project_root" TEXTMODE=1
+            run_make -C "$project_root" CATHOOK_DEBUG_SYMBOLS=1
+            run_make -C "$project_root" TEXTMODE=1
             ;;
     esac
 
-    make -C "$project_root" catbot_ipc
+    run_make -C "$project_root" catbot_ipc
 }
 
 install_outputs() {
@@ -331,7 +350,7 @@ install_outputs() {
     fi
 
     install_runtime_dependencies "$mode" "$install_bin_dir"
-    run_as_root make -C "$project_root/botpanel/catbot-ipc-server-main" REPO_ROOT="$project_root" INSTALL_DIR="$install_ipc_dir" install
+    run_as_root make SHELL="$(make_shell_path)" -C "$project_root/botpanel/catbot-ipc-server-main" REPO_ROOT="$project_root" INSTALL_DIR="$install_ipc_dir" install
     copy_assets "$install_assets_dir"
     fix_install_permissions
     echo "Installed Cat runtime to $install_root"

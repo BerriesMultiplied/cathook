@@ -38,6 +38,35 @@ run_as_root() {
     fi
 }
 
+fix_workspace_permissions() {
+    local target_uid
+    local target_gid
+
+    target_uid="$(id -u)"
+    target_gid="$(id -g)"
+
+    echo "Fixing workspace permissions under $repo_root..."
+    run_as_root chown -R "$target_uid:$target_gid" "$repo_root"
+    run_as_root chmod -R u+rwX,go+rX "$repo_root"
+
+    run_as_root find "$repo_root" -type f \( \
+        -name "*.sh" -o \
+        -name "build.sh" -o \
+        -name "debug.sh" -o \
+        -name "inject.sh" -o \
+        -name "install-deps" -o \
+        -name "setup.sh" -o \
+        -name "start" -o \
+        -name "start.legacy" -o \
+        -name "stop" -o \
+        -name "update" -o \
+        -name "install-catbots" -o \
+        -name "install-instances" -o \
+        -name "remove-legacy" -o \
+        -name "uninstall" \
+    \) -exec chmod 0755 {} +
+}
+
 ensure_mount_directory() {
     local target="$1"
 
@@ -88,6 +117,25 @@ node_command() {
 
 npm_command() {
     command -v npm >/dev/null 2>&1
+}
+
+make_shell_path() {
+    if [ -x /bin/sh ]; then
+        printf '%s\n' /bin/sh
+        return
+    fi
+
+    if command -v bash >/dev/null 2>&1; then
+        command -v bash
+        return
+    fi
+
+    echo "No usable shell found for make. Install dash or bash, then run ./start again." >&2
+    exit 1
+}
+
+run_make() {
+    make SHELL="$(make_shell_path)" "$@"
 }
 
 install_dependency_packages() {
@@ -239,9 +287,9 @@ ensure_binaries() {
         }
     fi
 
-    make -C "$repo_root"
-    make -C "$repo_root" TEXTMODE=1
-    make -C "$repo_root" catbot_ipc
+    run_make -C "$repo_root"
+    run_make -C "$repo_root" TEXTMODE=1
+    run_make -C "$repo_root" catbot_ipc
 }
 
 find_shared_library() {
@@ -719,6 +767,7 @@ if [ "$(id -u)" -eq 0 ]; then
 fi
 
 install_missing_dependencies
+fix_workspace_permissions
 ensure_binaries
 install_runtime
 ensure_node_dependencies
