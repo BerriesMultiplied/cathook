@@ -15,7 +15,16 @@ run_as_root() {
 export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
 
 package_available() {
-    apt-cache show "$1" >/dev/null 2>&1
+    apt-cache policy "$1" 2>/dev/null | awk '
+        $1 == "Candidate:" {
+            found = 1
+            exit ($2 == "(none)" ? 1 : 0)
+        }
+        END {
+            if (!found) {
+                exit 1
+            }
+        }'
 }
 
 source_os_release() {
@@ -123,10 +132,11 @@ packages=(
     xvfb
 )
 
-if package_available xpra; then
+if package_available xpra || configure_xpra_repo; then
     packages+=(xpra)
-elif configure_xpra_repo; then
-    packages+=(xpra)
+    if package_available xpra-x11; then
+        packages+=(xpra-x11)
+    fi
 else
     echo "xpra package is not available; botpanel/start will use Xvfb instead."
 fi
