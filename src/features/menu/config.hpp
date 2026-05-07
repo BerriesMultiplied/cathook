@@ -261,6 +261,7 @@ struct glow_config {
   float start = 0.0f;
   float end = 8192.0f;
   bool smooth_alpha = true;
+  bool filled_body = false;
 
   struct player_config {
     bool enemy = true;

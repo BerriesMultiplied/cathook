@@ -254,6 +254,7 @@ void config_store::import_config(const Config& config)
     set_float("glow.start", config.glow.start);
     set_float("glow.end", config.glow.end);
     set_bool("glow.smooth_alpha", config.glow.smooth_alpha);
+    set_bool("glow.filled_body", config.glow.filled_body);
     set_bool("glow.player.enemy", config.glow.player.enemy);
     set_bool("glow.player.team", config.glow.player.team);
     set_bool("glow.player.friends", config.glow.player.friends);
@@ -629,6 +630,7 @@ void config_store::export_config(Config& config) const
         config.glow.end = config.glow.start;
     }
     config.glow.smooth_alpha = get_bool("glow.smooth_alpha", get_bool("esp.glow.smooth_alpha", config.glow.smooth_alpha));
+    config.glow.filled_body = get_bool("glow.filled_body", config.glow.filled_body);
     config.glow.player.enemy = get_bool("glow.player.enemy", config.esp.player.enemy);
     config.glow.player.team = get_bool("glow.player.team", config.esp.player.team);
     config.glow.player.friends = get_bool("glow.player.friends", config.esp.player.friends);

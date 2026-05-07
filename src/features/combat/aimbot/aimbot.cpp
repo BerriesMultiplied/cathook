@@ -676,9 +676,14 @@ bool aimbot(user_cmd* user_cmd, Vec3 original_view_angles) {
     best_candidate,
     projectile_view_angles);
 
+  const bool headshot_ready = aimbot_wait_for_headshot_ready(localplayer, weapon);
+  if (!headshot_ready) {
+    user_cmd->buttons &= ~IN_ATTACK;
+  }
+
   const bool attack_ready = localplayer->can_shoot(best_candidate.entity) &&
     projectile_ready &&
-    aimbot_wait_for_headshot_ready(localplayer, weapon) &&
+    headshot_ready &&
     !(user_cmd->buttons & IN_ATTACK2);
   if (config.aimbot.auto_shoot && attack_ready) {
     user_cmd->buttons |= IN_ATTACK;

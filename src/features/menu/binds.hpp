@@ -335,6 +335,7 @@ inline void register_builtin_targets() {
   register_target("glow.start", "Glow fade near", &config.glow.start);
   register_target("glow.end", "Glow fade far", &config.glow.end);
   register_target("glow.smooth_alpha", "Glow distance fade", &config.glow.smooth_alpha);
+  register_target("glow.filled_body", "Glow filled body", &config.glow.filled_body);
   register_target("glow.player.enemy", "Glow enemy", &config.glow.player.enemy);
   register_target("glow.player.team", "Glow team", &config.glow.player.team);
   register_target("glow.player.friends", "Glow friends", &config.glow.player.friends);

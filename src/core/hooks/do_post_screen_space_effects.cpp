@@ -17,7 +17,6 @@ bool (*do_post_screen_space_effects_original)(void*, view_setup*);
 
 bool do_post_screen_space_effects_hook(void* me, view_setup* setup)
 {
-  player_model_glow::store();
   player_model_glow::render_first();
 
   return do_post_screen_space_effects_original(me, setup);

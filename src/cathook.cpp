@@ -93,6 +93,7 @@ V  o o  V  file: src/cathook.cpp
 #include "core/hooks/draw_view_model.cpp"
 #include "core/hooks/do_post_screen_space_effects.cpp"
 #include "core/hooks/in_cond.cpp"
+#include "core/hooks/forced_material_override.cpp"
 #include "core/hooks/draw_model_execute.cpp"
 #include "core/hooks/load_white_list.cpp"
 #include "core/hooks/should_draw_local_player.cpp"
@@ -654,6 +655,11 @@ bool unload_module_runtime() {
     print("DrawModelExecute failed to restore hook\n");
   }
 
+  if (model_render_vtable != nullptr && forced_material_override_original != nullptr &&
+      !write_to_table(model_render_vtable, 1, (void*)forced_material_override_original)) {
+    print("ForcedMaterialOverride failed to restore hook\n");
+  }
+
   if (game_event_manager_vtable != nullptr && fire_event_client_side_original != nullptr && !write_to_table(game_event_manager_vtable, 9, (void*)fire_event_client_side_original)) {
     print("FireEventClientSide failed to restore hook\n");
   }
@@ -1155,6 +1161,13 @@ bool initialize_game_runtime() {
   }
 
   model_render_vtable = *(void ***)model_render;    
+  forced_material_override_original = (void (*)(void*, Material*, OverrideType))model_render_vtable[1];
+  if (!write_to_table(model_render_vtable, 1, (void*)forced_material_override_hook)) {
+    print("ForcedMaterialOverride hook failed\n");
+  } else {
+    print("ForcedMaterialOverride hooked\n");
+  }
+
   draw_model_execute_original = (void (*)(void*, void*, ModelRenderInfo*, VMatrix*))model_render_vtable[19];  
   if (!write_to_table(model_render_vtable, 19, (void*)draw_model_execute_hook)) {
     print("DrawModelExecute hook failed\n");

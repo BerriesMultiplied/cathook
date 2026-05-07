@@ -26,6 +26,7 @@ V  o o  V  file: src/core/hooks/frame_stage_notify.cpp
 #include "features/movement/local_prediction/local_prediction.hpp"
 #include "features/automation/navbot/navbot_controller.hpp"
 #include "features/visuals/thirdperson.hpp"
+#include "features/visuals/glow/player_model_glow.hpp"
 
 #include "core/print.hpp"
 
@@ -173,6 +174,8 @@ void frame_stage_notify_hook(void* me, ClientFrameStage current_stage) {
       if (global_vars->curtime - last_time >= 1) {
 	last_time = global_vars->curtime;
       }
+
+      player_model_glow::store();
       
       break;
     }

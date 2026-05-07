@@ -1506,6 +1506,7 @@ static void draw_glow_content() {
       config.glow.end = config.glow.start;
     }
     cat_menu::checkbox("Distance fade", &config.glow.smooth_alpha);
+    cat_menu::checkbox("Filled body", &config.glow.filled_body);
   });
   cat_menu::flow_panel("Colors", 2, 168.0f, [&]() {
     cat_menu::color_picker("Enemy visible", config.glow.player.enemy_color.to_arr());

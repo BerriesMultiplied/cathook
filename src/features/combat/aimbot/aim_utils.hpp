@@ -635,9 +635,16 @@ inline bool aimbot_wait_for_headshot_ready(Player* localplayer, Weapon* weapon) 
   }
 
   if (localplayer->get_tf_class() != tf_class::SNIPER || !weapon->is_sniper_rifle()) return true;
-  if (!localplayer->is_scoped()) return false;
+  if (attribute_manager != nullptr && attribute_manager->attrib_hook_value(0, "set_weapon_mode", weapon->to_entity()) == 1) return false;
+  if (attribute_manager != nullptr && attribute_manager->attrib_hook_value(0, "sniper_no_headshot_without_full_charge", weapon->to_entity()) != 0) {
+    if (weapon->get_charged_damage() < 150.0f) return false;
+  }
 
-  float scoped_time = (localplayer->get_tickbase() * TICK_INTERVAL) - localplayer->get_fov_time();
+  if (attribute_manager != nullptr && attribute_manager->attrib_hook_value(0, "sniper_crit_no_scope", weapon->to_entity()) != 0) return true;
+  if (!localplayer->is_scoped() || localplayer->get_fov() >= localplayer->get_default_fov()) return false;
+
+  float current_time = global_vars != nullptr ? global_vars->curtime : localplayer->get_tickbase() * TICK_INTERVAL;
+  float scoped_time = current_time - localplayer->get_fov_time();
   return scoped_time >= 0.2f;
 }
 

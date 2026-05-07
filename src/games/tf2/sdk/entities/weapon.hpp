@@ -1116,7 +1116,9 @@ public:
   }
   
   float get_charged_damage(void) {
-    return *(float*)(this + 0x109C);
+    static const int offset = tf2_netvars::find_offset("DT_TFSniperRifle", {"SniperRifleLocalData", "m_flChargedDamage"});
+    constexpr int fallback_offset = 0x109C;
+    return *reinterpret_cast<float*>(reinterpret_cast<uintptr_t>(this) + (offset > 0 ? offset : fallback_offset));
   }  
 
   uintptr_t get_weapon_info_base() {

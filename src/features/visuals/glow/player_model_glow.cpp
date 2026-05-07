@@ -152,7 +152,7 @@ scoped_rendering_flag::~scoped_rendering_flag()
 
 [[nodiscard]] bool glow_has_visible_effect()
 {
-  return glow_outline_scale() > 0 || glow_blur_scale() > 0.0f;
+  return glow_outline_scale() > 0 || config.glow.filled_body;
 }
 
 [[nodiscard]] RGBA_float player_glow_color(Player* player, Player* localplayer)
@@ -544,6 +544,16 @@ void second_begin(RenderContext* render_context)
   render_context->viewport(0, 0, g_render_width, g_render_height);
   render_context->clear_color4ub(0, 0, 0, 0);
   render_context->clear_buffers(true, false, false);
+
+  render_context->clear_buffers(false, false, true);
+  render_context->set_stencil_enable(true);
+  render_context->set_stencil_compare_mode(STENCILCOMPARISONFUNCTION_ALWAYS);
+  render_context->set_stencil_pass_mode(STENCILOPERATION_REPLACE);
+  render_context->set_stencil_fail_mode(STENCILOPERATION_KEEP);
+  render_context->set_stencil_zfail_mode(STENCILOPERATION_REPLACE);
+  render_context->set_stencil_reference_count(1);
+  render_context->set_stencil_write_mask(0xFF);
+  render_context->set_stencil_test_mask(0x0);
 }
 
 void draw_halo_rectangle(RenderContext* render_context, int dest_x, int dest_y)
@@ -566,6 +576,7 @@ void second_end(RenderContext* render_context)
 {
   render_context->pop_render_target_and_viewport();
   restore_screen_space_modulation();
+  render_context->set_stencil_enable(false);
 
   const auto blur = glow_blur_scale();
   if (blur > 0.0f) {
@@ -628,7 +639,10 @@ void second_end(RenderContext* render_context)
     }
   }
 
-  if (blur > 0.0f) {
+  if (config.glow.filled_body) {
+    render_context->set_stencil_compare_mode(STENCILCOMPARISONFUNCTION_ALWAYS);
+    render_context->set_stencil_write_mask(0x0);
+    render_context->set_stencil_test_mask(0x0);
     draw_halo_rectangle(render_context, 0, 0);
   }
 
