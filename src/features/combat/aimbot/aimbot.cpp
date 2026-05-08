@@ -699,12 +699,13 @@ bool aimbot(user_cmd* user_cmd, Vec3 original_view_angles) {
   }
 
   Vec3 target_view_angles = best_candidate.aim_angles - localplayer->get_punch_angles();
+  const bool projectile_solution = best_candidate.projectile_direct || best_candidate.projectile_splash;
   user_cmd->view_angles = aimbot_apply_mode_angles(
     source_view_angles,
     target_view_angles,
     aimbot_last_input_angles,
-    aimbot_last_input_angles_valid);
-  const bool projectile_solution = best_candidate.projectile_direct || best_candidate.projectile_splash;
+    aimbot_last_input_angles_valid,
+    best_candidate);
   const Vec3 projectile_base_angles = projectile_solution
     ? target_view_angles
     : user_cmd->view_angles;
@@ -739,7 +740,13 @@ bool aimbot(user_cmd* user_cmd, Vec3 original_view_angles) {
     user_cmd->buttons &= ~IN_ATTACK;
   }
 
+  const bool attack_requested = (user_cmd->buttons & IN_ATTACK) != 0;
+  const bool projectile_visible_settled = !projectile_solution ||
+    !aimbot_mode_uses_visible_steering() ||
+    attack_requested ||
+    aimbot_calculate_fov(projectile_view_angles, user_cmd->view_angles) <= aimbot_projectile_visible_settle_fov(best_candidate);
   const bool attack_ready = localplayer->can_shoot(best_candidate.entity) &&
+    projectile_visible_settled &&
     projectile_ready &&
     hitscan_ready &&
     melee_ready &&
