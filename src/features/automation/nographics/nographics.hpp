@@ -16,7 +16,9 @@ namespace nographics
 {
 
 void initialize();
+void prepare_startup_patches();
 void prepare_render_patches();
+void on_library_loaded(const char* library_path);
 void update();
 void shutdown();
 bool is_enabled();

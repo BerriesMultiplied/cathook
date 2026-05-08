@@ -17,6 +17,7 @@ V  o o  V  file: src/core/overwrite_dlopen.cpp
 #include "core/memory/byte_patch.hpp"
 #include "core/print.hpp"
 #include "core/shared/sigs.hpp"
+#include "features/automation/nographics/nographics.hpp"
 #include "libsigscan/libsigscan.h"
 
 namespace
@@ -78,6 +79,10 @@ extern "C" void* dlopen(const char* file, int mode) __THROWNL
   if (handle != nullptr && is_launcher_path(file))
   {
     patch_launcher_source_lock();
+  }
+  if (handle != nullptr)
+  {
+    nographics::on_library_loaded(file);
   }
 
   return handle;

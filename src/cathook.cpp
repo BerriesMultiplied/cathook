@@ -448,6 +448,7 @@ void attach_worker_main()
     }
 
     print("cathook attach worker initializing runtime\n");
+    nographics::prepare_startup_patches();
     const bool initialized = ::initialize_game_runtime();
     print("cathook attach worker initialize_game_runtime returned %d\n", initialized ? 1 : 0);
   }

@@ -12,6 +12,7 @@ V  o o  V  file: src/features/automation/nographics/nographics.cpp
 #include "features/automation/nographics/nographics.hpp"
 
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -32,6 +33,7 @@ V  o o  V  file: src/features/automation/nographics/nographics.cpp
 #include "libsigscan/libsigscan.h"
 
 bool write_to_table(void** vtable, int index, void* func);
+void* get_interface(const char* lib_path, const char* version);
 
 namespace nographics
 {
@@ -47,6 +49,7 @@ constexpr int file_system_read_file_ex_index = 71;
 constexpr int file_system_add_files_to_cache_index = 103;
 constexpr int base_file_system_open_index = 2;
 constexpr int base_file_system_precache_index = 9;
+constexpr int base_file_system_file_exists_index = 10;
 constexpr int base_file_system_read_file_index = 14;
 constexpr std::uintptr_t base_file_system_vptr_offset = sizeof(void*);
 
@@ -58,6 +61,7 @@ using read_file_ex_fn = int (*)(void*, const char*, const char*, void**, bool, b
 using add_files_to_cache_fn = void (*)(void*, file_cache_handle_t, const char**, int, const char*);
 using open_fn = file_handle_t (*)(void*, const char*, const char*, const char*);
 using precache_fn = bool (*)(void*, const char*, const char*);
+using file_exists_fn = bool (*)(void*, const char*, const char*);
 using read_file_fn = bool (*)(void*, const char*, const char*, void*, int, int, void*);
 
 find_first_fn find_first_original = nullptr;
@@ -68,6 +72,7 @@ read_file_ex_fn read_file_ex_original = nullptr;
 add_files_to_cache_fn add_files_to_cache_original = nullptr;
 open_fn open_original = nullptr;
 precache_fn precache_original = nullptr;
+file_exists_fn file_exists_original = nullptr;
 read_file_fn read_file_original = nullptr;
 
 void** file_system_vtable = nullptr;
@@ -75,16 +80,63 @@ void** base_file_system_vtable = nullptr;
 bool file_system_hooked = false;
 bool material_stub_enabled = false;
 bool render_patches_applied = false;
+bool optional_render_patches_applied = false;
 bool initialized = false;
 bool render_patches_initialized = false;
 bool render_patches_ready = false;
-bool optional_render_patches_initialized = false;
+bool engine_render_patches_initialized = false;
+bool materialsystem_render_patches_initialized = false;
+std::atomic_bool startup_patch_running = false;
 
 #if defined(CATHOOK_TEXTMODE) && CATHOOK_TEXTMODE
 constexpr bool textmode_build = true;
 #else
 constexpr bool textmode_build = false;
 #endif
+
+bool module_is_loaded(const char* module_name)
+{
+  auto* bounds = sigscan_get_module_bounds(SIGSCAN_PID_SELF, module_name);
+  if (bounds == nullptr)
+  {
+    return false;
+  }
+
+  sigscan_free_module_bounds(bounds);
+  return true;
+}
+
+std::string_view library_basename(const char* library_path)
+{
+  if (library_path == nullptr)
+  {
+    return {};
+  }
+
+  const std::string_view path{ library_path };
+  const auto slash = path.find_last_of('/');
+  if (slash == std::string_view::npos)
+  {
+    return path;
+  }
+
+  return path.substr(slash + 1);
+}
+
+bool is_startup_patch_module(const char* library_path)
+{
+  const std::string_view name = library_basename(library_path);
+  return name == "engine.so" ||
+         name == "client.so" ||
+         name == "materialsystem.so" ||
+         name == "filesystem_stdio.so" ||
+         name == "filesystem_steam.so";
+}
+
+bool should_apply_extra_render_patches()
+{
+  return textmode_build || config.misc.exploits.experimental_nographic_hooks;
+}
 
 byte_patch dispatch_anim_events_patch{};
 byte_patch particle_create_patch{};
@@ -99,6 +151,7 @@ byte_patch mod_load_worldlights_patch{};
 byte_patch sprite_load_model_patch{};
 byte_patch overlay_mgr_load_overlays_patch{};
 byte_patch material_system_begin_frame_patch{};
+byte_patch video_mode_setup_startup_graphic_patch{};
 constexpr std::size_t replay_ui_nullcheck_patch_count = 9;
 constexpr std::size_t character_info_command_patch_count = 5;
 std::array<byte_patch, replay_ui_nullcheck_patch_count> replay_ui_nullcheck_patches{};
@@ -357,6 +410,16 @@ bool precache_hook(void* this_ptr, const char* filename, const char* path_id)
   return precache_original(this_ptr, filename, path_id);
 }
 
+bool file_exists_hook(void* this_ptr, const char* filename, const char* path_id)
+{
+  if (should_block_file(filename))
+  {
+    return false;
+  }
+
+  return file_exists_original(this_ptr, filename, path_id);
+}
+
 bool read_file_hook(void* this_ptr, const char* filename, const char* path, void* buffer, int max_bytes, int starting_byte, void* alloc_fn)
 {
   if (should_block_file(filename))
@@ -505,43 +568,81 @@ bool initialize_core_render_patch(byte_patch& patch,
   return true;
 }
 
-void initialize_optional_render_patches()
+void initialize_engine_render_patches()
 {
-  if (optional_render_patches_initialized)
+  if (engine_render_patches_initialized || !module_is_loaded("engine.so"))
   {
     return;
   }
 
-  optional_render_patches_initialized = true;
+  engine_render_patches_initialized = true;
+  initialize_optional_patch(video_mode_setup_startup_graphic_patch, "engine.so", sigs::video_mode_setup_startup_graphic, 0, { 0xC3 }, "video_mode_setup_startup_graphic");
   initialize_optional_patch(cl_decay_lights_patch, "engine.so", sigs::cl_decay_lights, 0, { 0xC3 }, "cl_decay_lights");
   initialize_optional_patch(mod_load_lighting_patch, "engine.so", sigs::mod_load_lighting, 0, { 0x31, 0xC0, 0xC3 }, "mod_load_lighting");
   initialize_optional_patch(mod_load_worldlights_patch, "engine.so", sigs::mod_load_worldlights, 0, { 0x31, 0xC0, 0xC3 }, "mod_load_worldlights");
   initialize_optional_patch(sprite_load_model_patch, "engine.so", sigs::sprite_load_model, 0, { 0xC3 }, "sprite_load_model");
   initialize_optional_patch(overlay_mgr_load_overlays_patch, "engine.so", sigs::overlay_mgr_load_overlays, 0, { 0xB0, 0x01, 0xC3 }, "overlay_mgr_load_overlays");
+}
+
+void initialize_materialsystem_render_patches()
+{
+  if (materialsystem_render_patches_initialized || !module_is_loaded("materialsystem.so"))
+  {
+    return;
+  }
+
+  materialsystem_render_patches_initialized = true;
   initialize_optional_patch(material_system_begin_frame_patch, "materialsystem.so", sigs::material_system_begin_frame, 0, { 0xC3 }, "material_system_begin_frame");
+}
+
+void initialize_optional_render_patches()
+{
+  initialize_engine_render_patches();
+  initialize_materialsystem_render_patches();
 }
 
 void restore_optional_render_patches()
 {
+  video_mode_setup_startup_graphic_patch.restore();
   cl_decay_lights_patch.restore();
   mod_load_lighting_patch.restore();
   mod_load_worldlights_patch.restore();
   sprite_load_model_patch.restore();
   overlay_mgr_load_overlays_patch.restore();
   material_system_begin_frame_patch.restore();
+  optional_render_patches_applied = false;
 }
 
-void apply_optional_patch(byte_patch& patch, const char* patch_name)
+bool apply_optional_patch(byte_patch& patch, const char* patch_name)
 {
   if (!patch.valid())
   {
-    return;
+    return false;
   }
 
   if (!patch.apply())
   {
     print("[nographics] optional patch apply failed name=%s\n", patch_name);
+    return false;
   }
+
+  return true;
+}
+
+bool apply_optional_render_patches()
+{
+  initialize_optional_render_patches();
+
+  bool applied_any_patch = false;
+  applied_any_patch = apply_optional_patch(video_mode_setup_startup_graphic_patch, "video_mode_setup_startup_graphic") || applied_any_patch;
+  applied_any_patch = apply_optional_patch(cl_decay_lights_patch, "cl_decay_lights") || applied_any_patch;
+  applied_any_patch = apply_optional_patch(mod_load_lighting_patch, "mod_load_lighting") || applied_any_patch;
+  applied_any_patch = apply_optional_patch(mod_load_worldlights_patch, "mod_load_worldlights") || applied_any_patch;
+  applied_any_patch = apply_optional_patch(sprite_load_model_patch, "sprite_load_model") || applied_any_patch;
+  applied_any_patch = apply_optional_patch(overlay_mgr_load_overlays_patch, "overlay_mgr_load_overlays") || applied_any_patch;
+  applied_any_patch = apply_optional_patch(material_system_begin_frame_patch, "material_system_begin_frame") || applied_any_patch;
+  optional_render_patches_applied = optional_render_patches_applied || applied_any_patch;
+  return applied_any_patch;
 }
 
 bool apply_render_patch_if_valid(byte_patch& patch, const char* patch_name)
@@ -686,6 +787,11 @@ bool initialize_render_patches()
     return render_patches_ready;
   }
 
+  if (!module_is_loaded("client.so"))
+  {
+    return false;
+  }
+
   render_patches_initialized = true;
 
   std::size_t core_patch_count = 0;
@@ -726,62 +832,60 @@ bool initialize_render_patches()
 
 void apply_render_patches()
 {
-  if (!initialize_render_patches())
-  {
-    return;
-  }
+  const bool core_patches_ready = initialize_render_patches();
+  bool ok = true;
 
-  bool ok = apply_render_patch_if_valid(dispatch_anim_events_patch, "base_animating_dispatch_anim_events") &&
-            apply_render_patch_if_valid(particle_create_patch, "particle_property_create") &&
-            apply_render_patch_if_valid(particle_precache_patch, "particle_system_precache") &&
-            apply_render_patch_if_valid(particle_effect_create_patch, "particle_effect_create_event") &&
-            apply_render_patch_if_valid(view_render_patch, "view_render_render") &&
-            apply_render_patch_if_valid(replay_screenshot_patch, "replay_screenshot_render") &&
-            apply_render_patch_if_valid(steam_rich_presence_patch, "client_update_steam_rich_presence");
-  for (auto& patch : replay_ui_nullcheck_patches)
+  if (core_patches_ready)
   {
-    ok = ok && apply_render_patch_if_valid(patch, "replay_ui_nullcheck");
+    ok = apply_render_patch_if_valid(dispatch_anim_events_patch, "base_animating_dispatch_anim_events") && ok;
+    ok = apply_render_patch_if_valid(particle_create_patch, "particle_property_create") && ok;
+    ok = apply_render_patch_if_valid(particle_precache_patch, "particle_system_precache") && ok;
+    ok = apply_render_patch_if_valid(particle_effect_create_patch, "particle_effect_create_event") && ok;
+    ok = apply_render_patch_if_valid(view_render_patch, "view_render_render") && ok;
+    ok = apply_render_patch_if_valid(replay_screenshot_patch, "replay_screenshot_render") && ok;
+    ok = apply_render_patch_if_valid(steam_rich_presence_patch, "client_update_steam_rich_presence") && ok;
+    for (auto& patch : replay_ui_nullcheck_patches)
+    {
+      ok = apply_render_patch_if_valid(patch, "replay_ui_nullcheck") && ok;
+    }
+    for (auto& patch : character_info_command_patches)
+    {
+      ok = apply_render_patch_if_valid(patch, "character_info_command") && ok;
+    }
+    ok = apply_render_patch_if_valid(econ_item_definition_index_patch, "econ_item_definition_index") && ok;
   }
-  for (auto& patch : character_info_command_patches)
-  {
-    ok = ok && apply_render_patch_if_valid(patch, "character_info_command");
-  }
-  ok = ok && apply_render_patch_if_valid(econ_item_definition_index_patch, "econ_item_definition_index");
 
   if (!ok)
   {
     restore_render_patch_objects();
+    render_patches_applied = false;
+    optional_render_patches_applied = false;
     print("[nographics] render patch apply failed\n");
     return;
   }
 
-  if (config.misc.exploits.experimental_nographic_hooks)
+  if (should_apply_extra_render_patches())
   {
-    initialize_optional_render_patches();
-    apply_optional_patch(cl_decay_lights_patch, "cl_decay_lights");
-    apply_optional_patch(mod_load_lighting_patch, "mod_load_lighting");
-    apply_optional_patch(mod_load_worldlights_patch, "mod_load_worldlights");
-    apply_optional_patch(sprite_load_model_patch, "sprite_load_model");
-    apply_optional_patch(overlay_mgr_load_overlays_patch, "overlay_mgr_load_overlays");
-    apply_optional_patch(material_system_begin_frame_patch, "material_system_begin_frame");
+    apply_optional_render_patches();
   }
   else
   {
     restore_optional_render_patches();
   }
 
-  render_patches_applied = true;
+  render_patches_applied = render_patches_applied || core_patches_ready;
 }
 
 void restore_render_patches()
 {
-  if (!render_patches_applied)
+  if (!render_patches_applied && !optional_render_patches_applied)
   {
     return;
   }
 
   restore_render_patch_objects();
   render_patches_applied = false;
+  optional_render_patches_applied = false;
 }
 
 void disable_file_system_hooks();
@@ -806,6 +910,7 @@ void enable_file_system_hooks()
   ok &= hook_vtable(file_system_vtable, file_system_add_files_to_cache_index, reinterpret_cast<void*>(add_files_to_cache_hook), &add_files_to_cache_original);
   ok &= hook_vtable(base_file_system_vtable, base_file_system_open_index, reinterpret_cast<void*>(open_hook), &open_original);
   ok &= hook_vtable(base_file_system_vtable, base_file_system_precache_index, reinterpret_cast<void*>(precache_hook), &precache_original);
+  ok &= hook_vtable(base_file_system_vtable, base_file_system_file_exists_index, reinterpret_cast<void*>(file_exists_hook), &file_exists_original);
   ok &= hook_vtable(base_file_system_vtable, base_file_system_read_file_index, reinterpret_cast<void*>(read_file_hook), &read_file_original);
 
   if (!ok)
@@ -834,6 +939,7 @@ void disable_file_system_hooks()
   if (add_files_to_cache_original != nullptr) write_to_table(file_system_vtable, file_system_add_files_to_cache_index, reinterpret_cast<void*>(add_files_to_cache_original));
   if (open_original != nullptr) write_to_table(base_file_system_vtable, base_file_system_open_index, reinterpret_cast<void*>(open_original));
   if (precache_original != nullptr) write_to_table(base_file_system_vtable, base_file_system_precache_index, reinterpret_cast<void*>(precache_original));
+  if (file_exists_original != nullptr) write_to_table(base_file_system_vtable, base_file_system_file_exists_index, reinterpret_cast<void*>(file_exists_original));
   if (read_file_original != nullptr) write_to_table(base_file_system_vtable, base_file_system_read_file_index, reinterpret_cast<void*>(read_file_original));
 
   file_system_hooked = false;
@@ -858,6 +964,45 @@ void update_material_stub(bool enabled)
   material_stub_enabled = enabled;
 }
 
+void resolve_game_file_system_interface()
+{
+  if (game_file_system != nullptr)
+  {
+    return;
+  }
+
+  if (module_is_loaded("filesystem_stdio.so"))
+  {
+    game_file_system = static_cast<file_system*>(get_interface("./bin/linux64/filesystem_stdio.so", "VFileSystem022"));
+  }
+
+  if (game_file_system == nullptr && module_is_loaded("filesystem_steam.so"))
+  {
+    game_file_system = static_cast<file_system*>(get_interface("./bin/linux64/filesystem_steam.so", "VFileSystem022"));
+  }
+
+  if (game_file_system != nullptr || !module_is_loaded("client.so"))
+  {
+    return;
+  }
+
+  auto* match = reinterpret_cast<std::uint8_t*>(sigscan_module("client.so", sigs::client_file_system));
+  if (match != nullptr)
+  {
+    game_file_system = *reinterpret_cast<file_system**>(resolve_rip_target(match + 15, 3, 7));
+  }
+}
+
+void resolve_material_system_interface()
+{
+  if (material_system != nullptr || !module_is_loaded("materialsystem.so"))
+  {
+    return;
+  }
+
+  material_system = static_cast<MaterialSystem*>(get_interface("./bin/linux64/materialsystem.so", "VMaterialSystem082"));
+}
+
 } // namespace
 
 void initialize()
@@ -868,34 +1013,65 @@ void initialize()
     config.misc.exploits.null_graphics_render_stubs = true;
   }
 
-  if (initialized || game_file_system != nullptr)
+  resolve_game_file_system_interface();
+
+  if (game_file_system != nullptr)
   {
     initialized = true;
     return;
   }
 
-  auto* match = reinterpret_cast<std::uint8_t*>(sigscan_module("client.so", sigs::client_file_system));
-  if (match != nullptr)
-  {
-    game_file_system = *reinterpret_cast<file_system**>(resolve_rip_target(match + 15, 3, 7));
-  }
-
-  if (game_file_system == nullptr)
+  if (!initialized && module_is_loaded("client.so"))
   {
     print("[nographics] VFileSystem022 is missing\n");
+    initialized = true;
   }
+}
 
-  initialized = true;
+void prepare_startup_patches()
+{
+  if constexpr (textmode_build)
+  {
+    if (startup_patch_running.exchange(true, std::memory_order_acq_rel))
+    {
+      return;
+    }
+    struct startup_patch_release
+    {
+      ~startup_patch_release()
+      {
+        startup_patch_running.store(false, std::memory_order_release);
+      }
+    } release;
+
+    initialize();
+    resolve_material_system_interface();
+    enable_file_system_hooks();
+    update_material_stub(true);
+    apply_render_patches();
+  }
 }
 
 void prepare_render_patches()
 {
   if constexpr (textmode_build)
   {
-    initialize();
-    enable_file_system_hooks();
-    update_material_stub(true);
-    apply_render_patches();
+    prepare_startup_patches();
+  }
+}
+
+void on_library_loaded(const char* library_path)
+{
+  if constexpr (textmode_build)
+  {
+    if (is_startup_patch_module(library_path))
+    {
+      prepare_startup_patches();
+    }
+  }
+  else
+  {
+    (void)library_path;
   }
 }
 
