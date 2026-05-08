@@ -56,6 +56,7 @@ static VkFormat active_swapchain_format = VK_FORMAT_UNDEFINED;
 static uint32_t active_queue_family = invalid_queue_family;
 static bool vulkan_renderer_initialized = false;
 static bool vulkan_platform_initialized = false;
+static bool warned_late_swapchain_format = false;
 
 static ImGui_ImplVulkanH_Frame frames[max_swapchain_images] = {};
 static ImGui_ImplVulkanH_FrameSemaphores frame_semaphores[max_swapchain_images] = {};
@@ -541,8 +542,16 @@ static bool ensure_vulkan_renderer(const render_queue_selection& render_queue)
 
 static bool ensure_swapchain_resources(VkSwapchainKHR swapchain, const render_queue_selection& render_queue)
 {
-  if (vk_device == VK_NULL_HANDLE || swapchain == VK_NULL_HANDLE || active_swapchain_format == VK_FORMAT_UNDEFINED) {
+  if (vk_device == VK_NULL_HANDLE || swapchain == VK_NULL_HANDLE) {
     return false;
+  }
+
+  if (active_swapchain_format == VK_FORMAT_UNDEFINED) {
+    active_swapchain_format = VK_FORMAT_B8G8R8A8_UNORM;
+    if (!warned_late_swapchain_format) {
+      print("Vulkan swapchain was created before hook install; using B8G8R8A8_UNORM fallback\n");
+      warned_late_swapchain_format = true;
+    }
   }
 
   if (render_queue.queue == VK_NULL_HANDLE || !queue_family_supports_graphics(render_queue.family)) {
