@@ -22,6 +22,7 @@ Useful project details:
 * Runtime files live under `/opt/cathook` by default.
 * Built libraries are installed to `/opt/cathook/bin`.
 * Runtime assets from `assets/` are installed to `/opt/cathook/assets`.
+* Runtime configs are stored as `.cat` files under `/opt/cathook/configs` by default, including `default.cat`.
 * Logs are written under `/opt/cathook/logs`.
 
 For Source Engine interface and structure references, see Valve's [Source SDK 2013 Multiplayer](https://github.com/ValveSoftware/source-sdk-2013).

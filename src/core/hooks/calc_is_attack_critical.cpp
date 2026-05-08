@@ -13,9 +13,9 @@ V  o o  V  file: src/core/hooks/calc_is_attack_critical.cpp
 #include "games/tf2/sdk/entities/player.hpp"
 #include "games/tf2/sdk/interfaces/global_vars.hpp"
 
-bool (*calc_is_attack_critical_original)(void*, float);
+bool (*calc_is_attack_critical_original)(void*);
 
-bool calc_is_attack_critical_hook(void* me, float crit_chance)
+bool calc_is_attack_critical_hook(void* me)
 {
   auto* weapon = reinterpret_cast<Weapon*>(me);
   auto* owner = weapon != nullptr ? reinterpret_cast<Player*>(weapon->to_entity()->get_owner_entity()) : nullptr;
@@ -26,7 +26,7 @@ bool calc_is_attack_critical_hook(void* me, float crit_chance)
     global_vars->framecount = cmd->command_number;
   }
 
-  const bool result = calc_is_attack_critical_original(me, crit_chance);
+  const bool result = calc_is_attack_critical_original(me);
 
   if (global_vars != nullptr && cmd != nullptr) {
     global_vars->framecount = old_framecount;
@@ -34,6 +34,7 @@ bool calc_is_attack_critical_hook(void* me, float crit_chance)
 
   if (random_crits::should_force_attack(weapon, cmd)) {
     weapon->current_attack_is_crit() = true;
+    weapon->current_crit_is_random() = true;
     if (weapon->is_rapid_fire() && global_vars != nullptr) {
       weapon->crit_time() = global_vars->curtime + 2.0f;
     }
@@ -42,6 +43,7 @@ bool calc_is_attack_critical_hook(void* me, float crit_chance)
 
   if (random_crits::should_skip_attack(weapon, cmd)) {
     weapon->current_attack_is_crit() = false;
+    weapon->current_crit_is_random() = false;
     return false;
   }
 

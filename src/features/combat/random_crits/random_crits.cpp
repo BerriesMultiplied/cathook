@@ -52,18 +52,6 @@ int selected_seed = 0;
 int selected_roll = -1;
 int selected_offset = 0;
 
-struct weapon_crit_snapshot
-{
-  float bucket = 0.0f;
-  int checks = 0;
-  int seed_requests = 0;
-  float crit_time = 0.0f;
-  int current_seed = 0;
-  float last_rapid_fire_crit_check_time = 0.0f;
-  bool current_attack_is_crit = false;
-  bool current_attack_is_during_demo_charge = false;
-};
-
 enum class selected_mode {
   none,
   force,
@@ -300,32 +288,6 @@ crit_bucket_info build_bucket_info(Player* localplayer, Weapon* weapon)
   return info;
 }
 
-weapon_crit_snapshot save_weapon_crit_state(Weapon* weapon)
-{
-  weapon_crit_snapshot snapshot{};
-  snapshot.bucket = weapon->crit_token_bucket();
-  snapshot.checks = weapon->crit_checks();
-  snapshot.seed_requests = weapon->crit_seed_requests();
-  snapshot.crit_time = weapon->crit_time();
-  snapshot.current_seed = weapon->current_seed();
-  snapshot.last_rapid_fire_crit_check_time = weapon->last_rapid_fire_crit_check_time();
-  snapshot.current_attack_is_crit = weapon->current_attack_is_crit();
-  snapshot.current_attack_is_during_demo_charge = weapon->current_attack_is_during_demo_charge();
-  return snapshot;
-}
-
-void restore_weapon_crit_state(Weapon* weapon, const weapon_crit_snapshot& snapshot)
-{
-  weapon->crit_token_bucket() = snapshot.bucket;
-  weapon->crit_checks() = snapshot.checks;
-  weapon->crit_seed_requests() = snapshot.seed_requests;
-  weapon->crit_time() = snapshot.crit_time;
-  weapon->current_seed() = snapshot.current_seed;
-  weapon->last_rapid_fire_crit_check_time() = snapshot.last_rapid_fire_crit_check_time;
-  weapon->current_attack_is_crit() = snapshot.current_attack_is_crit;
-  weapon->current_attack_is_during_demo_charge() = snapshot.current_attack_is_during_demo_charge;
-}
-
 int crit_mask(Player* localplayer, Weapon* weapon)
 {
   const int weapon_index = weapon->to_entity()->get_index();
@@ -338,44 +300,33 @@ int crit_mask(Player* localplayer, Weapon* weapon)
   return (weapon_index << 8) | player_index;
 }
 
+int masked_crit_seed(Player* localplayer, Weapon* weapon, int seed)
+{
+  return seed ^ crit_mask(localplayer, weapon);
+}
+
 int crit_roll(Player* localplayer, Weapon* weapon, int seed)
 {
   if (!init_random()) {
     return 0;
   }
 
-  random_seed_func(seed ^ crit_mask(localplayer, weapon));
+  random_seed_func(masked_crit_seed(localplayer, weapon, seed));
   return random_int_func(0, weapon_random_range - 1);
-}
-
-bool predicted_crit(Player* localplayer, Weapon* weapon, int seed)
-{
-  if (localplayer == nullptr || weapon == nullptr || random_seed == nullptr) {
-    return false;
-  }
-
-  const int old_prediction_seed = static_cast<int>(*random_seed);
-  const auto snapshot = save_weapon_crit_state(weapon);
-  *random_seed = seed;
-  const bool result = weapon->calc_is_attack_critical(weapon_crit_chance(localplayer, weapon));
-  *random_seed = old_prediction_seed;
-  restore_weapon_crit_state(weapon, snapshot);
-  return result;
 }
 
 bool seed_matches(Player* localplayer, Weapon* weapon, int seed, bool want_crit, int roll)
 {
+  if (localplayer == nullptr || weapon == nullptr || masked_crit_seed(localplayer, weapon, seed) == weapon->current_seed()) {
+    return false;
+  }
+
   const int threshold = crit_threshold(localplayer, weapon);
   if (want_crit && roll >= threshold) {
     return false;
   }
   if (!want_crit && roll < noncrit_threshold(localplayer, weapon)) {
     return false;
-  }
-
-  if (random_seed != nullptr && weapon != nullptr && weapon->is_melee()) {
-    const bool is_crit = predicted_crit(localplayer, weapon, seed);
-    return want_crit ? is_crit : !is_crit;
   }
 
   return true;
@@ -385,7 +336,7 @@ int find_command_number(Player* localplayer, Weapon* weapon, int current_command
 {
   const int max_seed_scan = std::clamp(config.random_crits.seed_scan, 256, 100000);
 
-  for (int offset = 1; offset <= max_seed_scan; ++offset) {
+  for (int offset = 0; offset <= max_seed_scan; ++offset) {
     const int command_number = current_command_number + offset;
     const int seed = MD5_PseudoRandom(static_cast<unsigned int>(command_number)) & INT_MAX;
     const int roll = crit_roll(localplayer, weapon, seed);
@@ -462,7 +413,7 @@ void run(user_cmd* cmd)
   const bool force_crit = wants_forced_crit(weapon);
   if (force_crit && config.random_crits.respect_bucket) {
     const bool bucket_ready = !bucket_info.valid || (bucket_info.available_crits > 0 && !bucket_info.crit_banned && bucket_info.rapid_wait <= 0.0f);
-    if (!weapon->can_fire_critical_shot(bucket_info.crit_chance) || !bucket_ready) {
+    if (!weapon->can_fire_random_critical_shot(bucket_info.crit_chance) || !bucket_ready) {
       return;
     }
   }

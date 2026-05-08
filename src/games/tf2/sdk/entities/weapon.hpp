@@ -766,7 +766,8 @@ public:
   static constexpr int weapon_data_rapid_fire_offset = 60;
   static constexpr int base_weapon_info_offset_from_last_crit_check = -40;
   static constexpr int melee_weapon_info_offset_from_last_crit_check = 240;
-  static constexpr int current_attack_is_crit_offset = 23;
+  static constexpr int current_attack_is_crit_offset = 22;
+  static constexpr int current_crit_is_random_offset = 23;
   static constexpr int current_attack_is_during_demo_charge_offset = 24;
 
   static auto reload_mode_offset() -> int
@@ -822,16 +823,16 @@ public:
     return melee_crits == 2 || (tf_weapon_criticals != nullptr && tf_weapon_criticals->get_int() != 0);
   }
 
-  bool calc_is_attack_critical(float crit_chance) {
+  bool can_fire_critical_shot(bool headshot = false) {
     void** vtable = *(void***)this;
-    auto calc_is_attack_critical_fn = (bool (*)(void*, float))vtable[468];
-    return calc_is_attack_critical_fn(this, crit_chance);
+    auto can_fire_critical_shot_fn = (bool (*)(void*, bool))vtable[497];
+    return can_fire_critical_shot_fn(this, headshot);
   }
 
-  bool can_fire_critical_shot(float crit_chance) {
+  bool can_fire_random_critical_shot(float crit_chance) {
     void** vtable = *(void***)this;
-    auto can_fire_critical_shot_fn = (bool (*)(void*, float))vtable[498];
-    return can_fire_critical_shot_fn(this, crit_chance);
+    auto can_fire_random_critical_shot_fn = (bool (*)(void*, float))vtable[498];
+    return can_fire_random_critical_shot_fn(this, crit_chance);
   }
 
   int get_weapon_id() {
@@ -1358,6 +1359,10 @@ public:
 
   bool& current_attack_is_crit() {
     return *reinterpret_cast<bool*>(reinterpret_cast<uintptr_t>(this) + reload_mode_offset() + current_attack_is_crit_offset);
+  }
+
+  bool& current_crit_is_random() {
+    return *reinterpret_cast<bool*>(reinterpret_cast<uintptr_t>(this) + reload_mode_offset() + current_crit_is_random_offset);
   }
 
   bool& current_attack_is_during_demo_charge() {

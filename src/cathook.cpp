@@ -1181,7 +1181,7 @@ bool initialize_game_runtime() {
 
   text_window_show_panel_original = (void (*)(void*, bool))sigscan_module("client.so", sigs::text_window_show_panel);
 
-  calc_is_attack_critical_original = (bool (*)(void*, float))sigscan_module("client.so", sigs::calc_is_attack_critical);
+  calc_is_attack_critical_original = (bool (*)(void*))sigscan_module("client.so", sigs::calc_is_attack_critical);
   error_assert(calc_is_attack_critical_original == nullptr, "Failed to find CalcIsAttackCritical");
 
   cl_move_original = (tickbase::cl_move_fn)sigscan_module("engine.so", sigs::cl_move);

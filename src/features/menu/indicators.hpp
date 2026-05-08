@@ -333,6 +333,8 @@ inline auto crit_indicator_color(const random_crits::indicator_state& state) -> 
 
 inline auto build_crit_status_text(const random_crits::indicator_state& state) -> std::string
 {
+  const bool has_next_crit_seed = state.next_crit_seed_roll >= 0;
+
   if (!state.enabled) {
     return "off";
   }
@@ -365,7 +367,7 @@ inline auto build_crit_status_text(const random_crits::indicator_state& state) -
       return "building";
     }
 
-    return state.next_crit_seed_offset > 0 ? "seed found" : "scanning";
+    return has_next_crit_seed ? "seed found" : "scanning";
   }
   if (state.save_mode) {
     return "saving";
@@ -392,7 +394,7 @@ inline auto build_crit_rows(const random_crits::indicator_state& state) -> std::
   }
 
   rows.emplace_back("affords", std::to_string(std::max(0, state.available_crits)) + " / " + std::to_string(std::max(0, state.potential_crits)));
-  if (state.next_crit_seed_offset > 0) {
+  if (state.next_crit_seed_roll >= 0) {
     rows.emplace_back("crit seed", "+" + std::to_string(state.next_crit_seed_offset) + " roll " + std::to_string(state.next_crit_seed_roll));
   } else if (state.available_crits > 0) {
     rows.emplace_back("crit seed", "scan miss");
