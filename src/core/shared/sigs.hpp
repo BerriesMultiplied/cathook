@@ -149,6 +149,18 @@ constexpr const char* replay_ui_nullcheck_7 =
   "48 8D 05 ? ? ? ? 48 8B 38 48 8B 07 FF 50 38 84 C0 0F 84 ? ? ? ? 4C 8D 3D";
 constexpr const char* replay_ui_nullcheck_8 =
   "48 8D 05 ? ? ? ? 48 8B 38 48 8B 07 FF 90 D0 00 00 00 E9 ? ? ? ?";
+constexpr const char* econ_item_view_get_item_definition_index =
+  "48 8B 47 08 48 85 C0 74 ? 8B 40 20 C3 0F 1F 00 48 8B 07 8B 80 BC 00 00 00 C3";
+constexpr const char* character_info_open =
+  "55 31 FF 48 89 E5 E8 ? ? ? ? 48 8D 15 ? ? ? ? 48 89 C7 48 05 30 03 00 00 48 85 FF 48 0F 45 F8 48 8B 07 48 8B 00 48 39 D0 75 ? 5D 48 81 EF 30 03 00 00 31 D2 31 F6";
+constexpr const char* character_info_open_direct =
+  "55 48 89 E5 41 55 41 54 53 48 89 FB 48 83 EC 08 48 8D 05 ? ? ? ? 48 8B 38 48 8B 07 FF 90 D0 00 00 00 84 C0 75";
+constexpr const char* character_info_open_backpack =
+  "55 31 FF 48 89 E5 E8 ? ? ? ? 48 8D 15 ? ? ? ? 48 89 C7 48 05 30 03 00 00 48 85 FF 48 0F 45 F8 48 8B 07 48 8B 00 48 39 D0 75 ? 5D 48 81 EF 30 03 00 00 31 D2 BE 01 00 00 00";
+constexpr const char* character_info_open_crafting =
+  "55 31 FF 48 89 E5 E8 ? ? ? ? 48 8D 15 ? ? ? ? 48 89 C7 48 05 30 03 00 00 48 85 FF 48 0F 45 F8 48 8B 07 48 8B 00 48 39 D0 75 ? 5D 48 81 EF 30 03 00 00 31 D2 BE 02 00 00 00";
+constexpr const char* character_info_open_armory =
+  "55 31 FF 48 89 E5 E8 ? ? ? ? 48 8D 15 ? ? ? ? 48 89 C7 48 05 30 03 00 00 48 85 FF 48 0F 45 F8 48 8B 07 48 8B 00 48 39 D0 75 ? 5D 48 81 EF 30 03 00 00 31 D2 BE 03 00 00 00";
 
 } // namespace sigs
 

@@ -89,7 +89,10 @@ byte_patch particle_effect_create_patch{};
 byte_patch view_render_patch{};
 byte_patch steam_rich_presence_patch{};
 constexpr std::size_t replay_ui_nullcheck_patch_count = 9;
+constexpr std::size_t character_info_command_patch_count = 5;
 std::array<byte_patch, replay_ui_nullcheck_patch_count> replay_ui_nullcheck_patches{};
+std::array<byte_patch, character_info_command_patch_count> character_info_command_patches{};
+byte_patch econ_item_definition_index_patch{};
 
 bool has_extension(const char* filename, const char* extension)
 {
@@ -306,6 +309,53 @@ bool initialize_replay_ui_nullcheck_patches()
   return true;
 }
 
+bool initialize_extra_crashfix_patches()
+{
+  constexpr std::array<const char*, character_info_command_patch_count> character_info_command_sigs = {
+    sigs::character_info_open,
+    sigs::character_info_open_direct,
+    sigs::character_info_open_backpack,
+    sigs::character_info_open_crafting,
+    sigs::character_info_open_armory,
+  };
+
+  auto* item_definition_index = scan_client_patch(sigs::econ_item_view_get_item_definition_index, 0);
+  if (item_definition_index == nullptr)
+  {
+    print("[nographics] econ item definition index patch scan failed\n");
+    return false;
+  }
+
+  for (std::size_t index = 0; index < character_info_command_sigs.size(); ++index)
+  {
+    auto* patch_site = scan_client_patch(character_info_command_sigs[index], 0);
+    if (patch_site == nullptr)
+    {
+      print("[nographics] character info command patch scan failed index=%zu\n", index);
+      return false;
+    }
+
+    character_info_command_patches[index] = byte_patch(patch_site, { 0x31, 0xC0, 0xC3 });
+  }
+
+  econ_item_definition_index_patch = byte_patch(item_definition_index, {
+    0x48, 0x8B, 0x47, 0x08,
+    0x48, 0x85, 0xC0,
+    0x75, 0x0F,
+    0x48, 0x8B, 0x07,
+    0x48, 0x85, 0xC0,
+    0x74, 0x0B,
+    0x8B, 0x80, 0xBC, 0x00, 0x00, 0x00,
+    0xC3,
+    0x8B, 0x40, 0x20,
+    0xC3,
+    0x31, 0xC0,
+    0xC3,
+    0x90,
+  });
+  return true;
+}
+
 void restore_render_patch_objects()
 {
   play_sequence_patch.restore();
@@ -319,6 +369,13 @@ void restore_render_patch_objects()
   {
     patch.restore();
   }
+
+  for (auto& patch : character_info_command_patches)
+  {
+    patch.restore();
+  }
+
+  econ_item_definition_index_patch.restore();
 }
 
 bool initialize_render_patches()
@@ -352,6 +409,12 @@ bool initialize_render_patches()
     return false;
   }
 
+  if (!initialize_extra_crashfix_patches())
+  {
+    render_patches_ready = false;
+    return false;
+  }
+
   play_sequence_patch = byte_patch(play_sequence, { 0xC3 });
   particle_create_patch = byte_patch(particle_create, { 0x31, 0xC0, 0xC3 });
   particle_precache_patch = byte_patch(particle_precache, { 0x31, 0xC0, 0xC3 });
@@ -380,6 +443,11 @@ void apply_render_patches()
   {
     ok = ok && patch.apply();
   }
+  for (auto& patch : character_info_command_patches)
+  {
+    ok = ok && patch.apply();
+  }
+  ok = ok && econ_item_definition_index_patch.apply();
 
   if (!ok)
   {
