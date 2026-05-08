@@ -180,6 +180,7 @@ inline void ensure_cathook_cfg_files()
     "// This script will be executed each time you inject textmode cathook\n"
     "sv_cheats 1\n"
     "engine_no_focus_sleep 0\n"
+    "mat_queue_mode 0\n"
     "hud_fastswitch 1\n"
     "tf_medigun_autoheal 1\n"
     "fps_max 30\n";
