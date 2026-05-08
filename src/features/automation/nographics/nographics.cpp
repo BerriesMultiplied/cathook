@@ -312,6 +312,12 @@ bool should_block_file(const char* raw_filename)
     return false;
   }
 
+  const std::string_view extension = file_extension(filename);
+  if (path_equals(extension, ".cat") || path_equals(extension, ".cfg"))
+  {
+    return false;
+  }
+
   if (is_soundscape_script(filename) ||
       path_starts_with(filename, "materials/console/") ||
       path_starts_with(filename, "debug/"))
@@ -328,7 +334,6 @@ bool should_block_file(const char* raw_filename)
     return true;
   }
 
-  const std::string_view extension = file_extension(filename);
   if (extension.empty())
   {
     return false;

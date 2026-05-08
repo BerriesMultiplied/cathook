@@ -501,6 +501,32 @@ install_runtime_dependencies() {
     install_glew_dependency_for_binary "$source_root/bin/libcathook-textmode.so"
 }
 
+install_runtime_configs() {
+    local source_configs="$repo_root/opt/cathook/configs"
+    local target_configs="$install_root/configs"
+    local target_logs="$install_root/logs"
+    local target_uid
+    local target_gid
+    local file
+    local target_file
+
+    target_uid="$(id -u)"
+    target_gid="$(id -g)"
+
+    run_as_root install -d -m 0755 "$target_configs" "$target_logs"
+
+    if [ -d "$source_configs" ]; then
+        while IFS= read -r -d '' file; do
+            target_file="$target_configs/$(basename -- "$file")"
+            if [ ! -e "$target_file" ]; then
+                run_as_root install -m 0644 "$file" "$target_file"
+            fi
+        done < <(find "$source_configs" -maxdepth 1 -type f -name '*.cat' -print0)
+    fi
+
+    run_as_root chown -R "$target_uid:$target_gid" "$target_configs" "$target_logs" 2>/dev/null || true
+}
+
 install_runtime() {
     local source_root
     source_root="$(runtime_source_root)"
@@ -517,6 +543,7 @@ install_runtime() {
     fi
 
     install_runtime_dependencies "$source_root"
+    install_runtime_configs
     run_as_root install -m 0755 "$ipc_server_root/bin/server" "$install_root/ipc/bin/server"
     run_as_root install -m 0755 "$ipc_server_root/bin/console" "$install_root/ipc/bin/console"
     run_as_root install -m 0755 "$ipc_server_root/bin/exec" "$install_root/ipc/bin/exec"
@@ -933,6 +960,7 @@ start_panel() {
             CAT_STEAM_WEB_API_KEY="${CAT_STEAM_WEB_API_KEY:-}" \
             STEAM_LD_PRELOAD="${STEAM_LD_PRELOAD:-}" \
             CATHOOK_ROOT="$install_root" \
+            CATHOOK_ROOT_DIR="$install_root" \
             bash ./run.sh
         return
     fi
@@ -951,6 +979,7 @@ start_panel() {
         CAT_STEAM_WEB_API_KEY="${CAT_STEAM_WEB_API_KEY:-}" \
         STEAM_LD_PRELOAD="${STEAM_LD_PRELOAD:-}" \
         CATHOOK_ROOT="$install_root" \
+        CATHOOK_ROOT_DIR="$install_root" \
         bash -c 'if command -v setsid >/dev/null 2>&1; then nohup setsid bash ./run.sh >/dev/null 2>&1 & else nohup bash ./run.sh >/dev/null 2>&1 & fi'
 }
 

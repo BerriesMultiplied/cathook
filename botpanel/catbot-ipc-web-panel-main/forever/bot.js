@@ -32,7 +32,7 @@ const CATHOOK_ATTACH_DELAY_SECONDS = Number.parseInt(process.env.CATHOOK_ATTACH_
 
 const LAUNCH_OPTIONS_STEAM = `firejail --dns=1.1.1.1 %NETWORK% --noprofile --private="%HOME%" --name=%JAILNAME% --env=PULSE_SERVER="unix:/tmp/pulse.sock" --env=DISPLAY=%DISPLAY% --env=XAUTHORITY=%XAUTHORITY% --env=LD_LIBRARY_PATH=%STEAM_LD_LIBRARY_PATH% --env=LD_PRELOAD=%LD_PRELOAD% %STEAM% ${STEAM_WINDOW_OPTIONS} -login %LOGIN% %PASSWORD%`
 const LAUNCH_OPTIONS_STEAM_RESET = 'firejail --net=none --noprofile --private="%HOME%" --env=LD_LIBRARY_PATH=%STEAM_LD_LIBRARY_PATH% %STEAM% --reset'
-const LAUNCH_OPTIONS_GAME = `firejail --join=%JAILNAME% bash -c 'cd "%GAMEPATH%" && %RUNTIME_PREFIX% SteamAppId=440 SteamGameId=440 SteamOverlayGameId=440 SteamEnv=1 CATHOOK_ROOT="%CATHOOK_ROOT%" CATHOOK_AUTO_ATTACH=1 CATHOOK_ATTACH_DELAY_SECONDS=%CATHOOK_ATTACH_DELAY_SECONDS% CAT_BOT_ID=%BOT_ID% CAT_BOT_NAME=%BOT_NAME% CAT_STEAMID32=%STEAMID32% LD_PRELOAD=%LD_PRELOAD% DISPLAY=%DISPLAY% XAUTHORITY="%XAUTHORITY%" PULSE_SERVER="unix:/tmp/pulse.sock" %GAME_BINARY% -steam -game tf ${GAME_WINDOW_OPTIONS} -novid -nojoy -noipx -nomessagebox -nominidumps -nohltv -nobreakpad -reuse -noquicktime -precachefontchars -particles 1 -snoforceformat -softparticlesdefaultoff ${GAME_MODE_OPTIONS} -forcenovsync -insecure +clientport 27006-27014'`
+const LAUNCH_OPTIONS_GAME = `firejail --join=%JAILNAME% bash -c 'cd "%GAMEPATH%" && %RUNTIME_PREFIX% SteamAppId=440 SteamGameId=440 SteamOverlayGameId=440 SteamEnv=1 CATHOOK_ROOT="%CATHOOK_ROOT%" CATHOOK_ROOT_DIR="%CATHOOK_ROOT%" CATHOOK_AUTO_ATTACH=1 CATHOOK_ATTACH_DELAY_SECONDS=%CATHOOK_ATTACH_DELAY_SECONDS% CAT_BOT_ID=%BOT_ID% CAT_BOT_NAME=%BOT_NAME% CAT_STEAMID32=%STEAMID32% LD_PRELOAD=%LD_PRELOAD% DISPLAY=%DISPLAY% XAUTHORITY="%XAUTHORITY%" PULSE_SERVER="unix:/tmp/pulse.sock" %GAME_BINARY% -steam -game tf ${GAME_WINDOW_OPTIONS} -novid -nojoy -noipx -nomessagebox -nominidumps -nohltv -nobreakpad -reuse -noquicktime -precachefontchars -particles 1 -snoforceformat -softparticlesdefaultoff ${GAME_MODE_OPTIONS} -forcenovsync -insecure +clientport 27006-27014'`
 const GAME_LIBRARY_PATH = './bin:./bin/linux64:./tf/bin:./tf/bin/linux64:./platform:./platform/bin:./platform/bin/linux64:.';
 
 // Adjust these values as needed to optimize catbot performance
@@ -65,6 +65,7 @@ const STEAM_STARTUP_FATAL_PATTERNS = [
     'LD_LIBRARY_PATH: unbound variable'
 ];
 let navmesh_sync_done = false;
+let cathook_configs_ready = false;
 
 const STATE = {
     INITIALIZING: 0,
@@ -441,6 +442,54 @@ function count_navmesh_files(directory_path) {
     }
 }
 
+function bundled_cathook_configs_path() {
+    return path.resolve(__dirname, '..', '..', '..', 'opt', 'cathook', 'configs');
+}
+
+function copy_missing_config_files(source_path, target_path) {
+    if (!source_path || !fs.existsSync(source_path))
+        return 0;
+
+    fs.mkdirSync(target_path, { recursive: true });
+
+    var copied_count = 0;
+    for (const entry of fs.readdirSync(source_path, { withFileTypes: true })) {
+        if (!entry.isFile())
+            continue;
+
+        const source_entry = path.join(source_path, entry.name);
+        const target_entry = path.join(target_path, entry.name);
+        if (fs.existsSync(target_entry))
+            continue;
+
+        fs.copyFileSync(source_entry, target_entry);
+        fs.chmodSync(target_entry, 0o644);
+        copied_count++;
+    }
+
+    return copied_count;
+}
+
+function ensure_cathook_config_access(log) {
+    if (cathook_configs_ready)
+        return;
+
+    const config_path = path.join(CATHOOK_ROOT, 'configs');
+    const log_path = path.join(CATHOOK_ROOT, 'logs');
+    fs.mkdirSync(config_path, { recursive: true });
+    fs.mkdirSync(log_path, { recursive: true });
+
+    const source_path = process.env.CATHOOK_CONFIG_SOURCE || bundled_cathook_configs_path();
+    const copied_count = copy_missing_config_files(source_path, config_path);
+    chown_tree(config_path, USER.uid, USER.uid);
+    chown_tree(log_path, USER.uid, USER.uid);
+
+    if (copied_count > 0 && log)
+        log(`Installed ${copied_count} bundled cathook config file(s) into ${config_path}`);
+
+    cathook_configs_ready = true;
+}
+
 function copy_steam_seed(source_path, target_path, is_root = true) {
     const skip_entries = new Set(['appcache', 'config', 'logs', 'steamapps', 'steamapps_old', 'userdata']);
 
@@ -584,6 +633,7 @@ class Bot extends EventEmitter {
         this.restarts = 0;
 
         this.log(`Initializing, folder = ${self.name}`);
+        ensure_cathook_config_access(this.log.bind(this));
 
         this.procFirejailSteam = null;
         this.procFirejailGame = null;

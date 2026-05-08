@@ -92,6 +92,13 @@ fix_install_permissions() {
     fi
 
     run_as_root chmod -R u=rwX,go=rX "$install_root"
+    if [ -n "${SUDO_UID:-}" ] && [ -n "${SUDO_GID:-}" ]; then
+        for path in "$install_root/configs" "$install_root/logs"; do
+            if [ -e "$path" ]; then
+                run_as_root chown -R "$SUDO_UID:$SUDO_GID" "$path" 2>/dev/null || true
+            fi
+        done
+    fi
     if [ -d "$install_root/bin" ]; then
         run_as_root find "$install_root/bin" -type f -exec chmod 0755 {} +
     fi
@@ -354,8 +361,13 @@ install_outputs() {
     local install_bin_dir="$install_root/bin"
     local install_assets_dir="$install_root/assets"
     local install_ipc_dir="$install_root/ipc"
+    local install_config_dir="$install_root/configs"
+    local install_log_dir="$install_root/logs"
+    local source_config_dir="$project_root/opt/cathook/configs"
+    local file
+    local target_file
 
-    run_as_root install -d -m 0755 "$install_root" "$install_bin_dir" "$install_ipc_dir/bin"
+    run_as_root install -d -m 0755 "$install_root" "$install_bin_dir" "$install_ipc_dir/bin" "$install_config_dir" "$install_log_dir"
 
     if [ "$mode" = "default" ] || [ "$mode" = "both" ]; then
         run_as_root install -m 0755 "$project_root/bin/libcathook.so" "$install_bin_dir/libcathook.so"
@@ -367,6 +379,14 @@ install_outputs() {
     fi
 
     install_runtime_dependencies "$mode" "$install_bin_dir"
+    if [ -d "$source_config_dir" ]; then
+        while IFS= read -r -d '' file; do
+            target_file="$install_config_dir/$(basename -- "$file")"
+            if [ ! -e "$target_file" ]; then
+                run_as_root install -m 0644 "$file" "$target_file"
+            fi
+        done < <(find "$source_config_dir" -maxdepth 1 -type f -name '*.cat' -print0)
+    fi
     run_as_root make SHELL="$(make_shell_path)" -C "$project_root/botpanel/catbot-ipc-server-main" REPO_ROOT="$project_root" INSTALL_DIR="$install_ipc_dir" install
     copy_assets "$install_assets_dir"
     fix_install_permissions
