@@ -67,6 +67,7 @@ struct aimbot_hitscan_fire_solution {
   bool spread_signature = false;
   bool spread_fixed = false;
   bool seed_missing = false;
+  bool hit_wrong_hitbox = false;
   int pellet_count = 0;
   int pellet_index = -1;
   int trace_hitbox = -1;
@@ -233,6 +234,14 @@ aimbot_hitscan_fire_solution aimbot_prepare_hitscan_fire_solution(Player* localp
         spread_offset,
         use_spread,
         &trace_result)) {
+      if (trace_result.entity == candidate.entity &&
+          candidate.hitbox >= 0 &&
+          trace_result.hitbox >= 0 &&
+          trace_result.hitbox != candidate.hitbox) {
+        solution.hit_wrong_hitbox = true;
+        solution.trace_hitbox = trace_result.hitbox;
+        solution.trace_entity_index = trace_result.entity->get_index();
+      }
       continue;
     }
 
@@ -1223,9 +1232,13 @@ bool aimbot(user_cmd* user_cmd, Vec3 original_view_angles) {
   if (!headshot_ready) {
     final_reason = aimbot_debug_reason::headshot_wait;
   } else if (!hitscan_ready) {
-    final_reason = hitscan_fire_solution.seed_missing
-      ? aimbot_debug_reason::spread_seed_missing
-      : aimbot_debug_reason::final_trace_miss;
+    if (hitscan_fire_solution.seed_missing) {
+      final_reason = aimbot_debug_reason::spread_seed_missing;
+    } else if (hitscan_fire_solution.hit_wrong_hitbox) {
+      final_reason = aimbot_debug_reason::hitbox_miss;
+    } else {
+      final_reason = aimbot_debug_reason::final_trace_miss;
+    }
   } else if (!attack_ready) {
     final_reason = aimbot_debug_reason::attack_not_ready;
   }

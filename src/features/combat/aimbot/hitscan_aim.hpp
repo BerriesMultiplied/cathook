@@ -269,6 +269,21 @@ inline bool hitscan_aim_ray_hits_player_bounds(Player* target, const Vec3& start
   return bounds.valid && aimbot_segment_intersects_aabb(start_pos, end_pos, bounds.mins, bounds.maxs);
 }
 
+inline bool hitscan_aim_ray_hits_entity_bounds(Entity* target, const Vec3& start_pos, const Vec3& end_pos) {
+  if (target == nullptr) {
+    return false;
+  }
+
+  const Vec3 origin = target->get_collision_origin();
+  const Vec3 mins = target->get_collideable_mins() + origin - Vec3{1.5f, 1.5f, 1.5f};
+  const Vec3 maxs = target->get_collideable_maxs() + origin + Vec3{1.5f, 1.5f, 1.5f};
+  if (!aimbot_vec3_is_finite(mins) || !aimbot_vec3_is_finite(maxs)) {
+    return false;
+  }
+
+  return aimbot_segment_intersects_aabb(start_pos, end_pos, mins, maxs);
+}
+
 inline bool hitscan_aim_ray_hits_selected_area(Player* target,
   int hitbox_id,
   const Vec3& start_pos,
@@ -312,7 +327,7 @@ inline bool hitscan_aim_point_visible_by_fallback(Player* localplayer,
 }
 
 inline bool hitscan_aim_point_valid_for_player(Player* player, const aimbot_point& point) {
-  if (!point.valid || player == nullptr || !aimbot_vec3_is_finite(point.position)) {
+  if (!point.valid || player == nullptr || point.hitbox < 0 || !aimbot_vec3_is_finite(point.position)) {
     return false;
   }
 
@@ -525,6 +540,28 @@ inline bool hitscan_aim_textmode_candidate_visible(Player* localplayer, const ai
     candidate.aim_position);
 }
 
+inline bool hitscan_aim_trace_fallback(const aimbot_candidate& candidate,
+  const Vec3& start_pos,
+  const Vec3& end_pos) {
+  if (candidate.entity == nullptr || !aimbot_vec3_is_finite(candidate.aim_position)) {
+    return false;
+  }
+
+  if (!hitscan_aim_world_clear(start_pos, candidate.aim_position)) {
+    return false;
+  }
+
+  if (candidate.player != nullptr) {
+    if (candidate.hitbox < 0) {
+      return false;
+    }
+
+    return hitscan_aim_ray_hits_selected_area(candidate.player, candidate.hitbox, start_pos, end_pos);
+  }
+
+  return hitscan_aim_ray_hits_entity_bounds(candidate.entity, start_pos, end_pos);
+}
+
 inline bool hitscan_aim_textmode_trace_fallback(const aimbot_candidate& candidate,
   const Vec3& start_pos,
   const Vec3& end_pos) {
@@ -534,11 +571,7 @@ inline bool hitscan_aim_textmode_trace_fallback(const aimbot_candidate& candidat
     return false;
   }
 
-  if (!hitscan_aim_world_clear(start_pos, candidate.aim_position)) {
-    return false;
-  }
-
-  return hitscan_aim_ray_hits_selected_area(candidate.player, candidate.hitbox, start_pos, end_pos);
+  return hitscan_aim_trace_fallback(candidate, start_pos, end_pos);
 }
 
 inline bool hitscan_aim_trace_candidate(Player* localplayer,
@@ -554,6 +587,7 @@ inline bool hitscan_aim_trace_candidate(Player* localplayer,
   if (localplayer == nullptr ||
       candidate.entity == nullptr ||
       engine_trace == nullptr ||
+      (candidate.player != nullptr && candidate.hitbox < 0) ||
       !aimbot_vec3_is_finite(candidate.aim_position)) {
     return false;
   }
@@ -591,7 +625,8 @@ inline bool hitscan_aim_trace_candidate(Player* localplayer,
   }
 
   if (trace_world.entity != candidate.entity) {
-    const bool fallback_hit = hitscan_aim_textmode_trace_fallback(candidate, start_pos, end_pos);
+    const bool fallback_hit = (trace_world.entity == nullptr || nographics::should_use_aimbot_trace_fallback()) &&
+      hitscan_aim_trace_fallback(candidate, start_pos, end_pos);
     if (result != nullptr) {
       result->hit = fallback_hit;
       if (fallback_hit) {
@@ -603,12 +638,27 @@ inline bool hitscan_aim_trace_candidate(Player* localplayer,
   }
 
   if (candidate.hitbox == aim_hitbox_head && candidate.player != nullptr) {
-    const bool head_hit = trace_world.hitbox == aim_hitbox_head ||
-      hitscan_aim_textmode_trace_fallback(candidate, start_pos, end_pos);
+    const bool head_hit = trace_world.hitbox == aim_hitbox_head;
     if (result != nullptr) {
       result->hit = head_hit;
+      if (head_hit) {
+        result->entity = candidate.entity;
+        result->hitbox = candidate.hitbox;
+      }
     }
     return head_hit;
+  }
+
+  if (candidate.player != nullptr && candidate.hitbox >= 0 && trace_world.hitbox != candidate.hitbox) {
+    const bool selected_hit = hitscan_aim_trace_fallback(candidate, start_pos, end_pos);
+    if (result != nullptr) {
+      result->hit = selected_hit;
+      if (selected_hit) {
+        result->entity = candidate.entity;
+        result->hitbox = candidate.hitbox;
+      }
+    }
+    return selected_hit;
   }
 
   if (result != nullptr) {

@@ -26,6 +26,7 @@ enum class aimbot_debug_reason {
   attack_not_ready,
   scoped_only,
   headshot_wait,
+  hitbox_miss,
   final_trace_miss,
   spread_seed_missing,
   attack_ready
@@ -94,6 +95,8 @@ inline const char* aimbot_debug_reason_name(aimbot_debug_reason reason) {
     return "scope wait";
   case aimbot_debug_reason::headshot_wait:
     return "head wait";
+  case aimbot_debug_reason::hitbox_miss:
+    return "body hit";
   case aimbot_debug_reason::final_trace_miss:
     return "trace miss";
   case aimbot_debug_reason::spread_seed_missing:
