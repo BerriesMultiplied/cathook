@@ -49,6 +49,8 @@ aimbot_random_seed_fn aimbot_random_seed = nullptr;
 aimbot_random_float_fn aimbot_random_float = nullptr;
 bool aimbot_random_initialized = false;
 
+float aimbot_actual_frame_time();
+
 void aimbot_clear_walk_to_target()
 {
   g_aimbot_walk_to_target = false;
@@ -186,6 +188,30 @@ bool aimbot_weapon_can_attack_or_release_projectile(Player* localplayer, Weapon*
   return aimbot_is_projectile_weapon(weapon) &&
     aimbot_projectile_is_charge_weapon(weapon) &&
     aimbot_projectile_charge_started(weapon);
+}
+
+bool aimbot_should_pre_aim_while_waiting(Player* localplayer,
+  Weapon* weapon,
+  const aimbot_candidate& candidate)
+{
+  return localplayer != nullptr &&
+    weapon != nullptr &&
+    candidate.entity != nullptr &&
+    candidate.visible &&
+    !aimbot_is_projectile_weapon(weapon) &&
+    (nographics::should_use_aimbot_trace_fallback() ||
+      global_vars == nullptr ||
+      aimbot_actual_frame_time() >= (1.0f / 45.0f));
+}
+
+bool aimbot_should_hold_fire_while_waiting(Player* localplayer,
+  Weapon* weapon,
+  const aimbot_candidate& candidate)
+{
+  return config.aimbot.auto_shoot &&
+    aimbot_should_pre_aim_while_waiting(localplayer, weapon, candidate) &&
+    (localplayer->is_scoped() || weapon->get_def_id() != Sniper_m_TheMachina) &&
+    aimbot_wait_for_headshot_ready(localplayer, weapon, candidate);
 }
 
 bool aimbot_apply_projectile_auto_shoot(user_cmd* user_cmd, Weapon* weapon, bool projectile_solution)
@@ -838,7 +864,28 @@ bool aimbot(user_cmd* user_cmd, Vec3 original_view_angles) {
 
   aimbot_request_walk_to_target(localplayer, weapon, best_candidate);
 
-  if (!aimbot_weapon_can_attack_or_release_projectile(localplayer, weapon) || !aimbot_scoped_only_ready(localplayer, weapon)) {
+  const bool scoped_only_ready = aimbot_scoped_only_ready(localplayer, weapon);
+  if (!aimbot_weapon_can_attack_or_release_projectile(localplayer, weapon) || !scoped_only_ready) {
+    if (scoped_only_ready && aimbot_should_pre_aim_while_waiting(localplayer, weapon, best_candidate)) {
+      const Vec3 target_view_angles = best_candidate.aim_angles - localplayer->get_punch_angles();
+      user_cmd->view_angles = aimbot_apply_mode_angles(
+        source_view_angles,
+        target_view_angles,
+        aimbot_last_input_angles,
+        aimbot_last_input_angles_valid,
+        best_candidate);
+
+      if (aimbot_should_hold_fire_while_waiting(localplayer, weapon, best_candidate) &&
+          !(user_cmd->buttons & IN_ATTACK2)) {
+        user_cmd->buttons |= IN_ATTACK;
+        g_aimbot_requested_shot = true;
+      }
+
+      aimbot_apply_visible_view(user_cmd);
+      store_aimbot_input_angles(source_view_angles);
+      return config.aimbot.aim_mode == Aim::AimMode::PSILENT;
+    }
+
     aimbot_hold_projectile_charge_if_needed(user_cmd, weapon);
     store_aimbot_input_angles(source_view_angles);
     return false;
