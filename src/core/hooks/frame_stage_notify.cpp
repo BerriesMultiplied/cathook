@@ -118,8 +118,11 @@ void frame_stage_notify_hook(void* me, ClientFrameStage current_stage) {
 	switch (entity->get_class_id()) {
 	case class_id::PLAYER:
 	  {
-	    entity_cache[class_id::PLAYER].push_back(entity);
-            local_prediction_record_entity(entity);
+            auto* player = static_cast<Player*>(entity);
+            if (!player->is_dormant() && player->is_alive()) {
+	      entity_cache[class_id::PLAYER].push_back(entity);
+              local_prediction_record_entity(entity);
+            }
 	    
 	    if (steam_friends != nullptr && config.debug.disable_friend_checks == false && global_vars->curtime - last_time >= 1) {
 	      player_info pinfo;

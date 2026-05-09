@@ -92,6 +92,7 @@ private:
 automation_controller& controller();
 bool reload_casual_criteria();
 bool request_casual_queue();
+bool cancel_casual_queue();
 
 } // namespace automation
 

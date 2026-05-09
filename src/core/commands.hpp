@@ -583,6 +583,17 @@ inline void command_queue_callback(const command_args&)
   print("[cat_queue] requested casual matchmaking queue\n");
 }
 
+inline void command_cancel_queue_callback(const command_args&)
+{
+  if (!automation::cancel_casual_queue())
+  {
+    print("[cat_cancelqueue] matchmaking API unavailable\n");
+    return;
+  }
+
+  print("[cat_cancelqueue] requested casual matchmaking queue cancel\n");
+}
+
 inline void command_criteria_callback(const command_args&)
 {
   if (!automation::reload_casual_criteria())
@@ -896,6 +907,7 @@ inline void register_commands() {
   add_command("cat_achievement_dump", command_dump_achievements_callback, "Legacy alias: dump TF2 achievement IDs and names");
   add_command("cat_rent_item", command_autoitem_rent_callback, "Legacy alias: request an item preview/rental by item definition ID");
   add_command("cat_queue", command_queue_callback, "Start casual matchmaking queue");
+  add_command("cat_cancelqueue", command_cancel_queue_callback, "Cancel casual matchmaking queue");
   add_command("cat_criteria", command_criteria_callback, "Reload saved casual matchmaking criteria");
   add_command("cat_commands", command_commands_callback, "Print registered Cat commands");
   add_command("cat_playerlist_load", command_playerlist_load_callback, "Load the persistent player list");

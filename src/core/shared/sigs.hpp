@@ -70,6 +70,10 @@ constexpr const char* item_definition_lookup =
   "55 48 89 E5 41 55 41 54 49 89 FC 53 48 83 EC ? 8B 87 ? ? ? ? 85 C0 0F 84 ? ? ? ? 41 89 F1";
 constexpr const char* setup_bones =
   "55 48 89 E5 41 57 41 56 41 55 41 54 41 89 CC 53 48 89 FB 48 81 EC ? ? ? ? 48 8B 05 ? ? ? ?";
+constexpr const char* base_animating_push_allow_bone_access =
+  "55 48 8D 0D ? ? ? ? 48 89 E5 41 57 41 56 41 55 41 89 FD 41 54 4C 8D 25 ? ? ? ? 53 48 8D 1D ? ? ? ? 66 49 0F 6E C4";
+constexpr const char* base_animating_pop_bone_access =
+  "55 48 8D 0D ? ? ? ? 48 89 E5 41 55 41 54 4C 8D 2D ? ? ? ? 53 4C 8D 25 ? ? ? ? 66 49 0F 6E CD";
 constexpr const char* inspect_target_check =
   "55 48 89 E5 41 55 41 54 53 48 81 EC ? ? ? ? 48 85 F6 74 ? 48 8D 05 ? ? ? ?";
 constexpr const char* calc_is_attack_critical =
@@ -112,7 +116,7 @@ constexpr const char* abandon_current_match =
 constexpr const char* request_queue_for_match =
   "55 48 89 E5 41 57 41 56 49 89 FE 89 F7 41 55 41 54 41 89 F4 53 48 81 EC 88 00 00 00 E8 ? ? ? ? 41 83 FC FF 0F 94 C3 3C 01 75 ? 84 DB 75 ? 49 63 C4 41 80 BC 06 1E 03 00 00 00 75 ?";
 constexpr const char* request_leave_for_match =
-  "55 48 89 E5 41 57 41 56 41 55 49 89 FD 41 54 53 48 63 DE 48 83 EC 48 89 DE E8 ? ? ? ? 84 C0 75 ? 89 DF E8 ? ? ? ? 83 FB FF 41 0F 94 C6";
+  "55 48 89 E5 41 57 41 56 41 55 49 89 FD 41 54 53 48 63 DE 48 83 EC ? 89 DE E8 ? ? ? ? 84 C0 75 ? 48 83 C4 ? 5B 41 5C 41 5D 41 5E 41 5F 5D";
 constexpr const char* request_queue_for_standby =
   "48 83 7F 30 00 0F 84 ? ? ? ? 55 48 89 E5 41 57 41 56 41 55 41 54 49 89 FC 53 48 83 EC 38 80 BF 12 03 00 00 00 74 ?";
 constexpr const char* request_leave_standby =

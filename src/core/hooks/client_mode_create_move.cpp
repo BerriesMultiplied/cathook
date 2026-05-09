@@ -34,6 +34,7 @@ V  o o  V  file: src/core/hooks/client_mode_create_move.cpp
 #include "core/detach.hpp"
 
 bool (*client_mode_create_move_original)(void*, float, user_cmd*);
+bool g_client_create_move_owns_features = false;
 
 static void movement_fix(user_cmd* user_cmd, Vec3 original_view_angle, float original_forward_move, float original_side_move) {
   float yaw_delta = user_cmd->view_angles.y - original_view_angle.y;
@@ -176,6 +177,10 @@ bool client_mode_create_move_hook(void* me, float sample_time, user_cmd* user_cm
     const bool rc = client_mode_create_move_original(me, sample_time, user_cmd);
     cathook::core::service_detach_request();
     return rc;
+  }
+
+  if (g_client_create_move_owns_features) {
+    return client_mode_create_move_original(me, sample_time, user_cmd);
   }
 
   cat_bind::run();

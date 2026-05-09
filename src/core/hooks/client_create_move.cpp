@@ -11,7 +11,14 @@ V  o o  V  file: src/core/hooks/client_create_move.cpp
 
 #include "games/tf2/sdk/interfaces/global_vars.hpp"
 #include "games/tf2/sdk/interfaces/input.hpp"
+#include "games/tf2/sdk/interfaces/client_state.hpp"
+#include "games/tf2/sdk/interfaces/engine.hpp"
+#include "games/tf2/sdk/interfaces/entity_list.hpp"
+#include "games/tf2/sdk/interfaces/mdl_cache.hpp"
+#include "games/tf2/sdk/interfaces/prediction.hpp"
 #include "games/tf2/sdk/interfaces/steam_friends.hpp"
+
+#include <cstdint>
 
 #include "games/tf2/sdk/entities/player.hpp"
 
@@ -23,9 +30,90 @@ V  o o  V  file: src/core/hooks/client_create_move.cpp
 #include "features/combat/tickbase/tickbase.hpp"
 
 void (*client_create_move_original)(void*, int, float, bool);
+using push_allow_bone_access_fn = void (*)(bool, bool, const char*);
+using pop_bone_access_fn = void (*)(const char*);
+
+push_allow_bone_access_fn push_allow_bone_access_original = nullptr;
+pop_bone_access_fn pop_bone_access_original = nullptr;
 
 namespace
 {
+
+const char* bone_access_tag()
+{
+  return reinterpret_cast<const char*>(static_cast<std::uintptr_t>(1));
+}
+
+struct scoped_bone_access {
+  scoped_bone_access() {
+    active = push_allow_bone_access_original != nullptr && pop_bone_access_original != nullptr;
+    if (active) {
+      push_allow_bone_access_original(true, false, bone_access_tag());
+    }
+  }
+
+  ~scoped_bone_access() {
+    if (active) {
+      pop_bone_access_original(bone_access_tag());
+    }
+  }
+
+  bool active = false;
+};
+
+struct scoped_mdl_cache_lock {
+  scoped_mdl_cache_lock() {
+    active = mdl_cache != nullptr;
+    if (active) {
+      mdl_cache->begin_lock();
+    }
+  }
+
+  ~scoped_mdl_cache_lock() {
+    if (active) {
+      mdl_cache->end_lock();
+    }
+  }
+
+  bool active = false;
+};
+
+struct scoped_client_create_move_features {
+  scoped_client_create_move_features() {
+    g_client_create_move_owns_features = true;
+  }
+
+  ~scoped_client_create_move_features() {
+    g_client_create_move_owns_features = false;
+  }
+};
+
+bool create_input_move(int sequence_number, float input_sample_frametime, bool active)
+{
+  if (input == nullptr) {
+    return false;
+  }
+
+  const bool input_active = client_state != nullptr ? !client_state->m_bPaused : active;
+  scoped_bone_access bone_access{};
+  scoped_mdl_cache_lock mdl_cache_lock{};
+  scoped_client_create_move_features feature_owner{};
+  input->create_move(sequence_number, input_sample_frametime, input_active);
+  return true;
+}
+
+void refresh_prediction_state()
+{
+  if (prediction == nullptr || client_state == nullptr) {
+    return;
+  }
+
+  prediction->update(
+    client_state->m_nDeltaTick,
+    client_state->m_nDeltaTick > 0,
+    client_state->last_command_ack,
+    client_state->lastoutgoingcommand + client_state->chokedcommands);
+}
 
 unsigned int crc32_process_byte(unsigned int crc, unsigned char value)
 {
@@ -87,7 +175,9 @@ void update_verified_user_cmd(int sequence_number, user_cmd* cmd)
 
 
 void client_create_move_hook(void* me, int sequence_number, float input_sample_frametime, bool active) {
-  client_create_move_original(me, sequence_number, input_sample_frametime, active);
+  if (!create_input_move(sequence_number, input_sample_frametime, active)) {
+    client_create_move_original(me, sequence_number, input_sample_frametime, active);
+  }
 
   if (cathook::core::is_detach_pending()) {
     cathook::core::service_detach_request();
@@ -101,6 +191,20 @@ void client_create_move_hook(void* me, int sequence_number, float input_sample_f
   auto* user_cmd = input->get_user_cmd(sequence_number);
   if (user_cmd == nullptr) {
     return;
+  }
+
+  refresh_prediction_state();
+  cat_bind::run();
+  automation::controller().on_create_move(user_cmd);
+
+  if (can_run_move_features(user_cmd)) {
+    Player* localplayer = entity_list->get_localplayer();
+    if (should_run_taunt_slide(localplayer)) {
+      user_cmd->buttons &= ~(IN_ATTACK | IN_ATTACK2 | IN_ATTACK3);
+    } else {
+      update_player_head_emoji_cache();
+      run_move_features(user_cmd);
+    }
   }
 
   if (!medic_automation::controller().should_suppress_random_crits()) {

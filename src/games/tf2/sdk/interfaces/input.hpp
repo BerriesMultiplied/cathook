@@ -39,6 +39,12 @@ public:
   static constexpr std::ptrdiff_t verified_commands_offset = 0x110;
   static constexpr int command_buffer_size = 90;
 
+  void create_move(int sequence_number, float input_sample_frametime, bool active) {
+    auto** vtable = *reinterpret_cast<void***>(this);
+    auto create_move_fn = reinterpret_cast<void (*)(void*, int, float, bool)>(vtable[3]);
+    create_move_fn(this, sequence_number, input_sample_frametime, active);
+  }
+
   auto commands() -> user_cmd* {
     return *reinterpret_cast<user_cmd**>(reinterpret_cast<std::uintptr_t>(this) + commands_offset);
   }

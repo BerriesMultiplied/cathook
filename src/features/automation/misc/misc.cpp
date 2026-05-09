@@ -691,6 +691,18 @@ bool request_match_queue(void* party_client, unsigned int queue_mode)
   return true;
 }
 
+bool cancel_match_queue(void* party_client, unsigned int queue_mode)
+{
+  initialize_party_client_api();
+  if (party_client == nullptr || g_party_client_api.request_leave_for_match == nullptr)
+  {
+    return false;
+  }
+
+  g_party_client_api.request_leave_for_match(party_client, queue_mode);
+  return true;
+}
+
 Entity* get_player_resource_entity()
 {
   if (entity_list == nullptr)
@@ -964,6 +976,26 @@ bool request_casual_queue()
   }
 
   g_party_client_api.request_queue_for_match(party_client, casual_match_group_default);
+  return true;
+}
+
+bool cancel_casual_queue()
+{
+  initialize_party_client_api();
+
+  if (g_party_client_api.get_party_client == nullptr ||
+      g_party_client_api.request_leave_for_match == nullptr)
+  {
+    return false;
+  }
+
+  auto* party_client = g_party_client_api.get_party_client();
+  if (party_client == nullptr)
+  {
+    return false;
+  }
+
+  g_party_client_api.request_leave_for_match(party_client, casual_match_group_default);
   return true;
 }
 
@@ -1929,6 +1961,7 @@ void automation_controller::run_queueing()
   const bool emit_debug_log = should_emit_queue_debug(next_debug_log_time);
   static bool queued_from_player_threshold = false;
   static bool leave_for_requeue_requested = false;
+  static bool cancel_queue_requested = false;
   static bool queued_once = false;
   static bool was_disconnected = false;
 
@@ -1944,6 +1977,7 @@ void automation_controller::run_queueing()
     queued_once = false;
     queued_from_player_threshold = false;
     leave_for_requeue_requested = false;
+    cancel_queue_requested = false;
     was_disconnected = false;
     queue_loading_start_time_ = 0.0f;
     return;
@@ -1980,6 +2014,10 @@ void automation_controller::run_queueing()
   bool in_match_queue = g_party_client_api.is_in_queue_for_match_group != nullptr &&
                         g_party_client_api.is_in_queue_for_match_group(party_client, queue_mode);
   const bool in_standby = is_in_standby_queue(party_client);
+  if (!in_match_queue)
+  {
+    cancel_queue_requested = false;
+  }
 
   if (is_loading)
   {
@@ -1988,13 +2026,20 @@ void automation_controller::run_queueing()
       queue_loading_start_time_ = global_vars->realtime;
     }
 
-    if (in_match_queue && g_party_client_api.request_leave_for_match != nullptr)
+    if (in_match_queue && !cancel_queue_requested)
     {
       log_queue_debug("loading screen active, leaving queued match group %u\n", queue_mode);
-      g_party_client_api.request_leave_for_match(party_client, queue_mode);
-      in_match_queue = false;
-      queued_from_player_threshold = false;
-      next_queue_action_time_ = global_vars->realtime + auto_queue_interval;
+      if (cancel_match_queue(party_client, queue_mode))
+      {
+        cancel_queue_requested = true;
+        in_match_queue = false;
+        queued_from_player_threshold = false;
+        next_queue_action_time_ = global_vars->realtime + auto_queue_interval;
+      }
+      else if (emit_debug_log)
+      {
+        log_queue_debug("loading screen active but request_leave_for_match is null\n");
+      }
     }
 
     if (config.misc.automation.auto_requeue &&
@@ -2082,17 +2127,17 @@ void automation_controller::run_queueing()
       was_disconnected ? 1 : 0);
   }
 
-  if (in_match_queue && queued_from_player_threshold && !player_threshold_requeue)
+  if (in_match_queue && in_game && !player_threshold_requeue && !cancel_queue_requested)
   {
-    if (g_party_client_api.request_leave_for_match != nullptr)
+    if (cancel_match_queue(party_client, queue_mode))
     {
-      log_queue_debug("player threshold cleared, leaving queued match group %u\n", queue_mode);
-      g_party_client_api.request_leave_for_match(party_client, queue_mode);
+      log_queue_debug("rq_if requirements not met, leaving queued match group %u\n", queue_mode);
+      cancel_queue_requested = true;
       next_queue_action_time_ = global_vars->realtime + auto_queue_interval;
     }
     else if (emit_debug_log)
     {
-      log_queue_debug("player threshold cleared but request_leave_for_match is null\n");
+      log_queue_debug("rq_if requirements not met but request_leave_for_match is null\n");
     }
     queued_from_player_threshold = false;
     return;
@@ -2109,6 +2154,7 @@ void automation_controller::run_queueing()
       if (request_match_queue(party_client, queue_mode))
       {
         queued_from_player_threshold = true;
+        cancel_queue_requested = false;
         queued_once = true;
         next_queue_action_time_ = global_vars->realtime + auto_queue_interval;
       }
@@ -2170,6 +2216,7 @@ void automation_controller::run_queueing()
   if (request_match_queue(party_client, queue_mode))
   {
     queued_from_player_threshold = false;
+    cancel_queue_requested = false;
     queued_once = true;
     was_disconnected = false;
     next_queue_action_time_ = global_vars->realtime + auto_queue_interval;

@@ -68,6 +68,7 @@ V  o o  V  file: src/cathook.cpp
 #include "games/tf2/sdk/interfaces/client_state.hpp"
 #include "games/tf2/sdk/interfaces/game_event_manager.hpp"
 #include "games/tf2/sdk/interfaces/file_system.hpp"
+#include "games/tf2/sdk/interfaces/mdl_cache.hpp"
 
 #include "libsigscan/libsigscan.h"
 #include "funchook/funchook.h"
@@ -1007,6 +1008,11 @@ bool initialize_game_runtime() {
   entity_list = (EntityList*)get_interface("./tf/bin/linux64/client.so", "VClientEntityList003");
   error_assert(entity_list == nullptr, "VClientEntityList003 is missing");
 
+  mdl_cache = (mdl_cache_interface*)get_interface("./bin/linux64/datacache.so", "MDLCache004");
+  if (mdl_cache == nullptr) {
+    print("MDLCache004 interface is missing; CreateMove will run without MDL cache lock\n");
+  }
+
   game_file_system = (file_system*)get_interface("./bin/linux64/filesystem_stdio.so", "VFileSystem022");
   if (game_file_system == nullptr) {
     game_file_system = (file_system*)get_interface("./bin/linux64/filesystem_steam.so", "VFileSystem022");
@@ -1054,6 +1060,16 @@ bool initialize_game_runtime() {
 
   in_cond_original = (bool (*)(void*, int))sigscan_module("client.so", sigs::in_cond);
   error_assert(in_cond_original == nullptr, "Failed to find InCond");
+
+  push_allow_bone_access_original =
+    reinterpret_cast<push_allow_bone_access_fn>(
+      sigscan_module("client.so", sigs::base_animating_push_allow_bone_access));
+  error_assert(push_allow_bone_access_original == nullptr, "Failed to find C_BaseAnimating::PushAllowBoneAccess");
+
+  pop_bone_access_original =
+    reinterpret_cast<pop_bone_access_fn>(
+      sigscan_module("client.so", sigs::base_animating_pop_bone_access));
+  error_assert(pop_bone_access_original == nullptr, "Failed to find C_BaseAnimating::PopBoneAccess");
  
   // VMT Function Hooks
   client_mode_vtable = *(void***)client_mode_interface;  
