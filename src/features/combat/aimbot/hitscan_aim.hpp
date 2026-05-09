@@ -556,6 +556,17 @@ inline bool hitscan_aim_trace_fallback(const aimbot_candidate& candidate,
       return false;
     }
 
+    if (candidate.backtrack) {
+      hitscan_aim_bounds bounds{};
+      bounds.valid = true;
+      bounds.mins = candidate.backtrack_mins;
+      bounds.maxs = candidate.backtrack_maxs;
+      return hitscan_aim_ray_hits_bounds_zone(
+        hitscan_aim_bounds_zone_for_hitbox(bounds, candidate.hitbox),
+        start_pos,
+        end_pos);
+    }
+
     return hitscan_aim_ray_hits_selected_area(candidate.player, candidate.hitbox, start_pos, end_pos);
   }
 
@@ -625,7 +636,7 @@ inline bool hitscan_aim_trace_candidate(Player* localplayer,
   }
 
   if (trace_world.entity != candidate.entity) {
-    const bool fallback_hit = (trace_world.entity == nullptr || nographics::should_use_aimbot_trace_fallback()) &&
+    const bool fallback_hit = (candidate.backtrack || trace_world.entity == nullptr || nographics::should_use_aimbot_trace_fallback()) &&
       hitscan_aim_trace_fallback(candidate, start_pos, end_pos);
     if (result != nullptr) {
       result->hit = fallback_hit;
