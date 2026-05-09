@@ -26,6 +26,7 @@ V  o o  V  file: src/core/ipc/ipc_client.cpp
 #include <atomic>
 #include <chrono>
 #include <charconv>
+#include <cstddef>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
@@ -66,6 +67,8 @@ std::thread ipc_worker{};
 std::atomic_bool ipc_worker_running = false;
 std::shared_mutex local_ipc_friends_mutex{};
 std::unordered_set<std::uint32_t> local_ipc_friends{};
+std::vector<pending_command> deferred_commands{};
+constexpr std::size_t max_deferred_commands = command_ring_size;
 
 [[nodiscard]] auto textmode_build() -> bool
 {
@@ -611,12 +614,75 @@ void collect_commands(std::vector<pending_command>& commands_out)
   last_command = newest_command;
 }
 
+[[nodiscard]] auto executable_command(const pending_command& command) -> bool
+{
+  return (command.type == commands::execute_client_cmd || command.type == commands::execute_client_cmd_long) &&
+         !command.data.empty();
+}
+
+void defer_commands(const std::vector<pending_command>& commands_to_defer)
+{
+  if (commands_to_defer.empty())
+  {
+    return;
+  }
+
+  deferred_commands.reserve(std::min(max_deferred_commands, deferred_commands.size() + commands_to_defer.size()));
+  for (const auto& command : commands_to_defer)
+  {
+    if (executable_command(command))
+    {
+      deferred_commands.emplace_back(command);
+    }
+  }
+
+  if (deferred_commands.size() > max_deferred_commands)
+  {
+    deferred_commands.erase(
+      deferred_commands.begin(),
+      deferred_commands.begin() + static_cast<std::ptrdiff_t>(deferred_commands.size() - max_deferred_commands));
+  }
+}
+
+void prepend_deferred_commands(std::vector<pending_command>& commands_to_process)
+{
+  if (deferred_commands.empty())
+  {
+    return;
+  }
+
+  std::vector<pending_command> ordered_commands{};
+  ordered_commands.reserve(deferred_commands.size() + commands_to_process.size());
+  for (auto& command : deferred_commands)
+  {
+    ordered_commands.emplace_back(std::move(command));
+  }
+  deferred_commands.clear();
+
+  for (auto& command : commands_to_process)
+  {
+    ordered_commands.emplace_back(std::move(command));
+  }
+
+  commands_to_process = std::move(ordered_commands);
+}
+
 void process_collected_commands(const std::vector<pending_command>& commands_to_process)
 {
+  if (commands_to_process.empty())
+  {
+    return;
+  }
+
+  if (engine == nullptr)
+  {
+    defer_commands(commands_to_process);
+    return;
+  }
+
   for (const auto& command : commands_to_process)
   {
-    if ((command.type == commands::execute_client_cmd || command.type == commands::execute_client_cmd_long) &&
-      engine != nullptr && !command.data.empty())
+    if (executable_command(command))
     {
       engine->client_cmd_unrestricted(command.data.c_str());
     }
@@ -640,6 +706,7 @@ void service_ipc_locked(bool full_telemetry, bool process_commands)
   {
     collect_commands(commands_to_process);
   }
+  prepend_deferred_commands(commands_to_process);
 
   {
     try_scoped_lock lock{ipc_state};
@@ -669,9 +736,9 @@ void ipc_worker_main()
       std::lock_guard lock{ipc_mutex};
       if (ipc_enabled.load(std::memory_order_acquire))
       {
-        // The textmode worker keeps early IPC state alive, but Source client
-        // commands must be executed from the game thread via tick().
-        service_ipc_locked(false, false);
+        // Textmode clients may sit in the menu without FrameStageNotify ticks,
+        // so the worker must drain IPC commands as well as heartbeats.
+        service_ipc_locked(false, true);
       }
     }
 
