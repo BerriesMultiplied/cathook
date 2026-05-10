@@ -80,6 +80,7 @@ V  o o  V  file: src/cathook.cpp
 #include "core/hooks/hooks.cpp"
 #include "core/ipc/ipc_client.cpp"
 #include "core/player_manager.cpp"
+#include "features/combat/backtrack/backtrack.cpp"
 #include "features/combat/tickbase/tickbase.cpp"
 #include "features/combat/anti_aim/anti_aim.cpp"
 #include "core/hooks/cl_read_packets.cpp"
@@ -543,6 +544,8 @@ bool unload_module_runtime() {
   cathook::core::players::shutdown();
 
   print("Unhooking VMT functions\n");
+  backtrack::restore_net_channel_hook();
+
   if (client_mode_vtable != nullptr && client_mode_create_move_original != nullptr && !write_to_table(client_mode_vtable, 22, (void*)client_mode_create_move_original)) {
     print("ClientMode::CreateMove failed to restore hook\n");
   }
@@ -612,6 +615,7 @@ bool unload_module_runtime() {
   }
 
   nographics::shutdown();
+  backtrack::clear();
   player_model_glow::shutdown();
 
   print("Unhooking Non-VMT functions\n");

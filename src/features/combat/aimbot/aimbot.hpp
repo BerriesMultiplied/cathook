@@ -88,6 +88,5 @@ inline bool aimbot_autoscope_scoped_state(Player* localplayer) {
 bool aimbot(user_cmd* user_cmd, Vec3 original_view_angles);
 bool aimbot_requested_shot();
 void aimbot_apply_walk_to_target(Player* localplayer, user_cmd* user_cmd);
-void aimbot_record_backtrack_player(Player* player);
 
 #endif

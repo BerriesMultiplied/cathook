@@ -1345,11 +1345,13 @@ static void draw_aimbot_content() {
 }
 
 static void draw_crits_content();
+static void draw_backtrack_content();
 
 static void draw_combat_tab() {
   enum combat_page_id
   {
     combat_page_aimbot,
+    combat_page_backtrack,
     combat_page_crits
   };
 
@@ -1358,6 +1360,10 @@ static void draw_combat_tab() {
   cat_menu::begin_tab_strip("##combat_subtabs", cat_menu::k_subtab_strip_height, false, true, cat_menu::k_tab_strip_padding_x, false);
   if (cat_menu::subtab_button("Aimbot", combat_subtab == combat_page_aimbot)) {
     combat_subtab = combat_page_aimbot;
+  }
+  ImGui::SameLine(0.0f, 0.0f);
+  if (cat_menu::subtab_button("Backtrack", combat_subtab == combat_page_backtrack)) {
+    combat_subtab = combat_page_backtrack;
   }
   ImGui::SameLine(0.0f, 0.0f);
   if (cat_menu::subtab_button("Crits", combat_subtab == combat_page_crits)) {
@@ -1370,10 +1376,31 @@ static void draw_combat_tab() {
     case combat_page_aimbot:
       draw_aimbot_content();
       break;
+    case combat_page_backtrack:
+      draw_backtrack_content();
+      break;
     case combat_page_crits:
       draw_crits_content();
       break;
   }
+}
+
+static void draw_backtrack_content() {
+  cat_menu::begin_flow_layout("backtrack_layout", 3);
+  cat_menu::flow_panel("Backtrack", 0, 166.0f, [&]() {
+    cat_menu::checkbox("Enable", &config.backtrack.enabled);
+    cat_menu::checkbox("Aimbot support", &config.backtrack.aimbot);
+    cat_menu::slider_int("Window", &config.backtrack.window_ms, 0, 1000, "%d ms");
+  });
+  cat_menu::flow_panel("Network", 1, 166.0f, [&]() {
+    cat_menu::slider_float("Fake latency", &config.backtrack.fake_latency_ms, 0.0f, 1000.0f, "%.0f ms");
+    cat_menu::checkbox("Fake interp", &config.backtrack.fake_interp);
+  });
+  cat_menu::flow_panel("Visualizer", 2, 166.0f, [&]() {
+    cat_menu::checkbox("Visualizer", &config.backtrack.visualizer);
+    cat_menu::slider_int("Ticks", &config.backtrack.visualizer_ticks, 1, 80);
+  });
+  cat_menu::end_flow_layout();
 }
 
 static void draw_crits_content() {

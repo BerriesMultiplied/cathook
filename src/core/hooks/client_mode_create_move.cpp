@@ -23,6 +23,7 @@ V  o o  V  file: src/core/hooks/client_mode_create_move.cpp
 
 #include "features/menu/config.hpp"
 
+#include "features/combat/backtrack/backtrack.hpp"
 #include "features/combat/aimbot/aimbot.cpp"
 #include "features/combat/random_crits/random_crits.cpp"
 #include "features/movement/bhop/bhop.cpp"
@@ -116,6 +117,7 @@ static bool should_run_taunt_slide(Player* localplayer) {
 
 static bool run_move_features(user_cmd* user_cmd) {
   clear_aimbot_active_target();
+  backtrack::on_create_move(user_cmd);
   const Vec3 original_view_angles = user_cmd->view_angles;
 
   force_aimbot_autoreload_convar();

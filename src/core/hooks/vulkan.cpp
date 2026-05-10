@@ -23,6 +23,7 @@ V  o o  V  file: src/core/hooks/vulkan.cpp
 #include "games/tf2/sdk/interfaces/engine.hpp"
 #include "games/tf2/sdk/interfaces/surface.hpp"
 
+#include "features/combat/backtrack/backtrack.hpp"
 #include "features/visuals/esp/esp.cpp"
 #include "features/visuals/hitmarker.hpp"
 #include "features/visuals/spectator_list.hpp"
@@ -607,6 +608,7 @@ static void draw_imgui_overlay()
   draw_aimbot_fov_imgui();
   draw_thirdperson_crosshair_imgui();
   draw_players_imgui();
+  backtrack::draw_visualizer_imgui();
   draw_projectile_debug_imgui();
   hitmarker::draw_imgui();
   navbot::controller().draw_imgui();

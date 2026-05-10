@@ -224,6 +224,13 @@ void config_store::import_config(const Config& config)
     set_bool("aimbot.scoped_only", config.aimbot.scoped_only);
     set_bool("aimbot.wait_for_headshot", config.aimbot.wait_for_headshot);
     set_bool("aimbot.ignore_friends", config.aimbot.ignore_friends);
+    set_bool("backtrack.enabled", config.backtrack.enabled);
+    set_bool("backtrack.aimbot", config.backtrack.aimbot);
+    set_float("backtrack.fake_latency_ms", config.backtrack.fake_latency_ms);
+    set_bool("backtrack.fake_interp", config.backtrack.fake_interp);
+    set_int("backtrack.window_ms", config.backtrack.window_ms);
+    set_bool("backtrack.visualizer", config.backtrack.visualizer);
+    set_int("backtrack.visualizer_ticks", config.backtrack.visualizer_ticks);
 #if defined(CATHOOK_TEXTMODE) && CATHOOK_TEXTMODE
     set_bool("ipc.enabled", true);
     set_bool("ipc.auto_connect", true);
@@ -577,6 +584,22 @@ void config_store::export_config(Config& config) const
     config.aimbot.scoped_only = get_bool("aimbot.scoped_only", config.aimbot.scoped_only);
     config.aimbot.wait_for_headshot = get_bool("aimbot.wait_for_headshot", config.aimbot.wait_for_headshot);
     config.aimbot.ignore_friends = get_bool("aimbot.ignore_friends", config.aimbot.ignore_friends);
+    config.backtrack.enabled = get_bool("backtrack.enabled", config.backtrack.enabled);
+    config.backtrack.aimbot = get_bool("backtrack.aimbot", config.backtrack.aimbot);
+    config.backtrack.fake_latency_ms = std::clamp(
+        get_float("backtrack.fake_latency_ms", config.backtrack.fake_latency_ms),
+        0.0f,
+        1000.0f);
+    config.backtrack.fake_interp = get_bool("backtrack.fake_interp", config.backtrack.fake_interp);
+    config.backtrack.window_ms = std::clamp(
+        get_int("backtrack.window_ms", config.backtrack.window_ms),
+        0,
+        1000);
+    config.backtrack.visualizer = get_bool("backtrack.visualizer", config.backtrack.visualizer);
+    config.backtrack.visualizer_ticks = std::clamp(
+        get_int("backtrack.visualizer_ticks", config.backtrack.visualizer_ticks),
+        1,
+        80);
     config.ipc.enabled = get_bool("ipc.enabled", config.ipc.enabled);
     config.ipc.auto_connect = get_bool("ipc.auto_connect", config.ipc.auto_connect);
     config.ipc.auto_ignore_local_bots = get_bool("ipc.auto_ignore_local_bots", config.ipc.auto_ignore_local_bots);

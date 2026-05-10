@@ -29,6 +29,7 @@ V  o o  V  file: src/features/combat/aimbot/aimbot.cpp
 #include "libsigscan/libsigscan.h"
 
 #include "features/automation/nographics/nographics.hpp"
+#include "features/combat/backtrack/backtrack.hpp"
 
 #include "hitscan_aim.hpp"
 #include "melee_aim.hpp"
@@ -62,37 +63,6 @@ struct aimbot_scan_debug_stats {
   int candidates_rejected = 0;
 };
 
-constexpr int aimbot_backtrack_max_entities = 65;
-constexpr int aimbot_backtrack_max_records = 48;
-constexpr int aimbot_backtrack_max_points = 10;
-constexpr float aimbot_backtrack_max_age = 0.2f;
-
-struct aimbot_backtrack_point {
-  bool valid = false;
-  int bone = 0;
-  int hitbox = -1;
-  int priority = INT_MAX;
-  Vec3 position{};
-};
-
-struct aimbot_backtrack_record {
-  bool valid = false;
-  Player* player = nullptr;
-  int ent_index = 0;
-  float sim_time = 0.0f;
-  float curtime = 0.0f;
-  Vec3 origin{};
-  hitscan_aim_bounds bounds{};
-  std::array<aimbot_backtrack_point, aimbot_backtrack_max_points> points{};
-  int point_count = 0;
-};
-
-struct aimbot_backtrack_player_records {
-  int ent_index = 0;
-  int record_count = 0;
-  std::array<aimbot_backtrack_record, aimbot_backtrack_max_records> records{};
-};
-
 struct aimbot_hitscan_fire_solution {
   bool ready = false;
   bool spread_compensated = false;
@@ -121,7 +91,6 @@ struct aimbot_auto_shoot_state {
 };
 
 aimbot_scan_debug_stats g_aimbot_scan_debug{};
-std::array<aimbot_backtrack_player_records, aimbot_backtrack_max_entities> g_aimbot_backtrack_records{};
 aimbot_auto_shoot_state g_aimbot_auto_shoot{};
 
 float aimbot_actual_frame_time();
@@ -134,170 +103,10 @@ void aimbot_clear_walk_to_target()
   g_aimbot_walk_last_progress_time = 0.0f;
 }
 
-constexpr std::array<int, aimbot_backtrack_max_points> aimbot_backtrack_hitbox_ids = {
-  aim_hitbox_head,
-  aim_hitbox_spine_3,
-  aim_hitbox_spine_2,
-  aim_hitbox_spine_1,
-  aim_hitbox_spine_0,
-  aim_hitbox_pelvis,
-  aim_hitbox_left_upper_arm,
-  aim_hitbox_right_upper_arm,
-  aim_hitbox_left_thigh,
-  aim_hitbox_right_thigh
-};
-
 uint32_t aimbot_hitscan_effective_hitbox_mask(Weapon* weapon)
 {
   (void)weapon;
   return hitscan_aim_configured_hitbox_mask();
-}
-
-float aimbot_backtrack_teleport_distance_sqr()
-{
-  static Convar* sv_lagcompensation_teleport_dist = nullptr;
-  if (sv_lagcompensation_teleport_dist == nullptr && convar_system != nullptr) {
-    sv_lagcompensation_teleport_dist = convar_system->find_var("sv_lagcompensation_teleport_dist");
-  }
-
-  const float distance = sv_lagcompensation_teleport_dist != nullptr
-    ? std::max(sv_lagcompensation_teleport_dist->get_float(), 1.0f)
-    : 64.0f;
-  return distance * distance;
-}
-
-bool aimbot_backtrack_record_valid(const aimbot_backtrack_record& record, Player* player)
-{
-  if (!record.valid ||
-      record.player != player ||
-      record.ent_index <= 0 ||
-      record.point_count <= 0 ||
-      !record.bounds.valid ||
-      global_vars == nullptr) {
-    return false;
-  }
-
-  const float age = global_vars->curtime - record.curtime;
-  return std::isfinite(age) && age >= 0.0f && age <= aimbot_backtrack_max_age;
-}
-
-bool aimbot_build_backtrack_record(Player* player, aimbot_backtrack_record* record)
-{
-  if (player == nullptr || record == nullptr || global_vars == nullptr || player->is_dormant() || !player->is_alive()) {
-    return false;
-  }
-
-  const int ent_index = player->get_index();
-  if (ent_index <= 0 || ent_index >= aimbot_backtrack_max_entities) {
-    return false;
-  }
-
-  record->valid = false;
-  record->player = player;
-  record->ent_index = ent_index;
-  record->sim_time = player->get_simulation_time();
-  record->curtime = global_vars->curtime;
-  record->origin = player->get_origin();
-  record->bounds = hitscan_aim_get_player_bounds(player, 1.5f);
-  record->point_count = 0;
-  record->points = {};
-
-  if (!std::isfinite(record->sim_time) || record->sim_time <= 0.0f || !record->bounds.valid) {
-    return false;
-  }
-
-  const model_t* model = player->get_model();
-  if (model == nullptr || model_info == nullptr) {
-    return false;
-  }
-
-  studio_hdr* hdr = model_info->get_studio_model(model);
-  studio_hitbox_set* hitbox_set = hdr != nullptr ? hdr->hitbox_set(player->get_hitbox_set()) : nullptr;
-  if (hitbox_set == nullptr) {
-    return false;
-  }
-
-  matrix_3x4 bone_to_world[128]{};
-  if (!player->setup_bones(bone_to_world, 128, 0x100, record->sim_time)) {
-    return false;
-  }
-
-  const uint32_t hitbox_mask = hitscan_aim_configured_hitbox_mask();
-  for (const int hitbox_id : aimbot_backtrack_hitbox_ids) {
-    if (!aimbot_hitbox_matches_mask(hitbox_id, hitbox_mask) || hitbox_id >= hitbox_set->num_hitboxes) {
-      continue;
-    }
-
-    studio_box* hitbox = hitbox_set->hitbox(hitbox_id);
-    if (hitbox == nullptr || hitbox->bone < 0 || hitbox->bone >= 128) {
-      continue;
-    }
-
-    const Vec3 local_center = (hitbox->bbmin + hitbox->bbmax) * 0.5f;
-    const Vec3 position = aimbot_transform_point(local_center, bone_to_world[hitbox->bone]);
-    if (!aimbot_vec3_is_finite(position)) {
-      continue;
-    }
-
-    auto& point = record->points[record->point_count];
-    point.valid = true;
-    point.bone = hitbox->bone;
-    point.hitbox = hitbox_id;
-    point.priority = aimbot_hitbox_priority(nullptr, player, nullptr, hitbox_id);
-    point.position = position;
-    ++record->point_count;
-
-    if (record->point_count >= aimbot_backtrack_max_points) {
-      break;
-    }
-  }
-
-  record->valid = record->point_count > 0;
-  return record->valid;
-}
-
-bool aimbot_backtrack_ray_hits_record(const aimbot_backtrack_record& record,
-  int hitbox_id,
-  const Vec3& start_pos,
-  const Vec3& end_pos)
-{
-  if (!record.bounds.valid) {
-    return false;
-  }
-
-  if (hitbox_id < 0) {
-    return aimbot_segment_intersects_aabb(start_pos, end_pos, record.bounds.mins, record.bounds.maxs);
-  }
-
-  return hitscan_aim_ray_hits_bounds_zone(
-    hitscan_aim_bounds_zone_for_hitbox(record.bounds, hitbox_id),
-    start_pos,
-    end_pos);
-}
-
-bool aimbot_backtrack_point_visible(Player* localplayer,
-  const aimbot_backtrack_record& record,
-  const aimbot_backtrack_point& point)
-{
-  if (localplayer == nullptr || !point.valid || !aimbot_vec3_is_finite(point.position)) {
-    return false;
-  }
-
-  const Vec3 start_pos = localplayer->get_shoot_pos();
-  if (!aimbot_vec3_is_finite(start_pos) || !hitscan_aim_world_clear(start_pos, point.position)) {
-    return false;
-  }
-
-  const Vec3 bullet_angles = aimbot_calculate_angles_to_position(start_pos, point.position);
-  Vec3 forward{};
-  angle_vectors(bullet_angles, &forward, nullptr, nullptr);
-  if (!aimbot_vec3_is_finite(forward)) {
-    return false;
-  }
-
-  const float target_distance = distance_3d(start_pos, point.position);
-  const Vec3 end_pos = start_pos + (forward * std::max(target_distance + 64.0f, 128.0f));
-  return aimbot_backtrack_ray_hits_record(record, point.hitbox, start_pos, end_pos);
 }
 
 bool aimbot_init_random()
@@ -1086,40 +895,6 @@ void aimbot_request_walk_to_target(Player* localplayer, Weapon* weapon, const ai
 
 }
 
-void aimbot_record_backtrack_player(Player* player)
-{
-  aimbot_backtrack_record record{};
-  if (!aimbot_build_backtrack_record(player, &record)) {
-    return;
-  }
-
-  auto& history = g_aimbot_backtrack_records[record.ent_index];
-  history.ent_index = record.ent_index;
-
-  if (history.record_count > 0) {
-    const aimbot_backtrack_record& last = history.records[0];
-    if (last.valid &&
-        std::fabs(last.sim_time - record.sim_time) <= 0.0001f &&
-        aimbot_distance_squared(last.origin, record.origin) <= 0.0001f) {
-      return;
-    }
-
-    const Vec3 delta = record.origin - last.origin;
-    const float delta_sqr = (delta.x * delta.x) + (delta.y * delta.y);
-    if (delta_sqr > aimbot_backtrack_teleport_distance_sqr()) {
-      history.record_count = 0;
-    }
-  }
-
-  const int shift_count = std::min(history.record_count, aimbot_backtrack_max_records - 1);
-  for (int index = shift_count; index > 0; --index) {
-    history.records[index] = history.records[index - 1];
-  }
-
-  history.records[0] = record;
-  history.record_count = std::min(history.record_count + 1, aimbot_backtrack_max_records);
-}
-
 static bool aimbot_should_relax_final_trace()
 {
   if (nographics::should_use_aimbot_trace_fallback()) {
@@ -1220,92 +995,6 @@ static aimbot_candidate aimbot_find_hitscan_candidate(Player* localplayer,
   return candidate;
 }
 
-static aimbot_candidate aimbot_find_hitscan_backtrack_candidate(Player* localplayer,
-  Weapon* weapon,
-  Player* player,
-  const Vec3& original_view_angles) {
-  if (localplayer == nullptr || weapon == nullptr || player == nullptr || global_vars == nullptr) {
-    return {};
-  }
-
-  const int ent_index = player->get_index();
-  if (ent_index <= 0 || ent_index >= aimbot_backtrack_max_entities) {
-    return {};
-  }
-
-  const auto& history = g_aimbot_backtrack_records[ent_index];
-  if (history.record_count <= 1) {
-    return {};
-  }
-
-  const uint32_t hitbox_mask = aimbot_hitscan_effective_hitbox_mask(weapon);
-  const float current_sim_time = player->get_simulation_time();
-  const Vec3 shoot_pos = localplayer->get_shoot_pos();
-  aimbot_candidate best_candidate{};
-  int best_priority = INT_MAX;
-
-  for (int record_index = 0; record_index < history.record_count; ++record_index) {
-    const aimbot_backtrack_record& record = history.records[record_index];
-    if (!aimbot_backtrack_record_valid(record, player)) {
-      continue;
-    }
-
-    if (std::fabs(record.sim_time - current_sim_time) <= 0.0001f) {
-      continue;
-    }
-
-    const float sim_age = current_sim_time - record.sim_time;
-    if (!std::isfinite(sim_age) || sim_age <= 0.0f || sim_age > aimbot_backtrack_max_age) {
-      continue;
-    }
-
-    for (int point_index = 0; point_index < record.point_count; ++point_index) {
-      const aimbot_backtrack_point& point = record.points[point_index];
-      if (!point.valid || !aimbot_hitbox_matches_mask(point.hitbox, hitbox_mask)) {
-        continue;
-      }
-
-      if (!aimbot_backtrack_point_visible(localplayer, record, point)) {
-        continue;
-      }
-
-      const Vec3 aim_angles = aimbot_calculate_angles_to_position(shoot_pos, point.position);
-      const Vec3 command_angles = hitscan_aim_command_angles(localplayer, aim_angles);
-      const float fov = aimbot_calculate_fov(command_angles, original_view_angles);
-
-      if (best_candidate.entity != nullptr &&
-          (point.priority > best_priority ||
-            (point.priority == best_priority && fov >= best_candidate.fov))) {
-        continue;
-      }
-
-      aimbot_candidate candidate{};
-      candidate.entity = player;
-      candidate.player = player;
-      candidate.preferred = has_aimbot_preference(player);
-      candidate.bone = point.bone;
-      candidate.hitbox = point.hitbox;
-      candidate.aim_position = point.position;
-      candidate.aim_angles = aim_angles;
-      candidate.fov = fov;
-      candidate.distance = distance_3d(localplayer->get_origin(), record.origin);
-      candidate.health = player->get_health();
-      candidate.simulation_time = record.sim_time;
-      candidate.tick_count = local_prediction_time_to_ticks(record.sim_time + local_prediction_interp_time());
-      candidate.command_angles = command_angles;
-      candidate.backtrack_mins = record.bounds.mins;
-      candidate.backtrack_maxs = record.bounds.maxs;
-      candidate.visible = true;
-      candidate.backtrack = true;
-
-      best_candidate = candidate;
-      best_priority = point.priority;
-    }
-  }
-
-  return best_candidate;
-}
-
 static aimbot_candidate aimbot_find_best_candidate(Player* localplayer, Weapon* weapon, user_cmd* user_cmd, const Vec3& original_view_angles) {
   aimbot_candidate best_candidate{};
   aimbot_candidate best_ready_hitscan_candidate{};
@@ -1334,11 +1023,12 @@ static aimbot_candidate aimbot_find_best_candidate(Player* localplayer, Weapon* 
           player,
           original_view_angles,
           relaxed_hitscan_selection);
-        const aimbot_candidate backtrack_candidate = aimbot_find_hitscan_backtrack_candidate(
+        const aimbot_candidate backtrack_candidate = backtrack::find_hitscan_candidate(
           localplayer,
           weapon,
           player,
-          original_view_angles);
+          original_view_angles,
+          has_aimbot_preference(player));
         if (aimbot_candidate_better(backtrack_candidate, candidate)) {
           candidate = backtrack_candidate;
         }

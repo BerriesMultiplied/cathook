@@ -130,6 +130,16 @@ struct random_crits_config {
   int seed_scan = 8192;
 };
 
+struct backtrack_config {
+  bool enabled = true;
+  bool aimbot = true;
+  float fake_latency_ms = 0.0f;
+  bool fake_interp = false;
+  int window_ms = 200;
+  bool visualizer = false;
+  int visualizer_ticks = 16;
+};
+
 struct ipc_config {
   bool enabled = true;
   bool auto_connect = true;
@@ -598,6 +608,7 @@ struct Debug {
 
 struct Config {
   Aim aimbot;
+  backtrack_config backtrack;
   ipc_config ipc;
   random_crits_config random_crits;
   Esp esp;
