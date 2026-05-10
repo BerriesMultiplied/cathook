@@ -564,6 +564,44 @@ function ensure_cathook_config_access(log) {
     cathook_configs_ready = true;
 }
 
+function rm_path_sync(target_path, options = {}) {
+    const force = Boolean(options.force);
+    const recursive = Boolean(options.recursive);
+
+    if (typeof fs.rmSync === 'function') {
+        fs.rmSync(target_path, options);
+        return;
+    }
+
+    let status = null;
+    try {
+        status = fs.lstatSync(target_path);
+    } catch (error) {
+        if (force && error.code === 'ENOENT')
+            return;
+        throw error;
+    }
+
+    if (status.isDirectory() && !status.isSymbolicLink()) {
+        if (!recursive)
+            fs.rmdirSync(target_path);
+        else {
+            for (const entry of fs.readdirSync(target_path))
+                rm_path_sync(path.join(target_path, entry), { recursive: true, force: force });
+            fs.rmdirSync(target_path);
+        }
+        return;
+    }
+
+    try {
+        fs.unlinkSync(target_path);
+    } catch (error) {
+        if (force && error.code === 'ENOENT')
+            return;
+        throw error;
+    }
+}
+
 function copy_steam_seed(source_path, target_path, is_root = true) {
     const skip_entries = new Set(['appcache', 'config', 'logs', 'steamapps', 'steamapps_old', 'userdata']);
 
@@ -583,7 +621,7 @@ function copy_steam_seed(source_path, target_path, is_root = true) {
             throw error;
         }
 
-        fs.rmSync(target_entry, { recursive: true, force: true });
+        rm_path_sync(target_entry, { recursive: true, force: true });
         try {
             if (source_stat.isSymbolicLink()) {
                 fs.symlinkSync(fs.readlinkSync(source_entry), target_entry);
@@ -616,7 +654,7 @@ function ensure_directory_not_symlink(directory_path) {
     try {
         const status = fs.lstatSync(directory_path);
         if (status.isSymbolicLink() || !status.isDirectory())
-            fs.rmSync(directory_path, { recursive: true, force: true });
+            rm_path_sync(directory_path, { recursive: true, force: true });
     } catch (error) {
         if (error.code !== 'ENOENT')
             throw error;
@@ -901,7 +939,7 @@ class Bot extends EventEmitter {
             const status = fs.lstatSync(SHARED_STEAMAPPS);
             if (status.isSymbolicLink()) {
                 const current_target = fs.readlinkSync(SHARED_STEAMAPPS);
-                fs.rmSync(SHARED_STEAMAPPS, { force: true });
+                rm_path_sync(SHARED_STEAMAPPS, { force: true });
                 this.log(`Replacing ${SHARED_STEAMAPPS} symlink (${current_target}) with a bind mount to ${real_source_path}`);
             } else if (steamapps_tf2_ready(SHARED_STEAMAPPS)) {
                 return true;
@@ -984,7 +1022,7 @@ class Bot extends EventEmitter {
         if (!steam_root_ready(target_path)) {
             if (fs.existsSync(target_path)) {
                 this.log(`Replacing incomplete bot Steam install at ${target_path}`);
-                fs.rmSync(target_path, { recursive: true, force: true });
+                rm_path_sync(target_path, { recursive: true, force: true });
             }
             this.log(`Seeding Steam client into bot home from ${source_path} to ${target_path}`);
             copy_steam_seed(source_path, target_path);
@@ -1007,7 +1045,7 @@ class Bot extends EventEmitter {
             try {
                 const status = fs.lstatSync(link_path);
                 if (!status.isSymbolicLink() || fs.readlinkSync(link_path) !== link_target)
-                    fs.rmSync(link_path, { recursive: true, force: true });
+                    rm_path_sync(link_path, { recursive: true, force: true });
             } catch (error) {
                 if (error.code !== 'ENOENT')
                     throw error;
@@ -1202,7 +1240,7 @@ class Bot extends EventEmitter {
 
         try {
             ensure_directory_not_symlink(steam_dir);
-            fs.rmSync(target_path, { recursive: true, force: true });
+            rm_path_sync(target_path, { recursive: true, force: true });
             copy_directory_contents(source_path, target_path);
             chown_tree(target_path, USER.uid, USER.uid);
             if (!fs.existsSync(path.join(target_path, 'steamclient.so')))
@@ -1300,7 +1338,7 @@ class Bot extends EventEmitter {
                 if (removed_paths.has(cache_path))
                     continue;
 
-                fs.rmSync(cache_path, { recursive: true, force: true });
+                rm_path_sync(cache_path, { recursive: true, force: true });
                 removed_paths.add(cache_path);
             } catch (error) {
                 this.log(`Failed to clear Steam webhelper cache ${cache_path}: ${error.message}`);
@@ -1558,6 +1596,20 @@ class Bot extends EventEmitter {
             .replace("%HOME%", self.home.replace(/"/g, '\\"'))
             .replace("%STEAM%", steambin),
             self.spawnOptions);
+        self.procFirejailSteam.on('error', (error) => {
+            self.log(`[ERROR] Failed to launch Steam/firejail: ${error.message}`);
+            self.shouldRun = false;
+            self.shouldRestart = false;
+            self.isSteamWorking = false;
+            self.steamClientInitialized = false;
+            delete self.procFirejailSteam;
+        });
+        self.procFirejailSteam.stdout.on('error', (error) => {
+            self.log(`[ERROR] Steam stdout error: ${error.message}`);
+        });
+        self.procFirejailSteam.stderr.on('error', (error) => {
+            self.log(`[ERROR] Steam stderr error: ${error.message}`);
+        });
         self.logSteam = fs.createWriteStream('./logs/' + self.name + '.steam.log');
         self.logSteam.on('error', (err) => { self.log(`error on logSteam pipe: ${err}`) });
         self.procFirejailSteam.stdout.pipe(self.logSteam);
@@ -1601,6 +1653,9 @@ class Bot extends EventEmitter {
                     const tail = new Tail(log_path);
                     tail.on('line', (data) => {
                         processErrorLogs.bind(this)(data);
+                    });
+                    tail.on('error', (error) => {
+                        self.log(`[ERROR] Steam log tail failed for ${log_path}: ${error.message}`);
                     });
                     tail_steam_err_logs.push(tail);
                     steam_log_listener_paths.add(log_path);
@@ -1712,6 +1767,18 @@ class Bot extends EventEmitter {
             .replace("%DISPLAY%", BOT_DISPLAY)
             .replace("%XAUTHORITY%", bash_double_quote_escape(self.xauthorityPath)),
             [], self.spawnOptions);
+        self.procFirejailGame.on('error', (error) => {
+            self.log(`[ERROR] Failed to launch TF2/firejail: ${error.message}`);
+            self.shouldRestart = true;
+            self.removeGamePreloadLibrary();
+            delete self.procFirejailGame;
+        });
+        self.procFirejailGame.stdout.on('error', (error) => {
+            self.log(`[ERROR] Game stdout error: ${error.message}`);
+        });
+        self.procFirejailGame.stderr.on('error', (error) => {
+            self.log(`[ERROR] Game stderr error: ${error.message}`);
+        });
         self.logGame = fs.createWriteStream('./logs/' + self.name + '.game.log');
         self.logGame.on('error', (err) => { self.log(`error on logGame pipe: ${err}`) });
         self.procFirejailGame.stdout.pipe(self.logGame);
@@ -1722,7 +1789,9 @@ class Bot extends EventEmitter {
     }
 
     handleSteamExit(code, signal) {
-        this.log(`Steam (${this.procFirejailSteam.pid}) exited with code ${code}, signal ${signal}`);
+        const steam_process = this.procFirejailSteam;
+        const launcher_pid = steam_process ? steam_process.pid : 0;
+        this.log(`Steam (${launcher_pid}) exited with code ${code}, signal ${signal}`);
         const steam_runtime = this.time_steam_launch_started ? Date.now() - this.time_steam_launch_started : 0;
         const steam_log_tail = log_file_tail('./logs/' + this.name + '.steam.log', 25);
         if (steam_log_tail)
@@ -1754,7 +1823,8 @@ class Bot extends EventEmitter {
         delete this.procFirejailSteam;
     }
     handleGameExit(code, signal) {
-        const launcher_pid = this.procFirejailGame.pid;
+        const game_process = this.procFirejailGame;
+        const launcher_pid = game_process ? game_process.pid : 0;
         const game_pid = this.gamePid;
         this.log(`Game (${launcher_pid}) exited with code ${code}, signal ${signal}`);
         const game_log_tail = log_file_tail('./logs/' + this.name + '.game.log', 25);

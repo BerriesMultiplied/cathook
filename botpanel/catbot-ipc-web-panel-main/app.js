@@ -7,6 +7,29 @@ const fs = require('fs');
 const stoppable = require("stoppable");
 
 const PORT = Number.parseInt(process.env.CAT_IPC_PORT || '7655', 10);
+const crash_log_path = path.join(__dirname, 'logs', 'main.crash.log');
+
+function format_process_error(kind, error) {
+    const detail = error && error.stack ? error.stack : String(error);
+    return `[${new Date().toISOString()}] ${kind}\n${detail}\n\n`;
+}
+
+function log_process_error(kind, error) {
+    const text = format_process_error(kind, error);
+    try {
+        fs.mkdirSync(path.dirname(crash_log_path), { recursive: true });
+        fs.appendFileSync(crash_log_path, text);
+    } catch (log_error) { }
+    console.error(text.trimEnd());
+}
+
+process.on('uncaughtException', (error) => {
+    log_process_error('uncaught exception', error);
+});
+
+process.on('unhandledRejection', (reason) => {
+    log_process_error('unhandled rejection', reason);
+});
 
 const npid = require('npid');
 try {
@@ -84,6 +107,9 @@ const sauce_watcher = fs.watch('/tmp', (eventType, filename) => {
         }
     }
 })
+sauce_watcher.on('error', (error) => {
+    log_process_error('/tmp watcher error', error);
+});
 
 process.on("SIGINT", function () {
     server.stop();
