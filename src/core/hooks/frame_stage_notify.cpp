@@ -77,16 +77,16 @@ void run_match_exec_on_level_change()
 } // namespace
 
 void frame_stage_notify_hook(void* me, ClientFrameStage current_stage) {
-  if (current_stage == FRAME_RENDER_START) {
-    thirdperson::begin_render_angles();
-  }
-
   frame_stage_notify_original(me, current_stage);
 
   if (cathook::core::is_detach_pending()) {
     thirdperson::end_render_angles();
     cathook::core::service_detach_request();
     return;
+  }
+
+  if (current_stage == FRAME_RENDER_START) {
+    thirdperson::begin_render_angles();
   }
 
   // Init start time
