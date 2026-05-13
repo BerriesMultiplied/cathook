@@ -17,8 +17,10 @@ USERNAME:PASSWORD
 
 # Cat botpanel launcher
 
-`./botpanel/start` starts the headless bot display with Xvfb when available,
-or xpra as a fallback on systems where Xvfb is not installed.
+`./botpanel/start` asks which headless bot display backend to use each time
+when both xpra and Xvfb are installed. The choice is not saved between runs.
+Choosing xpra stops the matching Xvfb display first; choosing Xvfb stops the
+matching xpra display first.
 
 - Default display: `:699`
 - Override display: `CAT_DISPLAY=:700 ./botpanel/start`

@@ -10,6 +10,7 @@ accounts_file="$setup_root/accounts.txt"
 user_instances_dir="$setup_root/user_instances"
 install_root="${CATHOOK_ROOT:-/opt/cathook}"
 requested_visible_windows="${CAT_VISIBLE_WINDOWS:-0}"
+requested_display_backend="${CAT_DISPLAY_BACKEND:-}"
 default_headless_display="${CAT_DEFAULT_DISPLAY:-:699}"
 for system_path_entry in /usr/local/sbin /usr/sbin /sbin; do
     case ":$PATH:" in
@@ -323,6 +324,10 @@ collect_missing_runtime_dependencies() {
 }
 
 select_display_backend() {
+    local has_xpra=0
+    local has_xvfb=0
+    local selected_backend=""
+
     if [ "$visible_windows" = "1" ]; then
         use_xpra=0
         use_xvfb=0
@@ -330,22 +335,122 @@ select_display_backend() {
         return
     fi
 
-    if command -v Xvfb >/dev/null 2>&1; then
-        use_xpra=0
-        use_xvfb=1
-        launcher_version="legacy_style_runtime_bundle_xvfb"
-        return
-    fi
-
     if command -v xpra >/dev/null 2>&1; then
-        use_xpra=1
-        use_xvfb=0
-        launcher_version="legacy_style_runtime_bundle_xpra"
-        return
+        has_xpra=1
     fi
 
-    echo "Headless mode requires xpra or Xvfb. Run ./install-deps, then try again." >&2
-    exit 1
+    if command -v Xvfb >/dev/null 2>&1; then
+        has_xvfb=1
+    fi
+
+    if [ "$has_xpra" != "1" ] && [ "$has_xvfb" != "1" ]; then
+        echo "Headless mode requires xpra or Xvfb. Run ./install-deps, then try again." >&2
+        exit 1
+    fi
+
+    if [ -n "$requested_display_backend" ]; then
+        selected_backend="$requested_display_backend"
+    elif [ "$has_xpra" = "1" ] && [ "$has_xvfb" = "1" ]; then
+        selected_backend="$(prompt_display_backend)"
+    elif [ "$has_xpra" = "1" ]; then
+        selected_backend="xpra"
+    else
+        selected_backend="xvfb"
+    fi
+
+    case "$selected_backend" in
+        xpra|XPRA)
+            if [ "$has_xpra" != "1" ]; then
+                echo "CAT_DISPLAY_BACKEND=xpra was requested, but xpra is not installed." >&2
+                exit 1
+            fi
+            use_xpra=1
+            use_xvfb=0
+            launcher_version="legacy_style_runtime_bundle_xpra"
+            stop_xvfb_display
+            return
+            ;;
+        xvfb|Xvfb|XVFB)
+            if [ "$has_xvfb" != "1" ]; then
+                echo "CAT_DISPLAY_BACKEND=xvfb was requested, but Xvfb is not installed." >&2
+                exit 1
+            fi
+            use_xpra=0
+            use_xvfb=1
+            launcher_version="legacy_style_runtime_bundle_xvfb"
+            stop_xpra_display
+            return
+            ;;
+        *)
+            echo "Unsupported display backend '$selected_backend'. Use xpra or xvfb." >&2
+            exit 1
+            ;;
+    esac
+}
+
+prompt_display_backend() {
+    local choice
+
+    if [ ! -t 0 ]; then
+        echo "Both xpra and Xvfb are installed, but stdin is not interactive." >&2
+        echo "Set CAT_DISPLAY_BACKEND=xpra or CAT_DISPLAY_BACKEND=xvfb, then run ./botpanel/start again." >&2
+        exit 1
+    fi
+
+    while true; do
+        echo "Choose headless display backend for this start:" >&2
+        echo "  1) xpra with MaxClients 2048" >&2
+        echo "  2) Xvfb with max clients $xvfb_max_clients" >&2
+        printf "Selection [1/2]: " >&2
+        read -r choice
+
+        case "$choice" in
+            1|xpra|XPRA)
+                printf '%s\n' "xpra"
+                return
+                ;;
+            2|xvfb|Xvfb|XVFB)
+                printf '%s\n' "xvfb"
+                return
+                ;;
+            *)
+                echo "Please choose 1 for xpra or 2 for Xvfb." >&2
+                ;;
+        esac
+    done
+}
+
+stop_xpra_display() {
+    if command -v xpra >/dev/null 2>&1 && xpra_display_running; then
+        echo "Stopping xpra display $display before starting Xvfb..."
+        xpra stop "$display" >/tmp/cat-catbot-xpra-stop.log 2>&1 || true
+    fi
+}
+
+stop_xvfb_display() {
+    local display_number="${display#:}"
+    local lock_path="/tmp/.X${display_number}-lock"
+    local lock_pid=""
+    local xvfb_pid=""
+
+    if [ -f "$xvfb_pid_file" ]; then
+        xvfb_pid="$(tr -d '[:space:]' <"$xvfb_pid_file" 2>/dev/null || true)"
+        if is_pid_running "$xvfb_pid"; then
+            echo "Stopping Xvfb display $display before starting xpra..."
+            kill "$xvfb_pid" 2>/dev/null || true
+        fi
+        rm -f "$xvfb_pid_file"
+    fi
+
+    if [ -f "$lock_path" ]; then
+        lock_pid="$(tr -d '[:space:]' <"$lock_path" 2>/dev/null || true)"
+        if is_pid_running "$lock_pid" && ps -p "$lock_pid" -o args= 2>/dev/null | grep -Eq "(^|[[:space:]])Xvfb[[:space:]]+$display([[:space:]]|$)"; then
+            echo "Stopping Xvfb display $display pid $lock_pid before starting xpra..."
+            kill "$lock_pid" 2>/dev/null || true
+        fi
+    fi
+
+    sleep 1
 }
 
 ensure_utmp_file() {
@@ -787,14 +892,6 @@ start_xpra() {
     fi
 
     if run_xpra_start_variant "minimal"; then
-        return 0
-    fi
-
-    if command -v Xvfb >/dev/null 2>&1; then
-        echo "Xpra failed to start display $display; falling back to Xvfb." >&2
-        use_xpra=0
-        use_xvfb=1
-        launcher_version="legacy_style_runtime_bundle_xvfb"
         return 0
     fi
 
