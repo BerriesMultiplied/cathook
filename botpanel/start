@@ -36,6 +36,7 @@ launcher_version="legacy_style_runtime_bundle_xpra"
 xpra_log="${CAT_XPRA_LOG:-/tmp/cat-catbot-xpra.log}"
 xvfb_log="${CAT_XVFB_LOG:-/tmp/cat-catbot-xvfb.log}"
 xvfb_pid_file="${CAT_XVFB_PID_FILE:-/tmp/cat-catbot-xvfb.pid}"
+xvfb_max_clients="${CAT_XVFB_MAX_CLIENTS:-512}"
 
 run_as_root() {
     if [ "$(id -u)" -eq 0 ]; then
@@ -837,6 +838,14 @@ start_xvfb() {
         return
     fi
 
+    case "$xvfb_max_clients" in
+        64|128|256|512) ;;
+        *)
+            echo "Unsupported CAT_XVFB_MAX_CLIENTS=$xvfb_max_clients. Use 64, 128, 256, or 512." >&2
+            exit 1
+            ;;
+    esac
+
     if xvfb_display_running; then
         return
     fi
@@ -844,8 +853,8 @@ start_xvfb() {
     local screen_size="${CAT_XVFB_SCREEN:-1920x1080x24}"
 
     : >"$xvfb_log"
-    echo "Starting Xvfb display $display..."
-    Xvfb "$display" -screen 0 "$screen_size" -nolisten tcp -noreset -ac >"$xvfb_log" 2>&1 &
+    echo "Starting Xvfb display $display with max clients $xvfb_max_clients..."
+    Xvfb "$display" -screen 0 "$screen_size" -maxclients "$xvfb_max_clients" -nolisten tcp -noreset -ac >"$xvfb_log" 2>&1 &
     echo "$!" >"$xvfb_pid_file"
     sleep 1
 
@@ -915,6 +924,9 @@ print_ready() {
     echo "Visible windows: $visible_windows"
     echo "Xpra: $use_xpra"
     echo "Xvfb: $use_xvfb"
+    if [ "$use_xvfb" = "1" ]; then
+        echo "Xvfb max clients: $xvfb_max_clients"
+    fi
     echo
 }
 

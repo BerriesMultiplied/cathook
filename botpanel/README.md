@@ -24,6 +24,7 @@ or xpra as a fallback on systems where Xvfb is not installed.
 - Override display: `CAT_DISPLAY=:700 ./botpanel/start`
 - Xpra-specific override: `CAT_XPRA_DISPLAY=:700 ./botpanel/start`
 - Legacy Xvfb override still accepted: `CAT_XVFB_DISPLAY=:700 ./botpanel/start`
+- Xvfb client limit: `CAT_XVFB_MAX_CLIENTS=512 ./botpanel/start` (default `512`; accepted values are `64`, `128`, `256`, `512`)
 - Use an existing desktop display instead: `CAT_VISIBLE_WINDOWS=1 ./botpanel/start`
 - After game IPC has stayed connected for 10 seconds, the panel freezes the main `steamwebhelper` in that bot's Steam process tree and kills its child helper processes.
 - Disable helper cleanup: `CAT_STEAMWEBHELPER_CLEANUP=0 ./botpanel/start`
