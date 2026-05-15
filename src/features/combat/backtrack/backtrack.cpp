@@ -413,7 +413,7 @@ int send_datagram_hook(net_channel* channel, bf_write* data)
 
 bool is_enabled()
 {
-  return config.backtrack.enabled;
+  return config.debug.insider_settings_unlocked && config.backtrack.enabled;
 }
 
 float fake_latency_seconds()

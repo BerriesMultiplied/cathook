@@ -1359,10 +1359,18 @@ static void draw_combat_tab() {
   if (cat_menu::subtab_button("Aimbot", combat_subtab == combat_page_aimbot)) {
     combat_subtab = combat_page_aimbot;
   }
-  ImGui::SameLine(0.0f, 0.0f);
-  if (cat_menu::subtab_button("Crits", combat_subtab == combat_page_crits)) {
-    combat_subtab = combat_page_crits;
+  
+  if (config.debug.insider_settings_unlocked) {
+    ImGui::SameLine(0.0f, 0.0f);
+    if (cat_menu::subtab_button("Crits", combat_subtab == combat_page_crits)) {
+      combat_subtab = combat_page_crits;
+    }
+  } else {
+    if (combat_subtab == combat_page_crits) {
+      combat_subtab = combat_page_aimbot;
+    }
   }
+  
   cat_menu::end_tab_strip();
   ImGui::Dummy(ImVec2(0.0f, 4.0f));
 
@@ -1371,7 +1379,9 @@ static void draw_combat_tab() {
       draw_aimbot_content();
       break;
     case combat_page_crits:
-      draw_crits_content();
+      if (config.debug.insider_settings_unlocked) {
+        draw_crits_content();
+      }
       break;
   }
 }
@@ -2213,16 +2223,20 @@ static void draw_exploits_content() {
   };
 
   cat_menu::begin_flow_layout("exploits_layout", 3);
-  cat_menu::flow_panel("Backtrack", 0, 196.0f, [&]() {
-    cat_menu::checkbox("Enable", &config.backtrack.enabled);
-    cat_menu::checkbox("Aimbot support", &config.backtrack.aimbot);
-    cat_menu::slider_int("Window", &config.backtrack.window_ms, 0, 1000, "%d ms");
-    cat_menu::slider_float("Fake latency", &config.backtrack.fake_latency_ms, 0.0f, 1000.0f, "%.0f ms");
-    cat_menu::checkbox("Fake interp", &config.backtrack.fake_interp);
-    cat_menu::checkbox("Visualizer", &config.backtrack.visualizer);
-    cat_menu::combo("Visualizer style", (int*)&config.backtrack.visualizer_mode, backtrack_visualizer_items, IM_ARRAYSIZE(backtrack_visualizer_items));
-    cat_menu::slider_int("Ticks", &config.backtrack.visualizer_ticks, 1, 80);
-  });
+  
+  if (config.debug.insider_settings_unlocked) {
+    cat_menu::flow_panel("Backtrack", 0, 196.0f, [&]() {
+      cat_menu::checkbox("Enable", &config.backtrack.enabled);
+      cat_menu::checkbox("Aimbot support", &config.backtrack.aimbot);
+      cat_menu::slider_int("Window", &config.backtrack.window_ms, 0, 1000, "%d ms");
+      cat_menu::slider_float("Fake latency", &config.backtrack.fake_latency_ms, 0.0f, 1000.0f, "%.0f ms");
+      cat_menu::checkbox("Fake interp", &config.backtrack.fake_interp);
+      cat_menu::checkbox("Visualizer", &config.backtrack.visualizer);
+      cat_menu::combo("Visualizer style", (int*)&config.backtrack.visualizer_mode, backtrack_visualizer_items, IM_ARRAYSIZE(backtrack_visualizer_items));
+      cat_menu::slider_int("Ticks", &config.backtrack.visualizer_ticks, 1, 80);
+    });
+  }
+  
   cat_menu::flow_panel("Bypasses", 1, 204.0f, [&]() {
     cat_menu::checkbox("Bypass sv_pure", &config.misc.exploits.bypasspure);
     cat_menu::checkbox("Pure bypass", &config.misc.exploits.pure_bypass);
@@ -2363,6 +2377,8 @@ static void draw_misc_content() {
 }
 
 static void draw_debug_content() {
+  static int unlock_click_count = 0;
+  
   cat_menu::begin_flow_layout("debug_layout", 2);
   cat_menu::flow_panel("Debug", 0, 252.0f, [&]() {
     auto& font_names = cat_menu::available_font_names();
@@ -2393,6 +2409,31 @@ static void draw_debug_content() {
     cat_menu::checkbox("Draw all entities", &config.debug.debug_render_all_entities);
     cat_menu::checkbox("Show active flag IDs", &config.debug.show_active_flag_ids_of_players);
     cat_menu::checkbox("Disable friend checks", &config.debug.disable_friend_checks);
+    
+    ImGui::Dummy(ImVec2(0.0f, 8.0f));
+    
+    const char* button_label = config.debug.insider_settings_unlocked ? "Insider Settings: Unlocked" : "Unlock Insider Settings";
+    if (cat_menu::accent_button(button_label, ImVec2(-1.0f, 26.0f), false)) {
+      if (!config.debug.insider_settings_unlocked) {
+        unlock_click_count++;
+        if (unlock_click_count >= 5) {
+          config.debug.insider_settings_unlocked = true;
+          unlock_click_count = 0;
+          if (engine != nullptr) {
+            engine->client_cmd_unrestricted("play ui/duel_challenge.wav");
+          }
+        }
+      } else {
+        config.debug.insider_settings_unlocked = false;
+        unlock_click_count = 0;
+      }
+    }
+    
+    if (!config.debug.insider_settings_unlocked && unlock_click_count > 0) {
+      ImGui::PushStyleColor(ImGuiCol_Text, cat_menu::k_text_soft);
+      ImGui::Text("Clicks: %d/5", unlock_click_count);
+      ImGui::PopStyleColor();
+    }
   });
   cat_menu::end_flow_layout();
 }

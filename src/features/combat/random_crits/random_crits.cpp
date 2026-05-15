@@ -415,11 +415,11 @@ bool wants_forced_crit(Weapon* weapon)
     return false;
   }
 
-  if (config.random_crits.force_crits) {
+  if (config.debug.insider_settings_unlocked && config.random_crits.force_crits) {
     return true;
   }
 
-  return config.random_crits.always_melee_crit && weapon->is_melee();
+  return config.debug.insider_settings_unlocked && config.random_crits.always_melee_crit && weapon->is_melee();
 }
 
 void clear_selection()
@@ -534,9 +534,9 @@ bool should_skip_attack(Weapon* weapon, user_cmd* cmd)
 indicator_state get_indicator_state()
 {
   auto state = indicator_state{};
-  state.force_mode = config.random_crits.force_crits;
-  state.save_mode = config.random_crits.save_bucket;
-  state.enabled = config.random_crits.force_crits || config.random_crits.always_melee_crit || config.random_crits.save_bucket;
+  state.force_mode = config.debug.insider_settings_unlocked && config.random_crits.force_crits;
+  state.save_mode = config.debug.insider_settings_unlocked && config.random_crits.save_bucket;
+  state.enabled = config.debug.insider_settings_unlocked && (config.random_crits.force_crits || config.random_crits.always_melee_crit || config.random_crits.save_bucket);
   state.seed_scan = std::clamp(config.random_crits.seed_scan, min_seed_scan, max_seed_scan);
 
   if (entity_list == nullptr) {
