@@ -375,6 +375,10 @@ function updateUserData(bot, data) {
 }
 
 function addClientRow(botid) {
+	$("#clients tr").filter(function() {
+		return $(this).attr('data-id') === String(botid);
+	}).remove();
+
     var row = $('<tr></tr>').attr('data-id', botid).addClass('disconnected stopped');
     var actions = $('<td></td>').attr('class', 'client-actions');
     actions.append($('<input>').attr('type', 'button').attr('value', 'Command').on('click', commandButtonCallback));
