@@ -2718,6 +2718,8 @@ class Bot extends EventEmitter {
                         this.state = STATE.STARTING;
                         this.reset();
                         this.spawnSteam();
+                        module.exports.currentlyStartingGames++;
+                        module.exports.currentlyBootingSteam++;
                         this.time_steam_login_timeout_started = time;
                         this.refresh_steam_login_timeout(time);
                         this.time_steamAssumeReady = TIMEOUT_STEAM_ASSUME_READY ? time + TIMEOUT_STEAM_ASSUME_READY : 0;
