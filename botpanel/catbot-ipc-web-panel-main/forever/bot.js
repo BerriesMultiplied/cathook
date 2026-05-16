@@ -30,7 +30,7 @@ const GAME_MODE_OPTIONS = TEXTMODE_GAME
 const SHARED_STEAMAPPS = '/opt/steamapps';
 const CATHOOK_ATTACH_DELAY_SECONDS = Number.parseInt(process.env.CATHOOK_ATTACH_DELAY_SECONDS || '0', 10);
 
-const LAUNCH_OPTIONS_STEAM = `firejail --dns=1.1.1.1 %NETWORK% --dbus-system=none --noprofile --private="%HOME%" --name=%JAILNAME% --env=PULSE_SERVER="unix:/tmp/pulse.sock" --env=DISPLAY=%DISPLAY% --env=XAUTHORITY=%XAUTHORITY% --env=LD_LIBRARY_PATH=%STEAM_LD_LIBRARY_PATH% --env=LD_PRELOAD=%LD_PRELOAD% sh -lc 'if command -v dbus-run-session >/dev/null 2>&1; then exec dbus-run-session -- "$@"; else exec "$@"; fi' steam-session %STEAM% ${steam_window_options} -login %LOGIN% %PASSWORD%`
+const LAUNCH_OPTIONS_STEAM = `firejail --dns=1.1.1.1 %NETWORK% --noprofile --private="%HOME%" --private-tmp --name=%JAILNAME% --env=PULSE_SERVER="unix:/tmp/pulse.sock" --env=DISPLAY=%DISPLAY% --env=XAUTHORITY=%XAUTHORITY% --env=TMPDIR=/tmp --env=TMP=/tmp --env=TEMP=/tmp --env=XDG_RUNTIME_DIR=/tmp/xdg-runtime --env=LD_LIBRARY_PATH=%STEAM_LD_LIBRARY_PATH% --env=LD_PRELOAD=%LD_PRELOAD% sh -lc 'mkdir -p "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"; if command -v dbus-run-session >/dev/null 2>&1; then exec dbus-run-session -- "$@"; else exec "$@"; fi' steam-session %STEAM% ${steam_window_options} -login %LOGIN% %PASSWORD%`
 const LAUNCH_OPTIONS_STEAM_RESET = 'firejail --net=none --noprofile --private="%HOME%" --env=LD_LIBRARY_PATH=%STEAM_LD_LIBRARY_PATH% %STEAM% --reset'
 const LAUNCH_OPTIONS_GAME = `firejail --join=%JAILNAME% bash -c 'cd "%GAMEPATH%" && %RUNTIME_PREFIX% SteamAppId=440 SteamGameId=440 SteamOverlayGameId=440 SteamEnv=1 CATHOOK_ROOT="%CATHOOK_ROOT%" CATHOOK_ROOT_DIR="%CATHOOK_ROOT%" CATHOOK_AUTO_ATTACH=1 CATHOOK_ATTACH_DELAY_SECONDS=%CATHOOK_ATTACH_DELAY_SECONDS% CAT_BOT_ID=%BOT_ID% CAT_BOT_NAME=%BOT_NAME% CAT_STEAMID32=%STEAMID32% LD_PRELOAD=%LD_PRELOAD% DISPLAY=%DISPLAY% XAUTHORITY="%XAUTHORITY%" PULSE_SERVER="unix:/tmp/pulse.sock" %GAME_BINARY% -steam -game tf ${GAME_WINDOW_OPTIONS} -novid -nojoy -noipx -nomessagebox -nominidumps -nohltv -nobreakpad -reuse -noquicktime -precachefontchars -particles 1 -snoforceformat -softparticlesdefaultoff ${GAME_MODE_OPTIONS} -forcenovsync -insecure +clientport 27006-27014'`
 const GAME_LIBRARY_PATH = './bin:./bin/linux64:./tf/bin:./tf/bin/linux64:./platform:./platform/bin:./platform/bin/linux64:.';
@@ -59,11 +59,14 @@ const steam_logged_in_game_delay = (Number.isFinite(STEAM_LOGGED_IN_GAME_DELAY_S
 const STEAMWEBHELPER_CLEANUP_ENABLED = process.env.CAT_STEAMWEBHELPER_CLEANUP === '1' || config.steamwebhelper_cleanup === true;
 const STEAMWEBHELPER_CLEANUP_DELAY_SECONDS_VALUE = Number.parseInt(process.env.CAT_STEAMWEBHELPER_CLEANUP_SECONDS || '10', 10);
 const STEAMWEBHELPER_CLEANUP_DELAY = (Number.isFinite(STEAMWEBHELPER_CLEANUP_DELAY_SECONDS_VALUE) ? Math.max(0, STEAMWEBHELPER_CLEANUP_DELAY_SECONDS_VALUE) : 10) * 1000;
-const STEAM_LOGIN_UI_TIMEOUT_SECONDS_VALUE = Number.parseInt(process.env.CAT_STEAM_LOGIN_UI_TIMEOUT_SECONDS || '75', 10);
-const STEAM_LOGIN_UI_TIMEOUT = (Number.isFinite(STEAM_LOGIN_UI_TIMEOUT_SECONDS_VALUE) ? Math.max(0, STEAM_LOGIN_UI_TIMEOUT_SECONDS_VALUE) : 75) * 1000;
+const STEAM_LOGIN_UI_TIMEOUT_SECONDS_VALUE = Number.parseInt(process.env.CAT_STEAM_LOGIN_UI_TIMEOUT_SECONDS || '0', 10);
+const STEAM_LOGIN_UI_TIMEOUT = (Number.isFinite(STEAM_LOGIN_UI_TIMEOUT_SECONDS_VALUE) ? Math.max(0, STEAM_LOGIN_UI_TIMEOUT_SECONDS_VALUE) : 0) * 1000;
 // Time to delay between bot start waves. Max concurrent starts controls wave size.
 const BOT_START_DELAY_SECONDS_VALUE = Number.parseInt(process.env.CAT_BOT_START_DELAY_SECONDS || '30', 10);
 const DELAY_START_TIME = (Number.isFinite(BOT_START_DELAY_SECONDS_VALUE) ? Math.max(0, BOT_START_DELAY_SECONDS_VALUE) : 30) * 1000;
+const STEAM_BOOT_CONCURRENCY_VALUE = Number.parseInt(process.env.CAT_STEAM_BOOT_CONCURRENCY || String(config.steam_boot_concurrency || '1'), 10);
+const STEAM_BOOT_DELAY_SECONDS_VALUE = Number.parseInt(process.env.CAT_STEAM_BOOT_DELAY_SECONDS || String(config.steam_boot_delay_seconds || '8'), 10);
+const STEAM_BOOT_DELAY = (Number.isFinite(STEAM_BOOT_DELAY_SECONDS_VALUE) ? Math.max(0, STEAM_BOOT_DELAY_SECONDS_VALUE) : 8) * 1000;
 const GAME_STARTUP_FATAL_PATTERNS = [
     'AppFramework : Unable to load module engine.so!',
     'Unable to load interface VCvarQuery001 from engine.so'
@@ -71,6 +74,29 @@ const GAME_STARTUP_FATAL_PATTERNS = [
 const STEAM_STARTUP_FATAL_PATTERNS = [
     'Error: Couldn\'t set up the Steam Runtime.',
     'LD_LIBRARY_PATH: unbound variable'
+];
+const steam_auth_log_scan_tail_lines = 400;
+// Cleared on every Steam launch; must cover auth heuristics and common session logs.
+const steam_session_log_clear_names = [
+    'bootstrap_log.txt',
+    'cef_log.txt',
+    'connection_log.txt',
+    'console_log.txt',
+    'content_log.txt',
+    'steamui_login.txt',
+    'steamui_system.txt',
+    'steamui_html.txt',
+    'webhelper.txt',
+    'webhelper_js.txt',
+    'systemdisplaymanager.txt',
+    'transport_steamui.txt',
+    'configstore_log.txt',
+    'cloud_log.txt',
+    'workshop_log.txt',
+    'timedtrial_log.txt',
+    'remote_connections.txt',
+    'gameprocess_log.txt',
+    'shader_log.txt'
 ];
 const steam_invalid_password_patterns = [
     /LogonFailure Invalid Password/i,
@@ -298,6 +324,13 @@ function max_concurrent_bots() {
     return value;
 }
 
+function max_steam_boots() {
+    if (!Number.isSafeInteger(STEAM_BOOT_CONCURRENCY_VALUE) || STEAM_BOOT_CONCURRENCY_VALUE < 1)
+        return 1;
+
+    return STEAM_BOOT_CONCURRENCY_VALUE;
+}
+
 function start_delay_allows_launch(time) {
     if (!DELAY_START_TIME)
         return true;
@@ -306,6 +339,13 @@ function start_delay_allows_launch(time) {
         return true;
 
     return module.exports.lastStartTime + DELAY_START_TIME < time;
+}
+
+function steam_boot_delay_allows_launch(time) {
+    if (!STEAM_BOOT_DELAY)
+        return true;
+
+    return module.exports.lastSteamBootTime + STEAM_BOOT_DELAY < time;
 }
 
 function steam_login_timeout_seconds() {
@@ -754,6 +794,7 @@ class Bot extends EventEmitter {
         this.game_kill_generation = 0;
         this.steam_kill_generation = 0;
         this.terminal_auth_state = 0;
+        this.clear_steam_webhelper_cache_before_start = false;
 
         this.logSteam = null;
         this.logGame = null;
@@ -808,6 +849,7 @@ class Bot extends EventEmitter {
         this.time_gameCheck = 0;
         this.time_ipcState = 0;
         this.time_steamStatusLog = 0;
+        this.time_steam_boot_status_log = 0;
         this.shouldResetSteam = false;
         this.steamReadyLogged = false;
         this.steam_quick_exit_count = 0;
@@ -1264,6 +1306,18 @@ class Bot extends EventEmitter {
         return unique_paths(log_paths);
     }
 
+    steam_log_paths_for_session_clear() {
+        const paths = [...this.steamLogPaths()];
+        for (const steam_root of this.steamInstallCandidates()) {
+            paths.push(path.join(steam_root, 'error.log'));
+            const logs_dir = path.join(steam_root, 'logs');
+            for (const name of steam_session_log_clear_names)
+                paths.push(path.join(logs_dir, name));
+        }
+
+        return unique_paths(paths);
+    }
+
     existingSteamLogPaths() {
         return this.steamLogPaths().filter((log_path) => {
             try {
@@ -1275,9 +1329,26 @@ class Bot extends EventEmitter {
     }
 
     clearSteamStartupLogs() {
-        for (const log_path of this.existingSteamLogPaths()) {
+        for (const steam_root of this.steamInstallCandidates()) {
             try {
-                fs.unlinkSync(log_path);
+                fs.mkdirSync(path.join(steam_root, 'logs'), { recursive: true });
+            } catch (error) { }
+        }
+
+        for (const log_path of this.steam_log_paths_for_session_clear()) {
+            try {
+                if (!fs.existsSync(log_path))
+                    continue;
+
+                const st = fs.lstatSync(log_path);
+                if (st.isDirectory())
+                    continue;
+
+                try {
+                    fs.unlinkSync(log_path);
+                } catch (unlink_error) {
+                    fs.writeFileSync(log_path, '', { encoding: 'utf8' });
+                }
             } catch (error) { }
         }
     }
@@ -1368,7 +1439,7 @@ class Bot extends EventEmitter {
                 continue;
 
             try {
-                const log_text = fs.readFileSync(log_path, 'utf8');
+                const log_text = log_file_tail(log_path, steam_auth_log_scan_tail_lines);
                 if (steam_log_has_invalid_password(log_text))
                     return log_path;
             } catch (error) { }
@@ -1383,7 +1454,7 @@ class Bot extends EventEmitter {
                 continue;
 
             try {
-                const log_text = fs.readFileSync(log_path, 'utf8');
+                const log_text = log_file_tail(log_path, steam_auth_log_scan_tail_lines);
                 if (steam_log_has_login_error_5(log_text))
                     return log_path;
             } catch (error) { }
@@ -1398,7 +1469,7 @@ class Bot extends EventEmitter {
                 continue;
 
             try {
-                const log_text = fs.readFileSync(log_path, 'utf8');
+                const log_text = log_file_tail(log_path, steam_auth_log_scan_tail_lines);
                 if (steam_log_has_account_disabled_e43(log_text))
                     return log_path;
             } catch (error) { }
@@ -1590,6 +1661,26 @@ class Bot extends EventEmitter {
         }
     }
 
+    kill_stale_bot_runtime_processes() {
+        const patterns = [
+            `--name=${this.name}`,
+            `user_instances/${this.name}`,
+            `catbotns${this.botid}`
+        ];
+        const stale_pids = [];
+        for (const info of read_process_table().values()) {
+            if (info.pid === process.pid)
+                continue;
+            const command = info.cmdline || '';
+            if (patterns.some((pattern) => command.includes(pattern)))
+                stale_pids.push(info.pid);
+        }
+
+        const killed_count = kill_pids([...new Set(stale_pids)].sort((left, right) => right - left), 'SIGKILL');
+        if (killed_count)
+            this.log(`Force-killed stale bot runtime processes before Steam launch count=${killed_count}`);
+    }
+
     pollSteamReady() {
         const ready_patterns = [
             'System startup time:',
@@ -1630,8 +1721,12 @@ class Bot extends EventEmitter {
             fs.mkdirSync(self.home);
             fs.chownSync(self.home, USER.uid, USER.uid);
         }
+        self.kill_stale_bot_runtime_processes();
         self.prepareSteamInstall();
-        self.clear_steam_webhelper_cache();
+        if (self.clear_steam_webhelper_cache_before_start) {
+            self.clear_steam_webhelper_cache();
+            self.clear_steam_webhelper_cache_before_start = false;
+        }
         self.clearSteamStartupLogs();
         const xauthority_path = self.ensureVisibleXauthority();
 
@@ -1941,6 +2036,10 @@ class Bot extends EventEmitter {
         return time - this.ipcState.heartbeat * 1000 > ipc_heartbeat_stale_timeout;
     }
 
+    steam_boot_in_progress() {
+        return this.state === STATE.STARTING && !!this.procFirejailSteam && !this.steamClientInitialized;
+    }
+
     request_restart(reason) {
         this.log(`Restart requested: ${reason}`);
         this.clear_ipc_state();
@@ -1966,6 +2065,7 @@ class Bot extends EventEmitter {
         this.time_ipcState = 0;
         this.time_steamwebhelper_cleanup = 0;
         this.time_steamStatusLog = 0;
+        this.time_steam_boot_status_log = 0;
         this.shouldRestart = false;
         this.steamReadyLogged = false;
         this.steamClientInitialized = false;
@@ -2362,7 +2462,8 @@ class Bot extends EventEmitter {
                     const stalled_webhelper_log_path = this.steam_webhelper_stall_log_path();
                     if (stalled_webhelper_log_path) {
                         this.log(`[ERROR] Steam webhelper browser startup stalled in ${stalled_webhelper_log_path}; restarting Steam with a fresh webhelper cache.`);
-                        this.logSteamTails('Steam webhelper stall log tail', 12);
+                        this.log_single_steam_tail('Steam webhelper stall log tail', stalled_webhelper_log_path);
+                        this.clear_steam_webhelper_cache_before_start = true;
                         this.shouldRestart = true;
                         this.time_steamWorking = 0;
                         return;
@@ -2371,7 +2472,8 @@ class Bot extends EventEmitter {
                     const stalled_login_ui_log_path = this.steam_login_ui_stall_log_path(time);
                     if (stalled_login_ui_log_path) {
                         this.log(`[ERROR] Steam login UI did not appear within ${STEAM_LOGIN_UI_TIMEOUT / 1000} seconds; restarting Steam with a fresh webhelper cache. last_log=${stalled_login_ui_log_path}`);
-                        this.logSteamTails('Steam login UI stall log tail', 12);
+                        this.log_single_steam_tail('Steam login UI stall log tail', stalled_login_ui_log_path);
+                        this.clear_steam_webhelper_cache_before_start = true;
                         this.shouldRestart = true;
                         this.time_steamWorking = 0;
                         return;
@@ -2481,15 +2583,20 @@ class Bot extends EventEmitter {
                     }
                     const start_slots_available = module.exports.currentlyStartingGames < max_concurrent_bots();
                     const start_delay_elapsed = start_delay_allows_launch(time);
-                    if (this.account && start_slots_available && start_delay_elapsed) {
+                    const steam_boot_slots_available = module.exports.currentlyBootingSteam < max_steam_boots();
+                    const steam_boot_delay_elapsed = steam_boot_delay_allows_launch(time);
+                    if (this.account && start_slots_available && steam_boot_slots_available && start_delay_elapsed && steam_boot_delay_elapsed) {
                         module.exports.lastStartTime = time;
-                        module.exports.currentlyStartingGames++;
+                        module.exports.lastSteamBootTime = time;
                         this.state = STATE.STARTING;
                         this.reset();
                         this.spawnSteam();
                         this.time_steam_login_timeout_started = time;
                         this.refresh_steam_login_timeout(time);
                         this.time_steamAssumeReady = TIMEOUT_STEAM_ASSUME_READY ? time + TIMEOUT_STEAM_ASSUME_READY : 0;
+                    } else if (this.account && start_slots_available && (!this.time_steam_boot_status_log || time > this.time_steam_boot_status_log)) {
+                        this.log(`Waiting for Steam boot slot, active_boots=${module.exports.currentlyBootingSteam}/${max_steam_boots()}`);
+                        this.time_steam_boot_status_log = time + 10000;
                     }
                 }
             }
@@ -2528,7 +2635,9 @@ class Bot extends EventEmitter {
 
 module.exports.bot = Bot;
 module.exports.currentlyStartingGames = 0;
+module.exports.currentlyBootingSteam = 0;
 module.exports.lastStartTime = 0;
+module.exports.lastSteamBootTime = 0;
 module.exports.states = STATE;
 Object.defineProperty(module.exports, 'MAX_CONCURRENT_BOTS', {
     get: function() { return max_concurrent_bots(); },

@@ -17,7 +17,9 @@ const default_config = {
     gdb_crash_reports: true,
     ban_tracker_enabled: false,
     steamwebhelper_cleanup: false,
-    max_concurrent_bots: 3,
+    max_concurrent_bots: 5,
+    steam_boot_concurrency: 1,
+    steam_boot_delay_seconds: 8,
     auto_restart_steam_if_not_logged_within: default_nonnegative_integer(process.env.CAT_STEAM_TIMEOUT_SECONDS, 300)
 };
 

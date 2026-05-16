@@ -39,6 +39,7 @@ class BotManager {
     update() {
         var self = this;
         Bot.currentlyStartingGames = 0;
+        Bot.currentlyBootingSteam = 0;
 
         // Add new bots
         try {
@@ -53,6 +54,8 @@ class BotManager {
             var b = self.bots[i];
             if (b.state == Bot.states.STARTING)
                 Bot.currentlyStartingGames++;
+            if (b.steam_boot_in_progress())
+                Bot.currentlyBootingSteam++;
             if (i + 1 > this.quota) {
                 let stopped = false;
                 try {
