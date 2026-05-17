@@ -72,6 +72,8 @@ constexpr std::uintptr_t crafting_ui_skip_patch_offset = 0x219;
 constexpr std::uint8_t crafting_ui_skip_patch[] = { 0xE9, 0x84, 0x00, 0x00, 0x00 };
 constexpr int inventory_manager_get_local_inventory_index = 24;
 constexpr int inventory_manager_show_items_picked_up_index = 35;
+constexpr std::uintptr_t inventory_manager_schema_offset = 0x60;
+
 
 using get_first_item_of_item_def_fn = void* (*)(void*, int);
 using equip_item_in_loadout_fn = bool (*)(void*, int, int, std::uint64_t);
@@ -109,6 +111,9 @@ std::array<fallback_state, 3> g_fallback_states{};
 int g_hat_rotation_offset = 0;
 int g_pending_pickup_ack_attempts = 0;
 float g_next_pending_pickup_ack_time = 0.0f;
+bool g_initialize_diagnostics_emitted = false;
+int g_initialize_retry_count = 0;
+float g_next_initialize_retry_time = 0.0f;
 
 constexpr std::array<achievement_item, 41> achievement_items{{
   {45, 1036, "TF_SCOUT_ACHIEVE_PROGRESS1"},
@@ -164,6 +169,15 @@ void debug_log(const char* fmt, ...)
   va_list args{};
   va_start(args, fmt);
   print("[autoitem] ");
+  cathook::core::vlog_raw(fmt, args);
+  va_end(args);
+}
+
+void error_log(const char* fmt, ...)
+{
+  va_list args{};
+  va_start(args, fmt);
+  print("[autoitem][error] ");
   cathook::core::vlog_raw(fmt, args);
   va_end(args);
 }
@@ -350,6 +364,16 @@ bool api_ready()
          g_inventory_api.equip_item_in_loadout != nullptr &&
          g_inventory_api.do_preview_item != nullptr &&
          g_inventory_api.craft_custom != nullptr;
+}
+
+bool inventory_schema_ready()
+{
+  if (g_inventory_api.inventory_manager == nullptr) return false;
+  auto* base = reinterpret_cast<std::uint8_t*>(g_inventory_api.inventory_manager);
+  auto* schema = read_unaligned<void*>(base + inventory_manager_schema_offset);
+  if (schema == nullptr) return false;
+  auto* schema_inner = read_unaligned<void*>(reinterpret_cast<std::uint8_t*>(schema) + sizeof(void*));
+  return schema_inner != nullptr;
 }
 
 void* get_local_inventory()
@@ -574,18 +598,27 @@ bool equip_item(const int class_id, const int slot, const int item_def_id, const
   }
 
   const int loadout_slot = corrected_loadout_slot(class_id, slot);
+  if (!inventory_schema_ready())
+  {
+    debug_log("inventory schema not ready, skipping equip class=%d slot=%d def=%d\n", class_id, loadout_slot, item_def_id);
+    return false;
+  }
+
   if (item_def_id == -1)
   {
-    return g_inventory_api.equip_item_in_loadout(
+    const bool ok = g_inventory_api.equip_item_in_loadout(
       g_inventory_api.inventory_manager,
       class_id,
       loadout_slot,
       static_cast<std::uint64_t>(-1));
+    if (!ok) error_log("unequip failed class=%d slot=%d\n", class_id, loadout_slot);
+    return ok;
   }
 
   auto item_id = get_first_item_id_of_item_def(item_def_id);
   if (!item_id)
   {
+    debug_log("no owned item id for def=%d (class=%d slot=%d)\n", item_def_id, class_id, loadout_slot);
     if (get_missing)
     {
       get_item(item_def_id, allow_rent);
@@ -593,7 +626,18 @@ bool equip_item(const int class_id, const int slot, const int item_def_id, const
     return false;
   }
 
-  return g_inventory_api.equip_item_in_loadout(g_inventory_api.inventory_manager, class_id, loadout_slot, *item_id);
+  const bool ok = g_inventory_api.equip_item_in_loadout(g_inventory_api.inventory_manager, class_id, loadout_slot, *item_id);
+  if (!ok)
+  {
+    error_log("equip failed class=%d slot=%d def=%d item_id=%llu\n",
+      class_id, loadout_slot, item_def_id, static_cast<unsigned long long>(*item_id));
+  }
+  else
+  {
+    debug_log("equipped class=%d slot=%d def=%d item_id=%llu\n",
+      class_id, loadout_slot, item_def_id, static_cast<unsigned long long>(*item_id));
+  }
+  return ok;
 }
 
 void equip_weapon_spec(std::string_view spec, const int class_id, const int slot)
@@ -768,35 +812,72 @@ int seasonal_noisemaker_item_def()
 
 void initialize()
 {
-  if (g_inventory_api.initialized)
+  const bool fully_ready =
+    g_inventory_api.inventory_manager != nullptr &&
+    g_inventory_api.get_first_item_of_item_def != nullptr &&
+    g_inventory_api.equip_item_in_loadout != nullptr &&
+    g_inventory_api.do_preview_item != nullptr &&
+    g_inventory_api.craft_custom != nullptr;
+  if (fully_ready) return;
+
+  if (global_vars != nullptr && global_vars->realtime < g_next_initialize_retry_time)
   {
     return;
   }
+  g_next_initialize_retry_time = global_vars != nullptr ? global_vars->realtime + 2.0f : 0.0f;
 
   g_inventory_api.initialized = true;
+  ++g_initialize_retry_count;
 
-  auto* initializer = reinterpret_cast<std::uint8_t*>(sigscan_module("client.so", sigs::tf_inventory_manager_initializer));
-  if (initializer != nullptr)
+  if (g_inventory_api.inventory_manager == nullptr)
   {
-    g_inventory_api.inventory_manager = decode_rip_relative(initializer + 1, 3, 7);
+    auto* initializer = reinterpret_cast<std::uint8_t*>(sigscan_module("client.so", sigs::tf_inventory_manager_initializer));
+    if (initializer != nullptr)
+    {
+      g_inventory_api.inventory_manager = decode_rip_relative(initializer + 1, 3, 7);
+    }
   }
 
-  g_inventory_api.get_first_item_of_item_def =
-    reinterpret_cast<get_first_item_of_item_def_fn>(sigscan_module("client.so", sigs::tf_inventory_get_first_item_of_item_def));
-  g_inventory_api.equip_item_in_loadout =
-    reinterpret_cast<equip_item_in_loadout_fn>(sigscan_module("client.so", sigs::tf_inventory_equip_item_in_loadout));
-  g_inventory_api.do_preview_item =
-    reinterpret_cast<do_preview_item_fn>(sigscan_module("client.so", sigs::tf_inventory_do_preview_item));
-  g_inventory_api.craft_custom =
-    reinterpret_cast<craft_custom_fn>(sigscan_module("client.so", sigs::tf_inventory_craft_custom));
+  if (g_inventory_api.get_first_item_of_item_def == nullptr)
+    g_inventory_api.get_first_item_of_item_def =
+      reinterpret_cast<get_first_item_of_item_def_fn>(sigscan_module("client.so", sigs::tf_inventory_get_first_item_of_item_def));
+  if (g_inventory_api.equip_item_in_loadout == nullptr)
+    g_inventory_api.equip_item_in_loadout =
+      reinterpret_cast<equip_item_in_loadout_fn>(sigscan_module("client.so", sigs::tf_inventory_equip_item_in_loadout));
+  if (g_inventory_api.do_preview_item == nullptr)
+    g_inventory_api.do_preview_item =
+      reinterpret_cast<do_preview_item_fn>(sigscan_module("client.so", sigs::tf_inventory_do_preview_item));
+  if (g_inventory_api.craft_custom == nullptr)
+    g_inventory_api.craft_custom =
+      reinterpret_cast<craft_custom_fn>(sigscan_module("client.so", sigs::tf_inventory_craft_custom));
 
-  if (g_inventory_api.inventory_manager == nullptr ||
-      g_inventory_api.get_first_item_of_item_def == nullptr ||
-      g_inventory_api.equip_item_in_loadout == nullptr ||
-      g_inventory_api.do_preview_item == nullptr ||
-      g_inventory_api.craft_custom == nullptr)
+  const bool now_ready =
+    g_inventory_api.inventory_manager != nullptr &&
+    g_inventory_api.get_first_item_of_item_def != nullptr &&
+    g_inventory_api.equip_item_in_loadout != nullptr &&
+    g_inventory_api.do_preview_item != nullptr &&
+    g_inventory_api.craft_custom != nullptr;
+
+  if (!now_ready)
   {
-    print("[autoitem] signature scan failed manager=%p first=%p equip=%p rent=%p craft=%p\n",
+    if (g_initialize_retry_count == 1 || g_initialize_retry_count % 30 == 0)
+    {
+      error_log("signature scan incomplete (attempt %d) manager=%p first=%p equip=%p rent=%p craft=%p\n",
+        g_initialize_retry_count,
+        g_inventory_api.inventory_manager,
+        reinterpret_cast<void*>(g_inventory_api.get_first_item_of_item_def),
+        reinterpret_cast<void*>(g_inventory_api.equip_item_in_loadout),
+        reinterpret_cast<void*>(g_inventory_api.do_preview_item),
+        reinterpret_cast<void*>(g_inventory_api.craft_custom));
+    }
+    return;
+  }
+
+  if (!g_initialize_diagnostics_emitted)
+  {
+    g_initialize_diagnostics_emitted = true;
+    print("[autoitem] resolved after %d attempt(s) manager=%p first=%p equip=%p rent=%p craft=%p\n",
+      g_initialize_retry_count,
       g_inventory_api.inventory_manager,
       reinterpret_cast<void*>(g_inventory_api.get_first_item_of_item_def),
       reinterpret_cast<void*>(g_inventory_api.equip_item_in_loadout),
@@ -958,19 +1039,35 @@ bool unlock_achievement_by_id(const int achievement_id)
   auto* manager = resolve_achievement_manager();
   if (manager == nullptr)
   {
+    error_log("achievement manager unavailable, cannot award id=%d\n", achievement_id);
     return false;
   }
 
-  if (find_achievement_by_id(achievement_id) == nullptr)
+  auto* entry = find_achievement_by_id(achievement_id);
+  if (entry == nullptr)
   {
+    error_log("achievement id=%d not found in manager\n", achievement_id);
     return false;
   }
 
+  auto* stats = resolve_steam_user_stats();
+  if (stats != nullptr)
+  {
+    stats->request_current_stats();
+  }
+
+  if (entry->is_achieved())
+  {
+    debug_log("achievement id=%d already achieved, queuing item ack\n", achievement_id);
+    queue_pending_pickup_ack();
+    return true;
+  }
+
+  print("[autoitem] awarding achievement id=%d (%s)\n", achievement_id, entry->get_name() ? entry->get_name() : "?");
   manager->award_achievement(achievement_id);
-  if (auto* stats = resolve_steam_user_stats())
+  if (stats != nullptr)
   {
     stats->store_stats();
-    stats->request_current_stats();
   }
   queue_pending_pickup_ack();
   return true;
