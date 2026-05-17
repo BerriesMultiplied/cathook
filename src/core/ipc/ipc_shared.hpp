@@ -100,7 +100,7 @@ public:
     }
     catch (const std::exception&)
     {
-      return create_server(false);
+      return create_server(true);
     }
   }
 
@@ -149,6 +149,11 @@ public:
   [[nodiscard]] auto state() const -> shared_state*
   {
     return state_;
+  }
+
+  [[nodiscard]] bool owns_valid_state() const
+  {
+    return state_ != nullptr && state_->global_data.magic_number == cathook_magic_number;
   }
 
 private:
