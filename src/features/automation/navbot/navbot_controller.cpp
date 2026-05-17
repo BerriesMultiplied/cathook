@@ -435,7 +435,7 @@ float distance_to_enemy(Player* localplayer, Player* enemy)
     return 8192.0f;
   }
 
-  return std::sqrt(distance_squared_2d(localplayer->get_origin(), enemy->get_origin()));
+  return distance_3d(localplayer->get_origin(), enemy->get_origin());
 }
 
 Player* choose_navbot_enemy(Player* localplayer)
@@ -454,7 +454,7 @@ Player* choose_navbot_enemy(Player* localplayer)
   }
 
   Player* best_enemy = nullptr;
-  auto best_distance_sq = std::numeric_limits<float>::max();
+  auto best_distance = std::numeric_limits<float>::max();
   for (auto* entity : entity_cache[class_id::PLAYER])
   {
     auto* player = reinterpret_cast<Player*>(entity);
@@ -468,10 +468,10 @@ Player* choose_navbot_enemy(Player* localplayer)
       continue;
     }
 
-    auto distance_sq = distance_squared_2d(localplayer->get_origin(), player->get_origin());
-    if (distance_sq < best_distance_sq)
+    auto distance = distance_3d(localplayer->get_origin(), player->get_origin());
+    if (distance < best_distance)
     {
-      best_distance_sq = distance_sq;
+      best_distance = distance;
       best_enemy = player;
     }
   }
