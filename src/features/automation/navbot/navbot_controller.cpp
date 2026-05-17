@@ -1410,17 +1410,18 @@ void navbot_controller::request_path_if_needed()
 
 void navbot_controller::update_hazards()
 {
+  auto* localplayer = entity_list != nullptr ? entity_list->get_localplayer() : nullptr;
+  if (localplayer == nullptr)
+  {
+    return;
+  }
+
+  auto local_team = localplayer->get_team();
   auto current_time = global_vars != nullptr ? global_vars->curtime : 0.0f;
   for (auto* entity : entity_cache[class_id::PLAYER])
   {
     auto* player = reinterpret_cast<Player*>(entity);
-    if (player == nullptr || player->is_dormant())
-    {
-      continue;
-    }
-
-    auto* localplayer = entity_list->get_localplayer();
-    if (localplayer == nullptr || player == localplayer || player->get_team() == localplayer->get_team())
+    if (player == nullptr || player == localplayer || player->is_dormant() || player->get_team() == local_team)
     {
       continue;
     }
@@ -1442,7 +1443,7 @@ void navbot_controller::update_hazards()
 
   for (auto* entity : entity_cache[class_id::SENTRY])
   {
-    if (entity == nullptr)
+    if (entity == nullptr || entity->is_dormant() || entity->get_team() == local_team)
     {
       continue;
     }

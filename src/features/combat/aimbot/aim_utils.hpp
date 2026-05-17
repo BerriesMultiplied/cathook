@@ -279,7 +279,15 @@ inline Vec3 aimbot_calculate_angles_to_position(const Vec3& start, const Vec3& t
     target.y - start.y,
     target.z - start.z
   };
-  float yaw_hyp = std::sqrt((diff.x * diff.x) + (diff.y * diff.y));
+  float yaw_hyp_sq = (diff.x * diff.x) + (diff.y * diff.y);
+  if (yaw_hyp_sq <= 1e-12f) {
+    return Vec3{
+      diff.z > 0.0f ? -89.0f : (diff.z < 0.0f ? 89.0f : 0.0f),
+      0.0f,
+      0.0f
+    };
+  }
+  float yaw_hyp = std::sqrt(yaw_hyp_sq);
   return Vec3{
     -std::atan2(diff.z, yaw_hyp) * radpi,
     std::atan2(diff.y, diff.x) * radpi,

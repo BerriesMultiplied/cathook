@@ -74,7 +74,6 @@ constexpr std::uintptr_t preview_emsg_patch_offset = 0x107;
 constexpr std::uint8_t preview_emsg_grant_byte = 0xA7;
 constexpr int inventory_manager_get_local_inventory_index = 24;
 constexpr int inventory_manager_show_items_picked_up_index = 35;
-constexpr std::uintptr_t inventory_manager_schema_offset = 0x60;
 
 
 using get_first_item_of_item_def_fn = void* (*)(void*, int);
@@ -373,16 +372,6 @@ bool api_ready()
   return inventory_api_resolved();
 }
 
-bool inventory_schema_ready()
-{
-  if (g_inventory_api.inventory_manager == nullptr) return false;
-  auto* base = reinterpret_cast<std::uint8_t*>(g_inventory_api.inventory_manager);
-  auto* schema = read_unaligned<void*>(base + inventory_manager_schema_offset);
-  if (schema == nullptr) return false;
-  auto* schema_inner = read_unaligned<void*>(reinterpret_cast<std::uint8_t*>(schema) + sizeof(void*));
-  return schema_inner != nullptr;
-}
-
 void* get_local_inventory()
 {
   if (!api_ready())
@@ -605,9 +594,9 @@ bool equip_item(const int class_id, const int slot, const int item_def_id, const
   }
 
   const int loadout_slot = corrected_loadout_slot(class_id, slot);
-  if (!inventory_schema_ready())
+  if (get_local_inventory() == nullptr)
   {
-    debug_log("inventory schema not ready, skipping equip class=%d slot=%d def=%d\n", class_id, loadout_slot, item_def_id);
+    debug_log("local inventory not ready, skipping equip class=%d slot=%d def=%d\n", class_id, loadout_slot, item_def_id);
     return false;
   }
 
