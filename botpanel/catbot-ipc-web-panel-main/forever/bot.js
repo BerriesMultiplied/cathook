@@ -56,6 +56,7 @@ const TIMEOUT_START_GAME = 10000;
 // Timeout for cathook to connect to the IPC server once injected
 const TIMEOUT_IPC_STATE = Number.parseInt(process.env.CAT_IPC_TIMEOUT_SECONDS || '90', 10) * 1000;
 const ipc_heartbeat_stale_timeout = Number.parseInt(process.env.CAT_IPC_STALE_SECONDS || '45', 10) * 1000;
+const ipc_identity_timeout = Number.parseInt(process.env.CAT_IPC_IDENTITY_TIMEOUT_SECONDS || '60', 10) * 1000;
 const runtime_kill_grace_time = Number.parseInt(process.env.CAT_RUNTIME_KILL_GRACE_SECONDS || '8', 10) * 1000;
 // Time to wait for Steam to log in is configured in ch-settings.json. 0 disables it.
 const TIMEOUT_STEAM_ASSUME_READY = Number.parseInt(process.env.CAT_STEAM_READY_SECONDS || '0', 10) * 1000;
@@ -883,6 +884,7 @@ class Bot extends EventEmitter {
         this.ipcState = null;
         this.ipcLastHeartbeat = 0;
         this.ipcID = -1;
+        this.time_ipc_identity_missing = 0;
 
         this.gameStarted = 0;
         this.gamePid = -1;
@@ -2292,6 +2294,7 @@ class Bot extends EventEmitter {
         this.ipcState = null;
         this.ipcID = -1;
         this.ipcLastHeartbeat = 0;
+        this.time_ipc_identity_missing = 0;
     }
 
     ipc_heartbeat_stale(time) {
@@ -2299,6 +2302,10 @@ class Bot extends EventEmitter {
             return false;
 
         return time - this.ipcState.heartbeat * 1000 > ipc_heartbeat_stale_timeout;
+    }
+
+    ipc_identity_missing() {
+        return !this.ipcState || !this.ipcState.friendid || this.ipcState.friendid === 0;
     }
 
     steam_boot_in_progress() {
@@ -2328,6 +2335,7 @@ class Bot extends EventEmitter {
         this.time_steam_client_initialized_game_launch = 0;
         this.time_gameCheck = 0;
         this.time_ipcState = 0;
+        this.time_ipc_identity_missing = 0;
         this.time_steamwebhelper_cleanup = 0;
         this.time_steamStatusLog = 0;
         this.time_steam_boot_status_log = 0;
@@ -2814,6 +2822,16 @@ class Bot extends EventEmitter {
                                     const stale_seconds = Math.floor((time - this.ipcState.heartbeat * 1000) / 1000);
                                     this.request_restart(`IPC heartbeat stale for ${stale_seconds} seconds`);
                                     return;
+                                }
+                                if (this.ipc_identity_missing()) {
+                                    if (!this.time_ipc_identity_missing)
+                                        this.time_ipc_identity_missing = time;
+                                    if (ipc_identity_timeout && time - this.time_ipc_identity_missing > ipc_identity_timeout) {
+                                        this.request_restart(`IPC identity missing for ${Math.floor((time - this.time_ipc_identity_missing) / 1000)} seconds`);
+                                        return;
+                                    }
+                                } else {
+                                    this.time_ipc_identity_missing = 0;
                                 }
                                 this.time_ipcState = 0;
                                 if (this.state != STATE.RUNNING) {
