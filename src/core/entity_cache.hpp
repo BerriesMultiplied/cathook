@@ -49,6 +49,15 @@ inline static std::unordered_map<enum class_id, std::vector<Entity*>> entity_cac
 inline static entity_cache_snapshot g_entity_cache_snapshot;
 inline static std::unordered_map<unsigned long, bool> friend_cache;
 
+inline bool friend_cache_lookup(unsigned long friends_id) {
+  const auto found = friend_cache.find(friends_id);
+  return found != friend_cache.end() && found->second;
+}
+
+inline void friend_cache_store(unsigned long friends_id, bool is_friend) {
+  friend_cache[friends_id] = is_friend;
+}
+
 inline const entity_cache_snapshot& entity_cache_current_snapshot() {
   return g_entity_cache_snapshot;
 }

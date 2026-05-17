@@ -277,7 +277,7 @@ public:
         return true;
       }
 
-      return friend_cache[pinfo.friends_id];
+      return friend_cache_lookup(pinfo.friends_id);
     }
 
     return false;
