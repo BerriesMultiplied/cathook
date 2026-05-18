@@ -234,6 +234,11 @@ void reset_game_telemetry_locked(user_data_s& data)
   return count;
 }
 
+[[nodiscard]] bool valid_local_peer_id()
+{
+  return local_peer_id >= 0 && local_peer_id < static_cast<int>(max_peers);
+}
+
 void refresh_local_ipc_friends_locked()
 {
   std::unordered_set<std::uint32_t> refreshed_friends{};
@@ -315,11 +320,6 @@ void mark_peer_free()
   }
 
   return -1;
-}
-
-[[nodiscard]] bool valid_local_peer_id()
-{
-  return local_peer_id >= 0 && local_peer_id < static_cast<int>(max_peers);
 }
 
 [[nodiscard]] bool store_initial_peer_data_locked()
