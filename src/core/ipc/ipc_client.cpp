@@ -494,9 +494,12 @@ void update_telemetry_locked()
   {
     if (const auto info = local_player_info())
     {
-      if (info->friends_id != 0)
+      if (info->friends_id != 0 && !info->fakeplayer && cached_local_account_id == 0)
       {
         cached_local_account_id = static_cast<std::uint32_t>(info->friends_id);
+      }
+      if (cached_local_account_id != 0)
+      {
         data.friendid = static_cast<unsigned int>(cached_local_account_id);
       }
       copy_cstr(data.name, sizeof(data.name), info->name);

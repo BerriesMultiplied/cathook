@@ -179,6 +179,7 @@ constexpr std::size_t character_info_command_patch_count = 5;
 std::array<byte_patch, replay_ui_nullcheck_patch_count> replay_ui_nullcheck_patches{};
 std::array<byte_patch, character_info_command_patch_count> character_info_command_patches{};
 byte_patch econ_item_definition_index_patch{};
+byte_patch studio_render_draw_model_wrapper_patch{};
 
 char normalize_path_char(const char value)
 {
@@ -832,6 +833,16 @@ bool initialize_extra_crashfix_patches()
     initialized_any_patch = true;
   }
 
+  if (initialize_optional_patch(studio_render_draw_model_wrapper_patch,
+                                "client.so",
+                                sigs::studio_render_draw_model_wrapper,
+                                0,
+                                { 0xC3 },
+                                "studio_render_draw_model_wrapper"))
+  {
+    initialized_any_patch = true;
+  }
+
   return initialized_any_patch;
 }
 
@@ -857,6 +868,7 @@ void restore_render_patch_objects()
   }
 
   econ_item_definition_index_patch.restore();
+  studio_render_draw_model_wrapper_patch.restore();
 }
 
 bool initialize_render_patches()
@@ -929,6 +941,7 @@ void apply_render_patches()
       ok = apply_render_patch_if_valid(patch, "character_info_command") && ok;
     }
     ok = apply_render_patch_if_valid(econ_item_definition_index_patch, "econ_item_definition_index") && ok;
+    ok = apply_render_patch_if_valid(studio_render_draw_model_wrapper_patch, "studio_render_draw_model_wrapper") && ok;
   }
 
   if (!ok)

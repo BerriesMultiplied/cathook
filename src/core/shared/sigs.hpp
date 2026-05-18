@@ -200,6 +200,8 @@ constexpr const char* character_info_open_armory =
   "55 31 FF 48 89 E5 E8 ? ? ? ? 48 8D 15 ? ? ? ? 48 89 C7 48 05 30 03 00 00 48 85 FF 48 0F 45 F8 48 8B 07 48 8B 00 48 39 D0 75 ? 5D 48 81 EF 30 03 00 00 31 D2 BE 03 00 00 00";
 constexpr const char* bone_setup_attachment_matrices =
   "55 48 89 E5 41 57 41 56 41 55 4D 89 C5 41 54 4D 89 CC 53 48 89 FB 48 81 EC 18 10 00 00";
+constexpr const char* studio_render_draw_model_wrapper =
+  "55 48 89 E5 41 57 41 56 41 55 41 54 53 48 81 EC 18 03 00 00 4C 8D 25 ? ? ? ? 48 89 95";
 
 } // namespace sigs
 
