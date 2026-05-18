@@ -33,7 +33,6 @@ public:
   [[nodiscard]] Vec3 heal_target_position() const;
   [[nodiscard]] bool wants_crossbow() const;
   [[nodiscard]] bool should_suppress_aimbot() const;
-  [[nodiscard]] bool should_suppress_random_crits() const;
   [[nodiscard]] bool recent_danger_matches(Player* localplayer, Player* patient, int* damage_type_out) const;
   [[nodiscard]] bool can_cycle_resist(float current_time) const;
   [[nodiscard]] bool can_press_uber(float current_time) const;
@@ -47,7 +46,6 @@ private:
   Vec3 heal_target_position_{};
   bool wants_crossbow_ = false;
   bool suppress_aimbot_ = false;
-  bool suppress_random_crits_ = false;
   int recent_damage_target_index_ = 0;
   int recent_damage_type_ = 0;
   float recent_damage_time_ = 0.0f;

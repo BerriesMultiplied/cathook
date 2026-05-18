@@ -13,6 +13,7 @@ V  o o  V  file: src/features/combat/tickbase/tickbase.cpp
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 
 #include "core/hooks/cl_read_packets.hpp"
@@ -118,7 +119,56 @@ auto packet_rebuild_enabled() -> bool
 {
   return config.misc.exploits.tickbase
       || config.misc.exploits.fakelag
-      || config.misc.exploits.anti_aim;
+      || config.misc.exploits.anti_aim
+      || config.misc.exploits.ping_reducer;
+}
+
+void apply_ping_reducer_alignment()
+{
+  if (!config.misc.exploits.ping_reducer
+      || client_state == nullptr
+      || client_state->m_NetChannel == nullptr
+      || client_state->m_nSignonState != signon_state_full
+      || g_state.net_time == nullptr
+      || g_state.in_shift_rebuild
+      || g_state.mode != shift_mode::none) {
+    return;
+  }
+
+  auto* channel = client_state->m_NetChannel;
+  if (channel->is_loopback()) {
+    return;
+  }
+
+  const double tick_interval = static_cast<double>(interval_per_tick());
+  if (tick_interval <= 0.0) {
+    return;
+  }
+
+  const double now = *g_state.net_time;
+  const double natural_next = client_state->m_flNextCmdTime;
+  if (natural_next <= now) {
+    return;
+  }
+
+  // get_avg_latency(FLOW_OUTGOING=0) returns RTT in seconds, matching netgraph "ping".
+  const float rtt = channel->get_avg_latency(0);
+  const double one_way = std::isfinite(rtt) && rtt > 0.0f
+    ? std::clamp(static_cast<double>(rtt) * 0.5, 0.0, 0.250)
+    : 0.0;
+
+  const double expected_arrival = natural_next + one_way;
+  const double aligned_arrival = std::ceil(expected_arrival / tick_interval) * tick_interval;
+  constexpr double safety_margin = 0.0015;  // arrive ~1.5ms before the server tick
+  const double aligned_send = aligned_arrival - one_way - safety_margin;
+
+  // Only delay sends - speeding them up would violate cl_cmdrate gating.
+  // Cap the extra wait at one tick interval so jitter or a missed sample
+  // can't stall sends and pile up choked commands toward the max.
+  const double extra_wait = aligned_send - natural_next;
+  if (extra_wait > 0.0 && extra_wait < tick_interval) {
+    client_state->m_flNextCmdTime = aligned_send;
+  }
 }
 
 auto rebuild_dependencies_ready() -> bool
@@ -353,6 +403,7 @@ void update_next_command_time()
     const float max_delta = std::min(interval_per_tick(), command_interval);
     const float delta = std::clamp(static_cast<float>(*g_state.net_time - client_state->m_flNextCmdTime), 0.0f, max_delta);
     client_state->m_flNextCmdTime = *g_state.net_time + command_interval - delta;
+    apply_ping_reducer_alignment();
     return;
   }
 

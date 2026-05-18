@@ -1432,61 +1432,13 @@ static void draw_aimbot_content() {
   cat_menu::end_flow_layout();
 }
 
-static void draw_crits_content();
-
 static void draw_combat_tab() {
-  enum combat_page_id
-  {
-    combat_page_aimbot,
-    combat_page_crits
-  };
-
-  static int combat_subtab = combat_page_aimbot;
-
   cat_menu::begin_tab_strip("##combat_subtabs", cat_menu::k_subtab_strip_height, false, true, cat_menu::k_tab_strip_padding_x, false);
-  if (cat_menu::subtab_button("Aimbot", combat_subtab == combat_page_aimbot)) {
-    combat_subtab = combat_page_aimbot;
-  }
-  
-  if (config.debug.insider_settings_unlocked) {
-    ImGui::SameLine(0.0f, 0.0f);
-    if (cat_menu::subtab_button("Crits", combat_subtab == combat_page_crits)) {
-      combat_subtab = combat_page_crits;
-    }
-  } else {
-    if (combat_subtab == combat_page_crits) {
-      combat_subtab = combat_page_aimbot;
-    }
-  }
-  
+  cat_menu::subtab_button("Aimbot", true);
   cat_menu::end_tab_strip();
   ImGui::Dummy(ImVec2(0.0f, 4.0f));
 
-  switch (combat_subtab) {
-    case combat_page_aimbot:
-      draw_aimbot_content();
-      break;
-    case combat_page_crits:
-      if (config.debug.insider_settings_unlocked) {
-        draw_crits_content();
-      }
-      break;
-  }
-}
-
-
-
-static void draw_crits_content() {
-  cat_menu::begin_flow_layout("crits_layout", 2);
-  cat_menu::flow_panel("Crits", 0, 176.0f, [&]() {
-    cat_menu::checkbox("Force crits", &config.random_crits.force_crits);
-    cat_menu::checkbox("Always melee crit", &config.random_crits.always_melee_crit);
-    cat_menu::checkbox("Save bucket", &config.random_crits.save_bucket);
-    cat_menu::checkbox("Respect bucket", &config.random_crits.respect_bucket);
-    cat_menu::checkbox("Advanced stats", &config.random_crits.advanced_stats);
-    cat_menu::slider_int("Seed scan", &config.random_crits.seed_scan, 256, 8192);
-  });
-  cat_menu::end_flow_layout();
+  draw_aimbot_content();
 }
 
 static void draw_esp_content() {
@@ -1661,13 +1613,11 @@ static void draw_visuals_world_content() {
 
 static void draw_visuals_ui_content() {
   const char* indicator_items[] = {
-    "Random crits",
     "Tickbase",
     "Spectators",
     "Keybinds"
   };
   const uint32_t indicator_bits[] = {
-    Visuals::Indicators::random_crits,
     Visuals::Indicators::tickbase,
     Visuals::Indicators::spectators,
     Visuals::Indicators::keybinds

@@ -1995,11 +1995,9 @@ void automation_controller::run_ping_reducer()
     return;
   }
 
-  const int target_ping = std::clamp(config.misc.exploits.ping_target, 1, 100);
-  const int wanted_cmd_rate = ping > target_ping ? -1 : original_cmd_rate_;
-  if (cl_cmdrate->get_int() != wanted_cmd_rate)
+  if (cl_cmdrate->get_int() != original_cmd_rate_)
   {
-    cl_cmdrate->set_int(wanted_cmd_rate);
+    cl_cmdrate->set_int(original_cmd_rate_);
   }
 }
 

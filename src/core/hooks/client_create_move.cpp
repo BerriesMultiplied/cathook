@@ -24,7 +24,6 @@ V  o o  V  file: src/core/hooks/client_create_move.cpp
 #include "core/detach.hpp"
 #include "features/automation/medic_automation/medic_automation.hpp"
 #include "features/combat/anti_aim/anti_aim.hpp"
-#include "features/combat/random_crits/random_crits.hpp"
 #include "features/combat/tickbase/tickbase.hpp"
 
 void (*client_create_move_original)(void*, int, float, bool);
@@ -192,8 +191,6 @@ void client_create_move_hook(void* me, int sequence_number, float input_sample_f
   cat_bind::run();
   automation::controller().on_create_move(user_cmd);
 
-  const bool user_requested_primary_attack = (user_cmd->buttons & IN_ATTACK) != 0;
-
   if (can_run_move_features(user_cmd)) {
     Player* localplayer = entity_list->get_localplayer();
     if (should_run_taunt_slide(localplayer)) {
@@ -204,9 +201,6 @@ void client_create_move_hook(void* me, int sequence_number, float input_sample_f
     }
   }
 
-  if (!medic_automation::controller().should_suppress_random_crits()) {
-    random_crits::run(user_cmd, sequence_number, user_requested_primary_attack);
-  }
   tickbase::on_create_move(user_cmd);
   anti_aim::on_create_move(user_cmd);
   update_verified_user_cmd(sequence_number, user_cmd);

@@ -17,7 +17,6 @@ V  o o  V  file: src/features/menu/indicators.hpp
 #include "menu.hpp"
 
 #include "features/combat/aimbot/aimbot_debug.hpp"
-#include "features/combat/random_crits/random_crits.hpp"
 #include "features/combat/tickbase/tickbase.hpp"
 #include "features/visuals/spectator_list.hpp"
 
@@ -37,14 +36,8 @@ V  o o  V  file: src/features/menu/indicators.hpp
 namespace cat_indicator
 {
 
-inline constexpr float random_crits_width = 300.0f;
-inline constexpr float random_crits_height = 190.0f;
-inline constexpr float random_crits_compact_width = 180.0f;
-inline constexpr float random_crits_compact_height = 29.0f;
-
 enum class section_kind
 {
-  random_crits,
   tickbase,
   keybinds,
   spectators,
@@ -175,17 +168,7 @@ inline auto collect_spectator_rows(Player** target_player_out) -> std::vector<sp
 inline auto build_sections() -> std::vector<section_spec>
 {
   std::vector<section_spec> sections{};
-  sections.reserve(5);
-
-  if (has_indicator(Visuals::Indicators::random_crits)) {
-    const bool advanced_stats = config.random_crits.advanced_stats;
-    sections.push_back({
-      .kind = section_kind::random_crits,
-      .width = advanced_stats ? random_crits_width : random_crits_compact_width,
-      .height = advanced_stats ? random_crits_height : random_crits_compact_height,
-      .position = ImVec2(config.visuals.indicators.random_crits_x, config.visuals.indicators.random_crits_y)
-    });
-  }
+  sections.reserve(4);
 
   if (has_indicator(Visuals::Indicators::tickbase) && (menu_focused || config.misc.exploits.tickbase)) {
     sections.push_back({
@@ -245,8 +228,6 @@ struct section_position_refs
 inline auto section_drag_position(section_kind kind) -> section_position_refs
 {
   switch (kind) {
-  case section_kind::random_crits:
-    return { .x = &config.visuals.indicators.random_crits_x, .y = &config.visuals.indicators.random_crits_y };
   case section_kind::tickbase:
     return { .x = &config.visuals.indicators.legacy_ticks_x, .y = &config.visuals.indicators.legacy_ticks_y };
   case section_kind::keybinds:
@@ -321,118 +302,11 @@ inline void handle_drag_window(const section_spec& section)
   ImGui::End();
 }
 
-inline auto crit_indicator_color(const random_crits::indicator_state& state) -> ImU32
-{
-  if (!state.available || !state.enabled) {
-    return ImGui::GetColorU32(cat_menu::k_text_muted);
-  }
-
-  if (!state.can_random_crit || state.crit_banned) {
-    return IM_COL32(200, 55, 55, 255);
-  }
-
-  if (state.crit_boosted || state.forcing) {
-    const auto color = config.visuals.hitmarker.crit_color.to_RGBA();
-    return IM_COL32(color.r, color.g, color.b, color.a);
-  }
-
-  if (state.rapid_wait > 0.0f) {
-    return IM_COL32(255, 150, 0, 255);
-  }
-
-  if (state.skipping || state.save_mode) {
-    return ImGui::GetColorU32(cat_menu::k_accent);
-  }
-
-  return ImGui::GetColorU32(cat_menu::k_text);
-}
-
-inline auto build_crit_status_text(const random_crits::indicator_state& state) -> std::string
-{
-  const bool has_next_crit_seed = state.next_crit_seed_roll >= 0;
-
-  if (!state.enabled) {
-    return "off";
-  }
-  if (!state.available) {
-    return "no weapon";
-  }
-  if (!state.can_random_crit) {
-    return "disabled";
-  }
-  if (state.crit_boosted) {
-    return "boosted";
-  }
-  if (state.streaming_time > 0.0f) {
-    return "streaming";
-  }
-  if (state.crit_banned) {
-    return "banned";
-  }
-  if (state.forcing) {
-    return "forcing";
-  }
-  if (state.skipping) {
-    return "saving";
-  }
-  if (state.rapid_wait > 0.0f) {
-    return "waiting";
-  }
-  if (state.force_mode || (config.random_crits.always_melee_crit && state.melee_weapon)) {
-    if (!state.can_attack || state.available_crits <= 0) {
-      return "building";
-    }
-
-    return has_next_crit_seed ? "seed found" : "scanning";
-  }
-  if (state.save_mode) {
-    return "saving";
-  }
-
-  return "idle";
-}
-
 inline auto format_float(const float value, const char* format) -> std::string
 {
   char buffer[64]{};
   std::snprintf(buffer, sizeof(buffer), format, value);
   return buffer;
-}
-
-inline auto build_crit_rows(const random_crits::indicator_state& state) -> std::vector<std::pair<std::string, std::string>>
-{
-  std::vector<std::pair<std::string, std::string>> rows{};
-  rows.reserve(7);
-
-  if (!state.available) {
-    rows.emplace_back("weapon", "none");
-    return rows;
-  }
-
-  rows.emplace_back("affords", std::to_string(std::max(0, state.available_crits)) + " / " + std::to_string(std::max(0, state.potential_crits)));
-  if (state.next_crit_seed_roll >= 0) {
-    rows.emplace_back("crit seed", "+" + std::to_string(state.next_crit_seed_offset) + " roll " + std::to_string(state.next_crit_seed_roll));
-  } else if (state.available_crits > 0) {
-    rows.emplace_back("crit seed", "scan miss");
-  } else {
-    rows.emplace_back("build", state.next_crit > 0 ? std::to_string(state.next_crit) + " shots" : "need dmg");
-  }
-  rows.emplace_back("bucket", std::to_string(static_cast<int>(state.bucket)) + " / " + std::to_string(static_cast<int>(state.bucket_cap)));
-  rows.emplace_back("cost", std::to_string(static_cast<int>(std::ceil(state.crit_cost))) + " (" + std::to_string(static_cast<int>(std::ceil(state.damage_to_crit))) + " dmg)");
-  rows.emplace_back("chance", format_float(state.crit_chance * 100.0f, "%.1f%%") + " x" + format_float(state.crit_chance_mult, "%.2f"));
-  rows.emplace_back("seeds", std::to_string(state.seed_requests) + " / " + std::to_string(state.checks) + " scan " + std::to_string(state.seed_scan));
-
-  if (state.selected) {
-    rows.emplace_back("cmd", "+" + std::to_string(state.selected_offset) + " roll " + std::to_string(state.selected_roll));
-  } else if (state.rapid_wait > 0.0f) {
-    rows.emplace_back("wait", format_float(state.rapid_wait, "%.2fs"));
-  } else if (state.streaming_time > 0.0f) {
-    rows.emplace_back("stream", format_float(state.streaming_time, "%.2fs"));
-  } else {
-    rows.emplace_back("seed", std::to_string(state.current_seed));
-  }
-
-  return rows;
 }
 
 inline void draw_info_row(ImDrawList* draw_list, const ImVec2 position, const float width, const char* label, const std::string& value, const ImU32 value_color)
@@ -499,36 +373,6 @@ inline void draw_aimbot_debug_section(ImDrawList* draw_list, const ImVec2 positi
   draw_info_row(draw_list, ImVec2(position.x, row_y), width, "pellet", std::to_string(state.pellet_index) + " / " + std::to_string(state.pellet_count), value_color);
   row_y += row_height;
   draw_info_row(draw_list, ImVec2(position.x, row_y), width, "tick/fov", std::to_string(state.tick_count) + " / " + format_float(state.fov, "%.2f"), value_color);
-}
-
-inline void draw_random_crits_section(ImDrawList* draw_list, const ImVec2 position)
-{
-  const float width = config.random_crits.advanced_stats ? random_crits_width : random_crits_compact_width;
-  const float height = config.random_crits.advanced_stats ? random_crits_height : random_crits_compact_height;
-  constexpr float row_height = 17.0f;
-  const auto state = random_crits::get_indicator_state();
-  const auto bar_color = crit_indicator_color(state);
-  const auto status = build_crit_status_text(state);
-  const auto bucket_text = state.available ? std::to_string(std::max(0, state.available_crits)) + "/" + std::to_string(std::max(0, state.potential_crits)) : std::string{};
-
-  if (!config.random_crits.advanced_stats) {
-    draw_compact_meter(draw_list, position, width, status, bucket_text, state.bucket_progress, bar_color);
-    return;
-  }
-
-  const auto rows = build_crit_rows(state);
-  draw_panel_box(draw_list, position, ImVec2(width, height));
-
-  const ImVec2 crit_size = ImGui::CalcTextSize("Crit");
-  draw_list->AddText(ImVec2(position.x + 8.0f, position.y + 7.0f), ImGui::GetColorU32(cat_menu::k_text), "Crit");
-  draw_list->AddText(ImVec2(position.x + 8.0f + crit_size.x, position.y + 7.0f), bar_color, "s");
-  draw_compact_meter(draw_list, ImVec2(position.x, position.y + 27.0f), width, status, bucket_text, state.bucket_progress, bar_color);
-
-  float row_y = position.y + 64.0f;
-  for (const auto& [label, value] : rows) {
-    draw_info_row(draw_list, ImVec2(position.x, row_y), width, label.c_str(), value, bar_color);
-    row_y += row_height;
-  }
 }
 
 inline auto tickbase_indicator_color(const tickbase::indicator_state& state) -> ImU32
@@ -705,9 +549,6 @@ static void draw_game_indicators()
   ImDrawList* draw_list = ImGui::GetForegroundDrawList();
   for (const section_spec& section : sections) {
     switch (section.kind) {
-    case section_kind::random_crits:
-      draw_random_crits_section(draw_list, section.position);
-      break;
     case section_kind::tickbase:
       draw_tickbase_section(draw_list, section.position);
       break;

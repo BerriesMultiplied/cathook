@@ -130,15 +130,6 @@ struct Aim {
   int max_targets = 6;
 };
 
-struct random_crits_config {
-  bool force_crits = false;
-  bool always_melee_crit = false;
-  bool save_bucket = true;
-  bool respect_bucket = true;
-  bool advanced_stats = false;
-  int seed_scan = 8192;
-};
-
 struct backtrack_config {
   enum class visualizer_style {
     points = 0,
@@ -327,19 +318,16 @@ struct Visuals {
   struct Indicators {
     enum item_flags : uint32_t {
       legacy_ticks = 1u << 0,
-      random_crits = 1u << 1,
       spectators = 1u << 2,
       keybinds = 1u << 3,
       tickbase = 1u << 4
     };
 
-    uint32_t enabled_mask = random_crits | spectators | keybinds | tickbase;
+    uint32_t enabled_mask = spectators | keybinds | tickbase;
     float x = 24.0f;
     float y = 140.0f;
     float legacy_ticks_x = 24.0f;
     float legacy_ticks_y = 140.0f;
-    float random_crits_x = 24.0f;
-    float random_crits_y = 186.0f;
     float keybinds_x = 24.0f;
     float keybinds_y = 232.0f;
   } indicators;
@@ -463,7 +451,7 @@ struct Misc {
     bool setup_bones_optimization = false;
     bool equip_region_unlock = false;
     bool ping_reducer = false;
-    int ping_target = 1;
+    int ping_target = 60;
     bool no_engine_sleep = false;
 #if defined(CATHOOK_TEXTMODE) && CATHOOK_TEXTMODE
     bool null_graphics = true;
@@ -639,7 +627,6 @@ struct Config {
   Aim aimbot;
   backtrack_config backtrack;
   ipc_config ipc;
-  random_crits_config random_crits;
   Esp esp;
   Chams chams;
   glow_config glow;

@@ -249,13 +249,6 @@ void config_store::import_config(const Config& config)
     set_bool("ipc.auto_connect", config.ipc.auto_connect);
     set_bool("ipc.auto_ignore_local_bots", config.ipc.auto_ignore_local_bots);
 #endif
-    set_bool("random_crits.force_crits", config.random_crits.force_crits);
-    set_bool("random_crits.always_melee_crit", config.random_crits.always_melee_crit);
-    set_bool("random_crits.save_bucket", config.random_crits.save_bucket);
-    set_bool("random_crits.respect_bucket", config.random_crits.respect_bucket);
-    set_bool("random_crits.advanced_stats", config.random_crits.advanced_stats);
-    set_int("random_crits.seed_scan", config.random_crits.seed_scan);
-
     set_bool("esp.master", config.esp.master);
     set_bool("esp.lerp", config.esp.lerp);
     set_float("esp.lerp_speed", config.esp.lerp_speed);
@@ -366,8 +359,6 @@ void config_store::import_config(const Config& config)
     set_float("visuals.indicators.y", config.visuals.indicators.y);
     set_float("visuals.indicators.ticks_x", config.visuals.indicators.legacy_ticks_x);
     set_float("visuals.indicators.ticks_y", config.visuals.indicators.legacy_ticks_y);
-    set_float("visuals.indicators.random_crits_x", config.visuals.indicators.random_crits_x);
-    set_float("visuals.indicators.random_crits_y", config.visuals.indicators.random_crits_y);
     set_float("visuals.indicators.keybinds_x", config.visuals.indicators.keybinds_x);
     set_float("visuals.indicators.keybinds_y", config.visuals.indicators.keybinds_y);
     set_bool("visuals.spectator_list.enabled", spectator_indicator_enabled);
@@ -653,26 +644,6 @@ void config_store::export_config(Config& config) const
     config.ipc.auto_connect = true;
     config.ipc.auto_ignore_local_bots = true;
 #endif
-    config.random_crits.force_crits = get_bool(
-        "random_crits.force_crits",
-        get_bool("crithack.force_crits", config.random_crits.force_crits));
-    config.random_crits.always_melee_crit = get_bool(
-        "random_crits.always_melee_crit",
-        get_bool("crithack.always_melee_crit", config.random_crits.always_melee_crit));
-    config.random_crits.save_bucket = get_bool(
-        "random_crits.save_bucket",
-        get_bool("crithack.save_bucket", config.random_crits.save_bucket));
-    config.random_crits.respect_bucket = get_bool(
-        "random_crits.respect_bucket",
-        get_bool("crithack.respect_bucket", config.random_crits.respect_bucket));
-    config.random_crits.advanced_stats = get_bool(
-        "random_crits.advanced_stats",
-        get_bool("crithack.advanced_stats", config.random_crits.advanced_stats));
-    config.random_crits.seed_scan = std::clamp(
-        get_int("random_crits.seed_scan", get_int("crithack.seed_scan", config.random_crits.seed_scan)),
-        256,
-        8192);
-
     config.esp.master = get_bool("esp.master", config.esp.master);
     config.esp.lerp = get_bool("esp.lerp", config.esp.lerp);
     config.esp.lerp_speed = std::clamp(get_float("esp.lerp_speed", config.esp.lerp_speed), 1.0f, 40.0f);
@@ -825,12 +796,6 @@ void config_store::export_config(Config& config) const
     config.visuals.indicators.y = get_float("visuals.indicators.y", get_float("misc.exploits.tickbase_indicator_y", config.visuals.indicators.y));
     config.visuals.indicators.legacy_ticks_x = get_float("visuals.indicators.ticks_x", get_float("misc.exploits.tickbase_indicator_x", config.visuals.indicators.x));
     config.visuals.indicators.legacy_ticks_y = get_float("visuals.indicators.ticks_y", get_float("misc.exploits.tickbase_indicator_y", config.visuals.indicators.y));
-    config.visuals.indicators.random_crits_x = get_float(
-        "visuals.indicators.random_crits_x",
-        get_float("visuals.indicators.crit_hack_x", config.visuals.indicators.x));
-    config.visuals.indicators.random_crits_y = get_float(
-        "visuals.indicators.random_crits_y",
-        get_float("visuals.indicators.crit_hack_y", config.visuals.indicators.y + 46.0f));
     config.visuals.indicators.keybinds_x = get_float("visuals.indicators.keybinds_x", get_float("misc.exploits.keybind_indicator_x", config.visuals.indicators.x));
     config.visuals.indicators.keybinds_y = get_float("visuals.indicators.keybinds_y", get_float("misc.exploits.keybind_indicator_y", config.visuals.indicators.y + 92.0f));
     config.visuals.spectator_list.enabled = (config.visuals.indicators.enabled_mask & Visuals::Indicators::spectators) != 0;

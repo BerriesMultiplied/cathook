@@ -25,7 +25,6 @@ V  o o  V  file: src/core/hooks/client_mode_create_move.cpp
 
 #include "features/combat/backtrack/backtrack.hpp"
 #include "features/combat/aimbot/aimbot.cpp"
-#include "features/combat/random_crits/random_crits.cpp"
 #include "features/movement/bhop/bhop.cpp"
 #include "features/movement/engine_prediction/engine_prediction.cpp"
 #include "features/automation/medic_automation/medic_automation.hpp"

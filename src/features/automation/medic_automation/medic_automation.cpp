@@ -526,7 +526,6 @@ void medic_controller::clear_runtime_state()
   heal_target_position_ = {};
   wants_crossbow_ = false;
   suppress_aimbot_ = false;
-  suppress_random_crits_ = false;
 }
 
 void medic_controller::on_pre_navbot_create_move(user_cmd* user_cmd)
@@ -564,7 +563,6 @@ void medic_controller::on_pre_navbot_create_move(user_cmd* user_cmd)
 void medic_controller::on_post_navbot_create_move(user_cmd* user_cmd)
 {
   suppress_aimbot_ = false;
-  suppress_random_crits_ = false;
   if (user_cmd == nullptr || heal_target_index_ <= 0 || entity_list == nullptr)
   {
     return;
@@ -583,7 +581,6 @@ void medic_controller::on_post_navbot_create_move(user_cmd* user_cmd)
   {
     apply_crossbow(user_cmd, localplayer, target, active_weapon);
     suppress_aimbot_ = (user_cmd->buttons & IN_ATTACK) != 0;
-    suppress_random_crits_ = suppress_aimbot_;
     return;
   }
 
@@ -658,11 +655,6 @@ bool medic_controller::wants_crossbow() const
 bool medic_controller::should_suppress_aimbot() const
 {
   return suppress_aimbot_;
-}
-
-bool medic_controller::should_suppress_random_crits() const
-{
-  return suppress_random_crits_;
 }
 
 bool medic_controller::recent_danger_matches(Player* localplayer, Player* patient, int* damage_type_out) const

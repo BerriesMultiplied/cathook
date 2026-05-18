@@ -88,7 +88,6 @@ V  o o  V  file: src/cathook.cpp
 #include "core/hooks/cl_move.cpp"
 #include "core/hooks/client_mode_create_move.cpp"
 #include "core/hooks/client_create_move.cpp"
-#include "core/hooks/calc_is_attack_critical.cpp"
 #include "core/hooks/equip_region_unlock.cpp"
 #include "core/hooks/region_selector.cpp"
 #include "core/hooks/tf_gc_client_system.cpp"
@@ -1241,9 +1240,6 @@ bool initialize_game_runtime() {
 
   text_window_show_panel_original = (void (*)(void*, bool))sigscan_module("client.so", sigs::text_window_show_panel);
 
-  calc_is_attack_critical_original = (bool (*)(void*))sigscan_module("client.so", sigs::calc_is_attack_critical);
-  error_assert(calc_is_attack_critical_original == nullptr, "Failed to find CalcIsAttackCritical");
-
   cl_move_original = (tickbase::cl_move_fn)sigscan_module("engine.so", sigs::cl_move);
   error_assert(cl_move_original == nullptr, "Failed to find CL_Move");
 
@@ -1323,9 +1319,6 @@ bool initialize_game_runtime() {
 
   rv = funchook_prepare(funchook, (void**)&text_window_show_panel_original, (void*)text_window_show_panel_hook);
   error_assert(rv != 0, "Failed to prepare CTFTextWindow::ShowPanel hook\n");
-
-  rv = funchook_prepare(funchook, (void**)&calc_is_attack_critical_original, (void*)calc_is_attack_critical_hook);
-  error_assert(rv != 0, "Failed to prepare CalcIsAttackCritical hook\n");
 
   rv = funchook_prepare(funchook, (void**)&cl_move_original, (void*)cl_move_hook);
   error_assert(rv != 0, "Failed to prepare CL_Move hook\n");

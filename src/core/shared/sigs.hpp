@@ -80,8 +80,6 @@ constexpr const char* base_animating_auto_allow_bone_access_on_delete =
   "55 BF 01 00 00 00 48 89 E5 E8 ? ? ? ? 5D C3";
 constexpr const char* inspect_target_check =
   "55 48 89 E5 41 55 41 54 53 48 81 EC ? ? ? ? 48 85 F6 74 ? 48 8D 05 ? ? ? ?";
-constexpr const char* calc_is_attack_critical =
-  "48 8B 05 ? ? ? ? 55 48 89 E5 41 54 49 89 FC 53 83 78 ? ? 7E ? 48 8B 07 48 8D 15 ? ? ? ?";
 constexpr const char* tf_projectile_sticky_arm_time =
   "55 48 89 E5 41 54 49 89 FC 48 83 EC ? 48 8B 05 ? ? ? ? 8B 97 ? ? ? ? F3 0F 10 40 ? 48 8D 05 ? ? ? ?";
 

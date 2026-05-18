@@ -232,7 +232,7 @@ inline hitscan_aim_bounds_zone hitscan_aim_scaled_bounds_zone(const hitscan_aim_
 inline hitscan_aim_bounds_zone hitscan_aim_bounds_zone_for_hitbox(const hitscan_aim_bounds& bounds, int hitbox_id) {
   switch (hitbox_id) {
   case aim_hitbox_head:
-    return hitscan_aim_scaled_bounds_zone(bounds, 0.28f, 0.76f, 1.0f);
+    return hitscan_aim_scaled_bounds_zone(bounds, 0.34f, 0.74f, 1.0f);
   case aim_hitbox_pelvis:
     return hitscan_aim_scaled_bounds_zone(bounds, 0.48f, 0.28f, 0.52f);
   case aim_hitbox_spine_0:
@@ -290,7 +290,7 @@ inline bool hitscan_aim_ray_hits_hitbox(Player* target, int hitbox_id, const Vec
 
   const Vec3 local_start = aimbot_inverse_transform_point(start_pos, bone_to_world[hitbox->bone]);
   const Vec3 local_end = aimbot_inverse_transform_point(end_pos, bone_to_world[hitbox->bone]);
-  constexpr float hitbox_expansion = 1.25f;
+  constexpr float hitbox_expansion = 1.75f;
   const Vec3 mins = hitbox->bbmin - Vec3{hitbox_expansion, hitbox_expansion, hitbox_expansion};
   const Vec3 maxs = hitbox->bbmax + Vec3{hitbox_expansion, hitbox_expansion, hitbox_expansion};
   return aimbot_segment_intersects_aabb(local_start, local_end, mins, maxs);
@@ -553,7 +553,9 @@ inline bool hitscan_aim_trace_candidate(Player* localplayer,
     return fallback_hit;
   }
 
-  if (candidate.hitbox == aim_hitbox_head && candidate.player != nullptr) {
+  if (candidate.hitbox == aim_hitbox_head &&
+      candidate.player != nullptr &&
+      config.aimbot.wait_for_headshot) {
     const bool head_hit = trace_world.hitbox == aim_hitbox_head;
     if (result != nullptr) {
       result->hit = head_hit;
