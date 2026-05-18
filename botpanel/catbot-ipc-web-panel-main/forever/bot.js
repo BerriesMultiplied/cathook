@@ -19,8 +19,8 @@ const XPRA_LOG = process.env.CAT_XPRA_LOG || '/tmp/cat-catbot-xpra.log';
 const TEXTMODE_GAME = process.env.CAT_TEXTMODE_GAME !== '0';
 const GDB_CRASH_REPORTS = process.env.CAT_GDB_CRASH_REPORTS === '1' || config.gdb_crash_reports === true;
 const steam_window_options_default = VISIBLE_WINDOWS
-    ? '-noreactlogin'
-    : '-silent -noreactlogin -cef-disable-gpu -nominidumps -nobreakpad -skipstreamingdrivers';
+    ? ''
+    : '-silent  -cef-disable-gpu -nominidumps -nobreakpad -skipstreamingdrivers';
 const steam_window_options = process.env.CAT_STEAM_WINDOW_OPTIONS || steam_window_options_default;
 const game_window_options_default = VISIBLE_WINDOWS ? '-gl -sw -w 1280 -h 720' : '-gl -silent -sw -w 640 -h 480';
 const GAME_WINDOW_OPTIONS = process.env.CAT_GAME_WINDOW_OPTIONS || game_window_options_default;
@@ -1255,15 +1255,25 @@ class Bot extends EventEmitter {
                 continue;
 
             const search_text = text.slice(Math.max(0, login_ok_position - 4096), login_ok_position + 4096);
-            const matches = [...search_text.matchAll(/\[U:1:(\d+)\]/g)]
+            const direct_match = search_text.match(/RecvMsgClientLogOnResponse\(\)\s*:\s*\[U:1:(\d+)\]\s*'OK'/i);
+            if (direct_match) {
+                const account_id32 = Number.parseInt(direct_match[1], 10);
+                if (Number.isFinite(account_id32) && account_id32 > 0 && login_ok_position > best_position) {
+                    best_position = login_ok_position;
+                    best_account_id32 = account_id32;
+                }
+                continue;
+            }
+
+            const matches = [...new Set([...search_text.matchAll(/\[U:1:(\d+)\]/g)]
                 .map((match) => Number.parseInt(match[1], 10))
-                .filter((account_id32) => Number.isFinite(account_id32) && account_id32 > 0);
-            if (!matches.length)
+                .filter((account_id32) => Number.isFinite(account_id32) && account_id32 > 0))];
+            if (matches.length !== 1)
                 continue;
 
             if (login_ok_position > best_position) {
                 best_position = login_ok_position;
-                best_account_id32 = matches[matches.length - 1];
+                best_account_id32 = matches[0];
             }
         }
 

@@ -242,9 +242,28 @@ void refresh_local_ipc_friends_locked()
   if (ipc_state != nullptr)
   {
     const auto now = now_seconds();
+    const auto local_valid = valid_local_peer_id();
+    const auto& local_peer = local_valid ? ipc_state->peer_data[local_peer_id] : ipc_state->peer_data[0];
+    const auto& local_data = local_valid ? ipc_state->peer_user_data[local_peer_id] : ipc_state->peer_user_data[0];
+    const bool local_ready = local_valid &&
+      peer_alive(local_peer, now) &&
+      local_data.connected &&
+      local_data.ingame.good &&
+      local_data.ingame.server[0] != '\0';
     for (auto index = 0u; index < max_peers; ++index)
     {
-      if (!peer_alive(ipc_state->peer_data[index], now))
+      if (!local_ready ||
+          static_cast<int>(index) == local_peer_id ||
+          !peer_alive(ipc_state->peer_data[index], now))
+      {
+        continue;
+      }
+
+      const auto& data = ipc_state->peer_user_data[index];
+      if (!data.connected ||
+          !data.ingame.good ||
+          data.ingame.server[0] == '\0' ||
+          std::strncmp(data.ingame.server, local_data.ingame.server, sizeof(data.ingame.server)) != 0)
       {
         continue;
       }
