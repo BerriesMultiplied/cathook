@@ -436,7 +436,7 @@ float fake_latency_seconds()
 
 float interpolation_time()
 {
-  if (config.backtrack.fake_interp) {
+  if (is_enabled() && config.backtrack.fake_interp) {
     return window_seconds();
   }
 
@@ -447,6 +447,13 @@ void on_create_move(user_cmd* user_cmd)
 {
   (void)user_cmd;
   install_net_channel_hook();
+
+  static bool was_enabled = false;
+  const bool enabled_now = is_enabled();
+  if (was_enabled && !enabled_now) {
+    clear();
+  }
+  was_enabled = enabled_now;
 
   auto* channel = current_net_channel();
   if (!should_run_network_state()) {

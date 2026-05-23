@@ -654,6 +654,21 @@ inline static Config config cathook_EARLY_INIT;
 
 #undef cathook_EARLY_INIT
 
+inline void enforce_insider_settings_lock(Config& cfg)
+{
+  if (cfg.debug.insider_settings_unlocked) {
+    return;
+  }
+
+  cfg.backtrack.enabled = false;
+  cfg.chams.player.backtrack = false;
+}
+
+inline void reset_insider_settings_session(Config& cfg)
+{
+  cfg.debug.insider_settings_unlocked = false;
+  enforce_insider_settings_lock(cfg);
+}
 
 static bool is_button_raw_down(const struct button& button) {
   if (button.button == SDLK_UNKNOWN) {

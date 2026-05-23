@@ -1366,6 +1366,7 @@ void load_default_config(Config& config)
     if (store->load_file("default"))
     {
         store->export_config(config);
+        reset_insider_settings_session(config);
         log_line("loaded default config");
         return;
     }

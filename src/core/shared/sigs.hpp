@@ -55,7 +55,7 @@ constexpr const char* map_info_menu_show_panel =
 constexpr const char* text_window_show_panel =
   "55 48 8D 15 ? ? ? ? 48 89 E5 41 54 41 89 F4 53 48 8B 07";
 constexpr const char* key_values_constructor =
-  "55 31 C0 66 0F EF C0 48 89 E5 53";
+  "55 66 0F EF C0 48 89 E5 53 48 89 FB 48 89 F7 48 83 EC ? BE ? ? ? ? C7 03 FF FF FF FF";
 constexpr const char* key_values_set_int =
   "55 48 89 E5 53 89 D3 BA ? ? ? ? 48 83 EC ? E8 ? ? ? ? 48 85 C0 74 ? 89 58";
 constexpr const char* key_values_load_from_buffer =

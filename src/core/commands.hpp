@@ -303,6 +303,7 @@ inline void command_load_callback(const command_args& args)
   }
 
   store->export_config(::config);
+  reset_insider_settings_session(::config);
   cat_bind::load(store);
   print("[cat_load] loaded config '%s'\n", args.argv(1));
 }

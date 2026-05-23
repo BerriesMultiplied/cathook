@@ -1538,11 +1538,13 @@ static void draw_chams_content() {
   cat_menu::flow_panel("Targets", 1, 244.0f, [&]() {
     cat_menu::checkbox("Friend ignore z", &config.chams.player.friends_flags.ignore_z);
     cat_menu::checkbox("Enemy overlay ignore z", &config.chams.player.enemy_overlay_flags.ignore_z);
-    cat_menu::checkbox("Backtrack", &config.chams.player.backtrack);
-    cat_menu::combo("Backtrack material", (int*)&config.chams.player.backtrack_material_type, mats, IM_ARRAYSIZE(mats));
-    cat_menu::combo("Backtrack z material", (int*)&config.chams.player.backtrack_material_z_type, mats, IM_ARRAYSIZE(mats));
-    cat_menu::checkbox("Backtrack ignore z", &config.chams.player.backtrack_flags.ignore_z);
-    cat_menu::slider_int("Backtrack ticks", &config.chams.player.backtrack_ticks, 1, 80);
+    if (config.debug.insider_settings_unlocked) {
+      cat_menu::checkbox("Backtrack", &config.chams.player.backtrack);
+      cat_menu::combo("Backtrack material", (int*)&config.chams.player.backtrack_material_type, mats, IM_ARRAYSIZE(mats));
+      cat_menu::combo("Backtrack z material", (int*)&config.chams.player.backtrack_material_z_type, mats, IM_ARRAYSIZE(mats));
+      cat_menu::checkbox("Backtrack ignore z", &config.chams.player.backtrack_flags.ignore_z);
+      cat_menu::slider_int("Backtrack ticks", &config.chams.player.backtrack_ticks, 1, 80);
+    }
   });
   cat_menu::flow_panel("Colors", 2, 160.0f, [&]() {
     cat_menu::color_picker("Enemy visible", config.chams.player.enemy_color.to_arr());
@@ -1558,8 +1560,10 @@ static void draw_chams_content() {
     cat_menu::combo("Enemy overlay z mat", (int*)&config.chams.player.enemy_overlay_material_z_type, mats, IM_ARRAYSIZE(mats));
     cat_menu::color_picker("Enemy overlay", config.chams.player.enemy_overlay_color.to_arr());
     cat_menu::color_picker("Enemy overlay z", config.chams.player.enemy_overlay_color_z.to_arr());
-    cat_menu::color_picker("Backtrack visible", config.chams.player.backtrack_color.to_arr());
-    cat_menu::color_picker("Backtrack occluded", config.chams.player.backtrack_color_z.to_arr());
+    if (config.debug.insider_settings_unlocked) {
+      cat_menu::color_picker("Backtrack visible", config.chams.player.backtrack_color.to_arr());
+      cat_menu::color_picker("Backtrack occluded", config.chams.player.backtrack_color_z.to_arr());
+    }
   });
   cat_menu::end_flow_layout();
 }
@@ -2475,6 +2479,7 @@ static void draw_debug_content() {
       } else {
         config.debug.insider_settings_unlocked = false;
         unlock_click_count = 0;
+        enforce_insider_settings_lock(config);
       }
     }
     
@@ -2544,6 +2549,7 @@ static void draw_config_content() {
     if (cat_menu::accent_button("Load", ImVec2((ImGui::GetContentRegionAvail().x - 6.0f) * 0.5f, 22.0f))) {
       if (config_store->load_file(config_name)) {
         config_store->export_config(config);
+        reset_insider_settings_session(config);
         cat_bind::load(config_store);
       }
     }
@@ -2686,6 +2692,8 @@ inline void end_chrome_window() {
 } // namespace cat_menu
 
 static void draw_settings_window(void) {
+  enforce_insider_settings_lock(config);
+
   if (!cat_menu::begin_chrome_window(cat_menu::window_id::settings, cat_menu::k_menu_size, ImVec2(80.0f, 70.0f))) {
     return;
   }
