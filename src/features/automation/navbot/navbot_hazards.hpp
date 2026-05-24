@@ -24,6 +24,7 @@ class navbot_hazards
 public:
   void clear();
   void update_expired(float current_time);
+  void clear_soft_costs();
   void add_area_hazard(const hazard_record& record);
   void add_edge_hazard(const hazard_record& record);
   void add_transition_failure(nav_edge_id edge_id, float current_time, float duration);

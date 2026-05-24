@@ -98,6 +98,12 @@ public:
   bool rebuild_from_current_map();
   void clear();
 
+  struct nearby_area
+  {
+    nav_area_id id{};
+    float distance_sq = 0.0f;
+  };
+
   [[nodiscard]] bool is_ready() const;
   [[nodiscard]] const std::string& map_name() const;
   [[nodiscard]] const std::string& nav_file_path() const;
@@ -107,6 +113,7 @@ public:
   [[nodiscard]] Vec3 get_nearest_point(nav_area_id area_id, const Vec3& world) const;
   [[nodiscard]] std::optional<uint16_t> find_connection_index(nav_area_id from_area, nav_area_id to_area) const;
   [[nodiscard]] bool area_has_flag(nav_area_id area_id, uint32_t flag) const;
+  [[nodiscard]] std::vector<nearby_area> areas_in_radius(const Vec3& origin, float radius) const;
 
 private:
   bool load_current_map_file();

@@ -467,6 +467,16 @@ size_t navbot_follow::current_crumb_index() const
   return current_crumb_index_;
 }
 
+bool navbot_follow::is_stuck(float current_time) const
+{
+  if (!has_path() || last_progress_time_ <= 0.0f)
+  {
+    return false;
+  }
+
+  return (current_time - last_progress_time_) >= stuck_jump_retry_time;
+}
+
 const std::vector<float>& navbot_follow::reached_crumb_times() const
 {
   return reached_crumb_times_;

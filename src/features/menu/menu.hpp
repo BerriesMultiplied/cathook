@@ -1762,6 +1762,9 @@ static void draw_movement_content() {
     cat_menu::slider_float("Strafe max delta", &config.misc.movement.auto_strafe_max_delta, 0.0f, 180.0f, "%.0f deg");
     cat_menu::checkbox("No push", &config.misc.movement.no_push);
     cat_menu::checkbox("Taunt slide", &config.misc.movement.taunt_slide);
+    cat_menu::checkbox("Moonwalk", &config.misc.movement.moonwalk);
+    cat_menu::checkbox("Moonwalk forward", &config.misc.movement.moonwalk_forward);
+    cat_menu::checkbox("Moonwalk navbot compat", &config.misc.movement.moonwalk_navbot_compat);
   });
   cat_menu::end_flow_layout();
 }

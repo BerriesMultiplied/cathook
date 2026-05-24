@@ -421,6 +421,9 @@ struct Misc {
     float auto_strafe_max_delta = 180.0f;
     bool no_push = false;
     bool taunt_slide = false;
+    bool moonwalk = false;
+    bool moonwalk_forward = false;
+    bool moonwalk_navbot_compat = false;
   } movement;
 
 

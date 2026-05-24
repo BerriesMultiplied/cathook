@@ -35,6 +35,7 @@ public:
   [[nodiscard]] uint32_t generation_id() const;
   [[nodiscard]] size_t current_crumb_index() const;
   [[nodiscard]] const std::vector<float>& reached_crumb_times() const;
+  [[nodiscard]] bool is_stuck(float current_time) const;
 
   follower_tick_result tick(const navbot_mesh& mesh, Player* localplayer, user_cmd* user_cmd, float current_time);
 

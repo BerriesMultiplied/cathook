@@ -15,10 +15,12 @@ V  o o  V  file: src/features/automation/navbot/navbot_controller.cpp
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <unordered_map>
 
 #include "imgui/dearimgui.hpp"
 
 #include "core/entity_cache.hpp"
+#include "core/math/math.hpp"
 
 #include "features/automation/medic_automation/medic_automation.hpp"
 #include "features/combat/aimbot/aimbot.hpp"
@@ -147,6 +149,10 @@ float destination_reach_distance_for_goal(goal_type type)
   if (type == goal_type::defend_payload)
   {
     return 90.0f;
+  }
+  if (type == goal_type::capture_objective)
+  {
+    return 30.0f;
   }
 
   return crumb_reach_distance;
@@ -428,6 +434,32 @@ bool weapon_slot_available(Player* localplayer, navbot_weapon_slot slot)
   return false;
 }
 
+bool weapon_slot_loaded(Player* localplayer, navbot_weapon_slot slot)
+{
+  if (localplayer == nullptr || slot == navbot_weapon_slot::none)
+  {
+    return false;
+  }
+
+  auto class_type = localplayer->get_tf_class();
+  for (int index = 0; index < Player::max_weapon_count; ++index)
+  {
+    auto* weapon = localplayer->get_weapon_at(index);
+    if (weapon == nullptr || weapon_slot_for(weapon, class_type) != slot)
+    {
+      continue;
+    }
+
+    auto clip = weapon->get_clip1();
+    if (clip != 0 || weapon->is_melee())
+    {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 float distance_to_enemy(Player* localplayer, Player* enemy)
 {
   if (localplayer == nullptr || enemy == nullptr)
@@ -590,7 +622,7 @@ navbot_weapon_slot choose_navbot_weapon_slot(Player* localplayer, const navbot_g
     ? choose_combat_slot(localplayer, goal, enemy)
     : choose_default_slot(localplayer->get_tf_class());
 
-  if (weapon_slot_available(localplayer, desired_slot))
+  if (weapon_slot_loaded(localplayer, desired_slot))
   {
     return desired_slot;
   }
@@ -602,7 +634,14 @@ navbot_weapon_slot choose_navbot_weapon_slot(Player* localplayer, const navbot_g
   };
   for (auto slot : fallback_slots)
   {
-    if (slot != desired_slot && weapon_slot_available(localplayer, slot))
+    if (slot != desired_slot && weapon_slot_loaded(localplayer, slot))
+    {
+      return slot;
+    }
+  }
+  for (auto slot : fallback_slots)
+  {
+    if (weapon_slot_available(localplayer, slot))
     {
       return slot;
     }
@@ -789,71 +828,103 @@ void apply_reload_controls(user_cmd* user_cmd)
   user_cmd->buttons |= IN_RELOAD;
 }
 
-void apply_look_at_target(Player* localplayer, user_cmd* user_cmd, const Vec3& target)
+float normalize_angle_180(float angle)
 {
-  if (localplayer == nullptr || user_cmd == nullptr || global_vars == nullptr)
+  while (angle > 180.0f)
+  {
+    angle -= 360.0f;
+  }
+  while (angle < -180.0f)
+  {
+    angle += 360.0f;
+  }
+  return angle;
+}
+
+Vec3 compute_path_look_target(const std::vector<crumb>& crumbs, size_t current_index, const Vec3& eye_origin, float velocity_2d)
+{
+  if (crumbs.empty() || current_index >= crumbs.size())
+  {
+    return eye_origin;
+  }
+
+  const float look_ahead = std::clamp(velocity_2d * 0.45f + 220.0f, 220.0f, 700.0f);
+  float remaining = look_ahead;
+
+  Vec3 last_point = eye_origin;
+  Vec3 result = crumbs[current_index].world;
+  for (size_t i = current_index; i < crumbs.size(); ++i)
+  {
+    const Vec3& point = crumbs[i].world;
+    auto dx = point.x - last_point.x;
+    auto dy = point.y - last_point.y;
+    auto seg_dist = std::sqrt(dx * dx + dy * dy);
+
+    if (seg_dist >= remaining)
+    {
+      auto t = remaining / std::max(seg_dist, 0.001f);
+      return Vec3{
+        last_point.x + dx * t,
+        last_point.y + dy * t,
+        last_point.z + (point.z - last_point.z) * t
+      };
+    }
+
+    remaining -= seg_dist;
+    last_point = point;
+    result = point;
+  }
+  return result;
+}
+
+void apply_look_at_path(Player* localplayer, user_cmd* user_cmd, const std::vector<crumb>& crumbs, size_t current_index)
+{
+  if (localplayer == nullptr || user_cmd == nullptr || global_vars == nullptr || crumbs.empty() || current_index >= crumbs.size())
   {
     return;
   }
 
-  auto origin = localplayer->get_origin() + localplayer->get_view_offset();
-  auto target_position = Vec3{target.x, target.y, origin.z};
-  auto delta = Vec3{
-    target_position.x - origin.x,
-    target_position.y - origin.y,
-    target_position.z - origin.z
-  };
+  auto velocity = localplayer->get_velocity();
+  auto velocity_2d = std::sqrt(velocity.x * velocity.x + velocity.y * velocity.y);
 
+  auto eye_origin = localplayer->get_origin() + localplayer->get_view_offset();
+  auto target = compute_path_look_target(crumbs, current_index, eye_origin, velocity_2d);
+
+  auto delta = Vec3{target.x - eye_origin.x, target.y - eye_origin.y, target.z - eye_origin.z};
   auto planar_distance = std::sqrt(delta.x * delta.x + delta.y * delta.y);
   if (planar_distance <= 0.001f)
   {
     return;
   }
 
-  auto target_angles = Vec3{};
-  target_angles.x = -std::atan2(delta.z, planar_distance) * 57.295779513082f;
-  target_angles.y = std::atan2(delta.y, delta.x) * 57.295779513082f;
+  auto height_delta = std::clamp(delta.z, -72.0f, 96.0f);
+  auto pitch_factor = (height_delta >= 0.0f) ? 0.55f : 0.35f;
+  auto focus_z = eye_origin.z + height_delta * pitch_factor;
+  auto pitch_delta = focus_z - eye_origin.z;
 
-  auto normalize_angle = [](float angle)
-  {
-    while (angle > 180.0f)
-    {
-      angle -= 360.0f;
-    }
-    while (angle < -180.0f)
-    {
-      angle += 360.0f;
-    }
-    return angle;
-  };
+  auto desired_pitch = std::clamp(-std::atan2(pitch_delta, planar_distance) * radpi, -25.0f, 25.0f);
+  auto desired_yaw = std::atan2(delta.y, delta.x) * radpi;
 
-  auto approach_angle = [frame_time = std::max(global_vars->interval_per_tick, 0.001f), normalize_angle](float current, float target_value)
-  {
-    auto delta_angle = target_value - current;
-    while (delta_angle > 180.0f)
-    {
-      delta_angle -= 360.0f;
-    }
-    while (delta_angle < -180.0f)
-    {
-      delta_angle += 360.0f;
-    }
+  auto base_speed = std::max(config.misc.automation.navbot_look_at_path_speed, 1.0f);
+  // Asymmetric step: pitch tolerates a smaller per-tick change than yaw to avoid the
+  // bobbing/jerking that comes from chasing z-deltas on stairs and ramps.
+  auto pitch_step = std::clamp(base_speed * 0.45f, 30.0f, 220.0f) * global_vars->interval_per_tick;
+  auto yaw_step = std::clamp(base_speed * 1.0f, 60.0f, 540.0f) * global_vars->interval_per_tick;
 
-    auto step = std::max(config.misc.automation.navbot_look_at_path_speed, 1.0f) * frame_time;
-    if (delta_angle > step)
-    {
-      delta_angle = step;
-    }
-    else if (delta_angle < -step)
-    {
-      delta_angle = -step;
-    }
+  auto current_pitch = user_cmd->view_angles.x;
+  auto current_yaw = user_cmd->view_angles.y;
+  auto d_pitch = normalize_angle_180(desired_pitch - current_pitch);
+  auto d_yaw = normalize_angle_180(desired_yaw - current_yaw);
 
-    return normalize_angle(current + delta_angle);
-  };
+  // Velocity-eased step: bigger sweeps when there's a lot to cover, but never overshoot.
+  auto pitch_scale = std::min(1.0f, std::fabs(d_pitch) / 30.0f + 0.2f);
+  auto yaw_scale = std::min(1.0f, std::fabs(d_yaw) / 45.0f + 0.25f);
 
-  user_cmd->view_angles.x = std::clamp(approach_angle(user_cmd->view_angles.x, target_angles.x), -89.0f, 89.0f);
-  user_cmd->view_angles.y = approach_angle(user_cmd->view_angles.y, target_angles.y);
+  auto pitch_move = std::clamp(d_pitch, -pitch_step * pitch_scale, pitch_step * pitch_scale);
+  auto yaw_move = std::clamp(d_yaw, -yaw_step * yaw_scale, yaw_step * yaw_scale);
+
+  user_cmd->view_angles.x = std::clamp(normalize_angle_180(current_pitch + pitch_move), -89.0f, 89.0f);
+  user_cmd->view_angles.y = normalize_angle_180(current_yaw + yaw_move);
   user_cmd->view_angles.z = 0.0f;
 
   if (prediction != nullptr)
@@ -880,6 +951,8 @@ void navbot_controller::clear_runtime_state()
   pending_job_ = {};
   next_weapon_switch_time_ = 0.0f;
   last_requested_weapon_slot_ = 0;
+  pending_desired_weapon_slot_ = 0;
+  pending_desired_since_ = 0.0f;
   crumb_failure_ = {};
   suppress_aimbot_for_reload_ = false;
   reset_debug_runtime(debug_state_);
@@ -1082,13 +1155,22 @@ void navbot_controller::on_create_move(user_cmd* user_cmd)
   auto follow_result = follower_.tick(mesh_, localplayer, user_cmd, current_time);
   debug_state_.has_active_path = follower_.has_path();
   debug_state_.active_crumb_count = static_cast<uint32_t>(follower_.crumbs().size());
+
+  if (config.misc.movement.moonwalk
+    && config.misc.movement.moonwalk_navbot_compat
+    && follower_.has_path()
+    && (user_cmd->buttons & IN_JUMP) == 0
+    && !follower_.is_stuck(current_time))
+  {
+    user_cmd->buttons |= IN_DUCK;
+  }
+
   navbot_update_throwable_look_suppress(localplayer->get_weapon(), user_cmd, current_time);
   if (config.misc.automation.navbot_look_at_path && !navbot_throwable_look_suppresses_path_look(current_time))
   {
-    auto current_crumb = follower_.current_crumb();
-    if (current_crumb != nullptr)
+    if (follower_.current_crumb() != nullptr)
     {
-      apply_look_at_target(localplayer, user_cmd, current_crumb->world);
+      apply_look_at_path(localplayer, user_cmd, follower_.crumbs(), follower_.current_crumb_index());
     }
   }
 
@@ -1146,6 +1228,12 @@ void navbot_controller::update_weapon_choice(Player* localplayer)
     {
       return;
     }
+
+    auto next_primary = active_weapon->get_next_primary_attack();
+    if (next_primary > current_time && (next_primary - current_time) < 0.15f)
+    {
+      return;
+    }
   }
 
   auto desired_slot = choose_navbot_weapon_slot(localplayer, active_goal_);
@@ -1159,6 +1247,20 @@ void navbot_controller::update_weapon_choice(Player* localplayer)
   if (current_slot == desired_slot)
   {
     last_requested_weapon_slot_ = desired_slot_value;
+    pending_desired_weapon_slot_ = desired_slot_value;
+    pending_desired_since_ = current_time;
+    return;
+  }
+
+  constexpr float weapon_switch_stick_time = 0.4f;
+  if (pending_desired_weapon_slot_ != desired_slot_value)
+  {
+    pending_desired_weapon_slot_ = desired_slot_value;
+    pending_desired_since_ = current_time;
+    return;
+  }
+  if ((current_time - pending_desired_since_) < weapon_switch_stick_time)
+  {
     return;
   }
 
@@ -1408,38 +1510,129 @@ void navbot_controller::request_path_if_needed()
   next_path_request_time_ = current_time;
 }
 
+namespace
+{
+
+int hazard_priority(hazard_kind kind)
+{
+  switch (kind)
+  {
+    case hazard_kind::sentry: return 100;
+    case hazard_kind::sticky: return 80;
+    case hazard_kind::enemy_pressure: return 30;
+    case hazard_kind::static_blocked:
+    case hazard_kind::transition_failure:
+    case hazard_kind::crumb_blacklist:
+    default:
+      return 0;
+  }
+}
+
+} // namespace
+
 void navbot_controller::update_hazards()
 {
   auto* localplayer = entity_list != nullptr ? entity_list->get_localplayer() : nullptr;
-  if (localplayer == nullptr)
+  if (localplayer == nullptr || !mesh_.is_ready())
   {
     return;
   }
 
   auto local_team = localplayer->get_team();
+  auto local_class = localplayer->get_tf_class();
   auto current_time = global_vars != nullptr ? global_vars->curtime : 0.0f;
+
+  hazards_.clear_soft_costs();
+
+  std::unordered_map<uint32_t, hazard_record> per_area_hazards;
+  per_area_hazards.reserve(128);
+
+  auto apply_hazard = [&](nav_area_id area_id, hazard_kind kind, float cost, float expire_time)
+  {
+    if (!area_id.valid() || cost <= 0.0f)
+    {
+      return;
+    }
+
+    auto incoming_priority = hazard_priority(kind);
+    auto& slot = per_area_hazards[area_id.value];
+    auto existing_priority = slot.area_id.valid() ? hazard_priority(slot.kind) : -1;
+
+    if (incoming_priority > existing_priority)
+    {
+      slot.kind = kind;
+      slot.policy = hazard_policy::soft_cost;
+      slot.area_id = area_id;
+      slot.cost = std::max(slot.cost, cost);
+      slot.expire_time = std::max(slot.expire_time, expire_time);
+    }
+    else if (incoming_priority == existing_priority)
+    {
+      slot.cost = std::max(slot.cost, cost);
+      slot.expire_time = std::max(slot.expire_time, expire_time);
+    }
+  };
+
+  constexpr float hazard_expire_seconds = 0.4f;
+  const auto hazard_expire = current_time + hazard_expire_seconds;
+
+  auto enemy_radius_for = [](tf_class cls)
+  {
+    switch (cls)
+    {
+      case tf_class::SNIPER:    return 1100.0f;
+      case tf_class::HEAVYWEAPONS:
+      case tf_class::ENGINEER:
+      case tf_class::SCOUT:     return 320.0f;
+      case tf_class::PYRO:      return 280.0f;
+      case tf_class::SPY:       return 240.0f;
+      default:                  return 500.0f;
+    }
+  };
+
   for (auto* entity : entity_cache[class_id::PLAYER])
   {
     auto* player = reinterpret_cast<Player*>(entity);
-    if (player == nullptr || player == localplayer || player->is_dormant() || player->get_team() == local_team)
+    if (player == nullptr || player == localplayer || player->get_team() == local_team)
+    {
+      continue;
+    }
+    if (player->is_dormant() || !player->is_alive())
     {
       continue;
     }
 
-    auto area_id = mesh_.find_closest_area(player->get_origin());
-    if (!area_id.valid())
+    auto enemy_origin = player->get_origin();
+    auto enemy_area_id = mesh_.find_closest_area(enemy_origin);
+    if (enemy_area_id.valid() && mesh_.area_has_flag(enemy_area_id, nav_area_flag_spawn_room))
     {
       continue;
     }
 
-    hazard_record record{};
-    record.kind = hazard_kind::enemy_pressure;
-    record.policy = hazard_policy::soft_cost;
-    record.area_id = area_id;
-    record.cost = 150.0f;
-    record.expire_time = current_time + 0.25f;
-    hazards_.add_area_hazard(record);
+    auto invuln = player->is_invulnerable();
+    auto base_cost = invuln ? 1200.0f : 280.0f;
+    auto enemy_class = player->get_tf_class();
+    if (enemy_class == tf_class::SNIPER)
+    {
+      base_cost *= 1.8f;
+    }
+
+    auto radius = enemy_radius_for(enemy_class);
+    auto areas = mesh_.areas_in_radius(enemy_origin, radius);
+    auto radius_sq = radius * radius;
+    auto kind = invuln ? hazard_kind::sentry : hazard_kind::enemy_pressure;
+
+    for (const auto& nearby : areas)
+    {
+      auto falloff = 1.0f - std::clamp(nearby.distance_sq / radius_sq, 0.0f, 1.0f);
+      auto cost = base_cost * (0.4f + 0.6f * falloff);
+      apply_hazard(nearby.id, kind, cost, hazard_expire);
+    }
   }
+
+  constexpr float sentry_inner = 800.0f;
+  constexpr float sentry_mid = 1050.0f;
+  constexpr float sentry_outer = 1200.0f;
 
   for (auto* entity : entity_cache[class_id::SENTRY])
   {
@@ -1448,18 +1641,64 @@ void navbot_controller::update_hazards()
       continue;
     }
 
-    auto area_id = mesh_.find_closest_area(entity->get_origin());
-    if (!area_id.valid())
+    auto sentry_origin = entity->get_origin();
+    auto areas = mesh_.areas_in_radius(sentry_origin, sentry_outer);
+    for (const auto& nearby : areas)
+    {
+      auto distance = std::sqrt(nearby.distance_sq);
+      auto cost = 0.0f;
+      if (distance <= sentry_inner)
+      {
+        auto falloff = 1.0f - std::clamp(distance / sentry_inner, 0.0f, 1.0f);
+        cost = 800.0f + 400.0f * falloff;
+      }
+      else if (distance <= sentry_mid)
+      {
+        cost = 500.0f;
+      }
+      else
+      {
+        cost = 250.0f;
+        if (local_class == tf_class::HEAVYWEAPONS || local_class == tf_class::SOLDIER)
+        {
+          cost *= 0.4f;
+        }
+      }
+
+      if (const auto* area_data = mesh_.find_area(nearby.id))
+      {
+        auto vertical_delta = std::fabs(sentry_origin.z - area_data->center.z);
+        if (vertical_delta > 200.0f)
+        {
+          cost *= 0.6f;
+        }
+      }
+
+      apply_hazard(nearby.id, hazard_kind::sentry, cost, hazard_expire);
+    }
+  }
+
+  constexpr float sticky_radius = 150.0f;
+  for (auto* entity : entity_cache[class_id::PILL_OR_STICKY])
+  {
+    if (entity == nullptr || entity->is_dormant() || entity->get_team() == local_team)
     {
       continue;
     }
 
-    hazard_record record{};
-    record.kind = hazard_kind::sentry;
-    record.policy = hazard_policy::soft_cost;
-    record.area_id = area_id;
-    record.cost = 400.0f;
-    record.expire_time = current_time + 0.25f;
+    auto sticky_origin = entity->get_origin();
+    auto areas = mesh_.areas_in_radius(sticky_origin, sticky_radius);
+    auto radius_sq = sticky_radius * sticky_radius;
+    for (const auto& nearby : areas)
+    {
+      auto falloff = 1.0f - std::clamp(nearby.distance_sq / radius_sq, 0.0f, 1.0f);
+      auto cost = 900.0f * (0.5f + 0.5f * falloff);
+      apply_hazard(nearby.id, hazard_kind::sticky, cost, current_time + 1.5f);
+    }
+  }
+
+  for (auto& [_, record] : per_area_hazards)
+  {
     hazards_.add_area_hazard(record);
   }
 }

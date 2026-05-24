@@ -157,7 +157,7 @@ static bool run_move_features(user_cmd* user_cmd) {
   }
 
   start_engine_prediction(user_cmd);
-  const bool use_psilent = suppress_aimbot ? false : aimbot(user_cmd, original_view_angles);
+  const bool aimbot_psilent = suppress_aimbot ? false : aimbot(user_cmd, original_view_angles);
   movement_fix(user_cmd, original_view_angles, corrected_forward_move, corrected_side_move);
   if (!menu_movement_blocked && !suppress_aimbot && !navbot::controller().should_prioritize_danger_movement()) {
     aimbot_apply_walk_to_target(entity_list->get_localplayer(), user_cmd);
@@ -165,7 +165,9 @@ static bool run_move_features(user_cmd* user_cmd) {
 
   end_engine_prediction();
 
-  return use_psilent;
+  const bool moonwalk_psilent = !menu_movement_blocked && moonwalk_create_move(user_cmd);
+
+  return aimbot_psilent || moonwalk_psilent;
 }
 
 // Called approx every frame.

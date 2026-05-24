@@ -13,6 +13,7 @@ V  o o  V  file: src/features/automation/navbot/navbot_jobs.hpp
 #define NAVBOT_JOBS_HPP
 
 #include <atomic>
+#include <condition_variable>
 #include <mutex>
 #include <optional>
 #include <thread>
@@ -62,6 +63,7 @@ private:
   std::atomic_uint64_t next_job_id_ = 1;
   std::thread worker_{};
   std::mutex mutex_{};
+  std::condition_variable cv_{};
   std::vector<path_job_request> pending_requests_{};
   std::vector<path_job_result> completed_results_{};
 };

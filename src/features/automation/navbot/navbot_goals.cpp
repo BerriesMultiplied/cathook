@@ -345,6 +345,41 @@ goal_candidate choose_control_point_goal(const navbot_mesh& mesh, Player* localp
   goal_candidate best{};
   best.score = -1.0f;
 
+  if (localplayer == nullptr)
+  {
+    return best;
+  }
+
+  auto local_origin = localplayer->get_origin();
+  auto local_team_value = static_cast<int>(localplayer->get_team());
+
+  std::vector<Vec3> teammate_origins;
+  std::vector<Vec3> enemy_origins;
+  teammate_origins.reserve(8);
+  enemy_origins.reserve(8);
+  for (auto* entity : entity_cache[class_id::PLAYER])
+  {
+    auto* player = reinterpret_cast<Player*>(entity);
+    if (player == nullptr || player == localplayer || player->is_dormant() || !player->is_alive())
+    {
+      continue;
+    }
+    if (static_cast<int>(player->get_team()) == local_team_value)
+    {
+      teammate_origins.emplace_back(player->get_origin());
+    }
+    else
+    {
+      enemy_origins.emplace_back(player->get_origin());
+    }
+  }
+
+  constexpr float cap_radius = 150.0f;
+  constexpr float cap_radius_sq = cap_radius * cap_radius;
+  constexpr float threat_radius = 750.0f;
+  constexpr float threat_radius_sq = threat_radius * threat_radius;
+  constexpr float sticky_radius_sq = 220.0f * 220.0f;
+
   for (auto* entity : entity_cache[class_id::OBJECTIVE_RESOURCE])
   {
     auto* objective = reinterpret_cast<TeamObjectiveResource*>(entity);
@@ -360,30 +395,88 @@ goal_candidate choose_control_point_goal(const navbot_mesh& mesh, Player* localp
       {
         continue;
       }
-      if (objective->get_owning_team(point_index) == static_cast<int>(localplayer->get_team()))
+
+      auto owning_team = objective->get_owning_team(point_index);
+      auto we_own = (owning_team == local_team_value);
+      auto can_cap = objective->can_team_capture(point_index, localplayer->get_team());
+      auto origin = objective->get_origin(point_index);
+
+      auto defend_mode = false;
+      if (we_own)
       {
-        continue;
+        for (const auto& enemy_origin : enemy_origins)
+        {
+          if (distance_squared_2d(enemy_origin, origin) <= threat_radius_sq)
+          {
+            defend_mode = true;
+            break;
+          }
+        }
       }
-      if (!objective->can_team_capture(point_index, localplayer->get_team()))
+
+      auto attack_mode = !we_own && can_cap;
+      if (!attack_mode && !defend_mode)
       {
         continue;
       }
 
-      auto origin = objective->get_origin(point_index);
       auto area_id = mesh.find_closest_area(origin);
       if (!area_id.valid())
       {
         continue;
       }
 
-      auto score = 40.0f - distance_squared_2d(localplayer->get_origin(), origin) * 0.00001f;
+      auto distance_2d = std::sqrt(distance_squared_2d(local_origin, origin));
+      auto score = attack_mode ? 95.0f : 78.0f;
+      score -= std::min(distance_2d, 2500.0f) * 0.015f;
+
+      auto teammates_in_cap = 0;
+      auto enemies_in_cap = 0;
+      for (const auto& teammate_origin : teammate_origins)
+      {
+        if (distance_squared_2d(teammate_origin, origin) <= cap_radius_sq)
+        {
+          ++teammates_in_cap;
+        }
+      }
+      for (const auto& enemy_origin : enemy_origins)
+      {
+        if (distance_squared_2d(enemy_origin, origin) <= cap_radius_sq)
+        {
+          ++enemies_in_cap;
+        }
+      }
+
+      score += std::min(teammates_in_cap, 4) * 6.0f;
+
+      if (attack_mode)
+      {
+        if (enemies_in_cap == 0)
+        {
+          score += 12.0f;
+        }
+        if (enemies_in_cap > 0 && teammates_in_cap >= enemies_in_cap)
+        {
+          score += 10.0f;
+        }
+      }
+      else if (defend_mode)
+      {
+        score += enemies_in_cap > 0 ? 22.0f : 6.0f;
+      }
+
+      if (distance_squared_2d(local_origin, origin) <= sticky_radius_sq)
+      {
+        score += 40.0f;
+      }
+
       choose_best(best, make_candidate(goal_type::capture_objective, score, origin, area_id));
     }
   }
 
   if (best.score < 0.0f)
   {
-    best = choose_pickup_area_goal(mesh, localplayer, mesh.cache().control_point_areas, goal_type::capture_objective, 25.0f);
+    best = choose_pickup_area_goal(mesh, localplayer, mesh.cache().control_point_areas, goal_type::capture_objective, 65.0f);
   }
 
   return best;

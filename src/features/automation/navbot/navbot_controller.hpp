@@ -78,6 +78,8 @@ private:
   float next_path_request_time_ = 0.0f;
   float next_weapon_switch_time_ = 0.0f;
   int last_requested_weapon_slot_ = 0;
+  int pending_desired_weapon_slot_ = 0;
+  float pending_desired_since_ = 0.0f;
   crumb_failure_state crumb_failure_{};
   bool suppress_aimbot_for_reload_ = false;
   bool round_started_ = false;

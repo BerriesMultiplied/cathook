@@ -11,7 +11,6 @@ V  o o  V  file: src/features/automation/navbot/navbot_jobs.cpp
 
 #include "features/automation/navbot/navbot_jobs.hpp"
 
-#include <chrono>
 #include <utility>
 
 #include "games/tf2/sdk/interfaces/global_vars.hpp"
@@ -36,7 +35,15 @@ void navbot_jobs::start(const navbot_mesh* mesh, const navbot_hazards* hazards)
 
 void navbot_jobs::stop()
 {
-  running_ = false;
+  {
+    std::scoped_lock lock(mutex_);
+    running_ = false;
+    for (auto& request : pending_requests_)
+    {
+      request.token.cancel();
+    }
+  }
+  cv_.notify_all();
   if (worker_.joinable())
   {
     worker_.join();
@@ -67,18 +74,22 @@ job_handle navbot_jobs::submit_path_request(const path_request& request)
   };
   auto hazard_snapshot = hazards_ != nullptr ? *hazards_ : navbot_hazards{};
 
-  std::scoped_lock lock(mutex_);
-  if (pending_requests_.size() >= 8)
   {
-    pending_requests_.erase(pending_requests_.begin());
-  }
+    std::scoped_lock lock(mutex_);
+    for (auto& existing : pending_requests_)
+    {
+      existing.token.cancel();
+    }
+    pending_requests_.clear();
 
-  pending_requests_.push_back(path_job_request{
-    handle,
-    request,
-    std::move(hazard_snapshot),
-    cancellation_token{handle.id, std::make_shared<std::atomic_bool>(false)}
-  });
+    pending_requests_.push_back(path_job_request{
+      handle,
+      request,
+      std::move(hazard_snapshot),
+      cancellation_token{handle.id, std::make_shared<std::atomic_bool>(false)}
+    });
+  }
+  cv_.notify_one();
 
   return handle;
 }
@@ -98,28 +109,28 @@ std::optional<path_job_result> navbot_jobs::poll_path_result()
 
 void navbot_jobs::worker_main()
 {
-  while (running_)
+  while (true)
   {
     path_job_request request{};
-    auto have_request = false;
-
     {
-      std::scoped_lock lock(mutex_);
-      if (!pending_requests_.empty())
+      std::unique_lock lock(mutex_);
+      cv_.wait(lock, [this]
       {
-        request = pending_requests_.front();
-        pending_requests_.erase(pending_requests_.begin());
-        have_request = true;
+        return !running_.load(std::memory_order_acquire) || !pending_requests_.empty();
+      });
+      if (!running_.load(std::memory_order_acquire))
+      {
+        return;
       }
+      if (pending_requests_.empty())
+      {
+        continue;
+      }
+      request = std::move(pending_requests_.back());
+      pending_requests_.clear();
     }
 
-    if (!have_request)
-    {
-      std::this_thread::sleep_for(std::chrono::milliseconds(2));
-      continue;
-    }
-
-    if (mesh_ == nullptr)
+    if (mesh_ == nullptr || request.token.is_canceled())
     {
       continue;
     }
@@ -128,10 +139,7 @@ void navbot_jobs::worker_main()
     auto result = solve_path_request(*mesh_, request.hazards, request.request, request.token, current_time);
 
     std::scoped_lock lock(mutex_);
-    if (completed_results_.size() >= 8)
-    {
-      completed_results_.erase(completed_results_.begin());
-    }
+    completed_results_.clear();
     completed_results_.push_back(path_job_result{request.handle, std::move(result)});
   }
 }

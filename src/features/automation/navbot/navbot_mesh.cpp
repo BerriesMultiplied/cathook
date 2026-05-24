@@ -815,6 +815,30 @@ bool navbot_mesh::area_has_flag(nav_area_id area_id, uint32_t flag) const
   return (area->flags & flag) != 0;
 }
 
+std::vector<navbot_mesh::nearby_area> navbot_mesh::areas_in_radius(const Vec3& origin, float radius) const
+{
+  std::vector<nearby_area> result;
+  if (radius <= 0.0f)
+  {
+    return result;
+  }
+
+  const auto radius_sq = radius * radius;
+  result.reserve(64);
+  for (const auto& area : cache_.areas)
+  {
+    auto distance_sq = distance_to_area_sq(area, origin);
+    if (distance_sq > radius_sq)
+    {
+      continue;
+    }
+
+    result.push_back(nearby_area{area.id, distance_sq});
+  }
+
+  return result;
+}
+
 bool navbot_mesh::load_current_map_file()
 {
   auto nav_path = resolve_nav_path(cache_.map_name);

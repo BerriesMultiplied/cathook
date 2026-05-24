@@ -14,11 +14,13 @@ V  o o  V  file: src/features/movement/bhop/bhop.cpp
 #include "core/math/math.hpp"
 
 #include "games/tf2/sdk/interfaces/client.hpp"
+#include "games/tf2/sdk/interfaces/client_state.hpp"
 #include "games/tf2/sdk/interfaces/convar_system.hpp"
 #include "games/tf2/sdk/interfaces/entity_list.hpp"
 
 #include "games/tf2/sdk/entities/player.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 namespace
@@ -171,6 +173,60 @@ void auto_strafe(user_cmd* user_cmd, Player* localplayer)
   }
 }
 
+bool moonwalk(user_cmd* user_cmd, Player* localplayer)
+{
+  if (user_cmd == nullptr || localplayer == nullptr) {
+    return false;
+  }
+
+  if (!config.misc.movement.moonwalk) {
+    return false;
+  }
+
+  if (!localplayer->is_ducking() || !localplayer->is_on_ground()) {
+    return false;
+  }
+
+  const Vec3 velocity = localplayer->get_velocity();
+  const float speed_2d = vector_length_2d(velocity);
+  const float max_speed_threshold = std::min(localplayer->get_max_speed() * 0.9f, 520.0f) - 10.0f;
+  if (speed_2d >= max_speed_threshold) {
+    return false;
+  }
+
+  const bool has_input = user_cmd->forwardmove != 0.0f || user_cmd->sidemove != 0.0f;
+  if (!has_input) {
+    return false;
+  }
+
+  const bool has_button_input = (user_cmd->buttons & (IN_FORWARD | IN_BACK | IN_MOVELEFT | IN_MOVERIGHT)) != 0;
+  if (!has_button_input && !config.misc.movement.moonwalk_navbot_compat) {
+    return false;
+  }
+
+  if (client_state == nullptr || client_state->chokedcommands != 0) {
+    return false;
+  }
+
+  if (config.misc.movement.moonwalk_forward) {
+    user_cmd->forwardmove *= -1.0f;
+    user_cmd->sidemove *= -1.0f;
+    user_cmd->view_angles.x = 91.0f;
+  }
+
+  const float move_fwd = user_cmd->forwardmove;
+  const float move_side = user_cmd->sidemove;
+  const float move_length = std::hypot(move_fwd, move_side);
+  const float reverse_yaw = std::atan2(-move_side, -move_fwd) * radpi;
+
+  user_cmd->forwardmove = -move_length;
+  user_cmd->sidemove = 0.0f;
+  user_cmd->view_angles.y = std::fmod(user_cmd->view_angles.y - reverse_yaw, 360.0f);
+  user_cmd->view_angles.z = 270.0f;
+
+  return true;
+}
+
 } // namespace
 
 void bhop(user_cmd* user_cmd)
@@ -186,4 +242,18 @@ void bhop(user_cmd* user_cmd)
 
   auto_jump(user_cmd, localplayer);
   auto_strafe(user_cmd, localplayer);
+}
+
+bool moonwalk_create_move(user_cmd* user_cmd)
+{
+  if (user_cmd == nullptr || entity_list == nullptr) {
+    return false;
+  }
+
+  auto* localplayer = entity_list->get_localplayer();
+  if (localplayer == nullptr || !localplayer->is_alive()) {
+    return false;
+  }
+
+  return moonwalk(user_cmd, localplayer);
 }

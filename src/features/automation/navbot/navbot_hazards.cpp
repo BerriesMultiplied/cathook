@@ -68,6 +68,16 @@ void navbot_hazards::clear()
   ++generation_;
 }
 
+void navbot_hazards::clear_soft_costs()
+{
+  records_.erase(
+    std::remove_if(records_.begin(), records_.end(), [](const hazard_record& record)
+    {
+      return record.policy == hazard_policy::soft_cost;
+    }),
+    records_.end());
+}
+
 void navbot_hazards::update_expired(float current_time)
 {
   auto old_size = records_.size();
