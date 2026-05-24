@@ -88,7 +88,7 @@ inline Vec3 predict_local_swing_start(Player* localplayer, float swing_time) {
   if (swing_time < 0.001f) {
     return localplayer->get_shoot_pos();
   }
-  LocalPredictionEntityPath path = local_prediction_predict_entity_path(localplayer, swing_time, true);
+  LocalPredictionEntityPath path = local_prediction_predict_entity_path(localplayer, swing_time, false);
   if (!path.valid || path.positions.empty()) {
     return localplayer->get_shoot_pos();
   }
