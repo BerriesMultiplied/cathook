@@ -228,8 +228,12 @@ void config_store::import_config(const Config& config)
     set_bool("aimbot.auto_rev", config.aimbot.auto_rev);
     set_bool("aimbot.auto_unrev", config.aimbot.auto_unrev);
     set_float("aimbot.auto_rev_threshold", config.aimbot.auto_rev_threshold);
-    set_bool("aimbot.scoped_only", config.aimbot.scoped_only);
-    set_bool("aimbot.wait_for_headshot", config.aimbot.wait_for_headshot);
+    set_int("aimbot.hitscan_modifiers", static_cast<int>(config.aimbot.hitscan_modifiers));
+    set_float("aimbot.tapfire_distance", config.aimbot.tapfire_distance);
+    set_int("aimbot.peek_ticks", config.aimbot.peek_ticks);
+    set_float("aimbot.multipoint_scale", config.aimbot.multipoint_scale);
+    set_float("aimbot.bone_size_subtract", config.aimbot.bone_size_subtract);
+    set_float("aimbot.bone_size_min_scale", config.aimbot.bone_size_min_scale);
     set_int("aimbot.ignore", static_cast<int>(config.aimbot.ignore));
     set_int("aimbot.max_targets", config.aimbot.max_targets);
     set_bool("backtrack.enabled", config.backtrack.enabled);
@@ -612,8 +616,40 @@ void config_store::export_config(Config& config) const
     config.aimbot.auto_rev = get_bool("aimbot.auto_rev", config.aimbot.auto_rev);
     config.aimbot.auto_unrev = get_bool("aimbot.auto_unrev", config.aimbot.auto_unrev);
     config.aimbot.auto_rev_threshold = get_float("aimbot.auto_rev_threshold", config.aimbot.auto_rev_threshold);
-    config.aimbot.scoped_only = get_bool("aimbot.scoped_only", config.aimbot.scoped_only);
-    config.aimbot.wait_for_headshot = get_bool("aimbot.wait_for_headshot", config.aimbot.wait_for_headshot);
+    {
+        uint32_t legacy = 0;
+        if (get_bool("aimbot.scoped_only", false))         legacy |= Aim::hitscan_mod_scoped_only;
+        if (get_bool("aimbot.wait_for_headshot", false))   legacy |= Aim::hitscan_mod_wait_for_headshot;
+        if (get_bool("aimbot.wait_for_charge", false))     legacy |= Aim::hitscan_mod_wait_for_charge;
+        if (get_bool("aimbot.headshot_only", false))       legacy |= Aim::hitscan_mod_headshot_only;
+        if (get_bool("aimbot.body_aim_if_lethal", false))  legacy |= Aim::hitscan_mod_body_aim_if_lethal;
+        if (get_bool("aimbot.tapfire", false))             legacy |= Aim::hitscan_mod_tapfire;
+        if (get_bool("aimbot.peek_compensation", false))   legacy |= Aim::hitscan_mod_peek_compensation;
+        const int default_mods = static_cast<int>(legacy != 0 ? legacy : config.aimbot.hitscan_modifiers);
+        config.aimbot.hitscan_modifiers = static_cast<uint32_t>(
+            std::clamp(get_int("aimbot.hitscan_modifiers", default_mods),
+                       0,
+                       static_cast<int>(Aim::hitscan_mod_all)));
+    }
+    config.aimbot.tapfire_distance = std::max(
+        0.0f,
+        get_float("aimbot.tapfire_distance", config.aimbot.tapfire_distance));
+    config.aimbot.peek_ticks = std::clamp(
+        get_int("aimbot.peek_ticks", config.aimbot.peek_ticks),
+        0,
+        32);
+    config.aimbot.multipoint_scale = std::clamp(
+        get_float("aimbot.multipoint_scale", config.aimbot.multipoint_scale),
+        0.0f,
+        100.0f);
+    config.aimbot.bone_size_subtract = std::clamp(
+        get_float("aimbot.bone_size_subtract", config.aimbot.bone_size_subtract),
+        0.0f,
+        12.0f);
+    config.aimbot.bone_size_min_scale = std::clamp(
+        get_float("aimbot.bone_size_min_scale", config.aimbot.bone_size_min_scale),
+        0.05f,
+        1.0f);
     int ignore_default = config.aimbot.ignore;
     if (get_bool("aimbot.ignore_friends", true)) {
         ignore_default |= Aim::ignore_friends;

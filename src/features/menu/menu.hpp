@@ -547,7 +547,9 @@ inline void flow_panel(const char* name, int column_index, float height, draw_fn
 
   ImGui::SetCursorPos(position);
   begin_panel(name, ImVec2(state.column_width, panel_height));
+  cat_bind::push_panel_label(name != nullptr ? name : "");
   draw_fn();
+  cat_bind::pop_panel_label();
   const float required_height = end_panel_ex();
   const float next_panel_height = auto_fit ? ImMax(height, ImCeil(required_height)) : height;
   storage->SetFloat(height_key, next_panel_height);
@@ -944,6 +946,8 @@ inline bool multi_select_combo(const char* label, uint32_t* value_mask, const ch
 
   ImGui::PopStyleColor(2);
   ImGui::PopStyleVar(3);
+
+  cat_bind::ensure_entry(reinterpret_cast<int*>(value_mask), label);
   return changed;
 }
 
@@ -1385,6 +1389,24 @@ static void draw_aimbot_content() {
     aim_hitbox_mask_arms,
     aim_hitbox_mask_legs
   };
+  const char* hitscan_modifier_items[] = {
+    "Scoped only",
+    "Wait for headshot",
+    "Wait for charge",
+    "Headshot only",
+    "Body-aim if lethal",
+    "Tapfire",
+    "Peek compensation"
+  };
+  const uint32_t hitscan_modifier_bits[] = {
+    Aim::hitscan_mod_scoped_only,
+    Aim::hitscan_mod_wait_for_headshot,
+    Aim::hitscan_mod_wait_for_charge,
+    Aim::hitscan_mod_headshot_only,
+    Aim::hitscan_mod_body_aim_if_lethal,
+    Aim::hitscan_mod_tapfire,
+    Aim::hitscan_mod_peek_compensation
+  };
 
   cat_menu::begin_flow_layout("aimbot_layout", 3);
   cat_menu::flow_panel("Aimbot", 0, 226.0f, [&]() {
@@ -1429,12 +1451,18 @@ static void draw_aimbot_content() {
     cat_menu::checkbox("Heavy auto unrev", &config.aimbot.auto_unrev);
     cat_menu::slider_float("Heavy rev threshold", &config.aimbot.auto_rev_threshold, 200.0f, 1200.0f, "%.0f HU");
   });
-  cat_menu::flow_panel("Sniper", 2, 120.0f, [&]() {
+  cat_menu::flow_panel("Sniper", 2, 76.0f, [&]() {
     cat_menu::checkbox("Sniper auto scope", &config.aimbot.auto_scope);
     cat_menu::checkbox("Sniper auto unscope", &config.aimbot.auto_unscope);
     cat_menu::slider_float("Auto scope threshold", &config.aimbot.auto_scope_threshold, 800.0f, 2500.0f, "%.0f HU");
-    cat_menu::checkbox("Scoped only", &config.aimbot.scoped_only);
-    cat_menu::checkbox("Wait for headshot", &config.aimbot.wait_for_headshot);
+  });
+  cat_menu::flow_panel("Hitscan", 2, 156.0f, [&]() {
+    cat_menu::multi_select_combo("Modifiers", &config.aimbot.hitscan_modifiers, hitscan_modifier_items, hitscan_modifier_bits, IM_ARRAYSIZE(hitscan_modifier_items));
+    cat_menu::slider_float("Multipoint scale", &config.aimbot.multipoint_scale, 0.0f, 100.0f, "%.0f%%");
+    cat_menu::slider_float("Bone size subtract", &config.aimbot.bone_size_subtract, 0.0f, 12.0f, "%.1f HU");
+    cat_menu::slider_float("Bone size min scale", &config.aimbot.bone_size_min_scale, 0.05f, 1.0f, "%.2f");
+    cat_menu::slider_float("Tapfire distance", &config.aimbot.tapfire_distance, 200.0f, 2400.0f, "%.0f HU");
+    cat_menu::slider_int("Peek ticks", &config.aimbot.peek_ticks, 0, 32);
   });
   cat_menu::end_flow_layout();
 }

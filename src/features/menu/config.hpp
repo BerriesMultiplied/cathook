@@ -82,6 +82,20 @@ struct Aim {
     ignore_all = ignore_friends | ignore_ipc_bots | ignore_cloaked | ignore_invulnerable
   };
 
+  enum hitscan_modifier_flags : uint32_t {
+    hitscan_mod_scoped_only       = 1u << 0,
+    hitscan_mod_wait_for_headshot = 1u << 1,
+    hitscan_mod_wait_for_charge   = 1u << 2,
+    hitscan_mod_headshot_only     = 1u << 3,
+    hitscan_mod_body_aim_if_lethal = 1u << 4,
+    hitscan_mod_tapfire           = 1u << 5,
+    hitscan_mod_peek_compensation = 1u << 6,
+    hitscan_mod_default = hitscan_mod_body_aim_if_lethal,
+    hitscan_mod_all = hitscan_mod_scoped_only | hitscan_mod_wait_for_headshot |
+      hitscan_mod_wait_for_charge | hitscan_mod_headshot_only |
+      hitscan_mod_body_aim_if_lethal | hitscan_mod_tapfire | hitscan_mod_peek_compensation
+  };
+
   bool master = true;
 
   bool auto_shoot = true;
@@ -131,9 +145,13 @@ struct Aim {
   bool auto_rev = false;
   bool auto_unrev = false;
   float auto_rev_threshold = 450.0f;
-  bool scoped_only = false;
-  bool wait_for_headshot = false;
-  
+  uint32_t hitscan_modifiers = hitscan_mod_default;
+  float tapfire_distance = 900.0f;
+  int peek_ticks = 8;
+  float multipoint_scale = 75.0f;
+  float bone_size_subtract = 1.0f;
+  float bone_size_min_scale = 0.4f;
+
   uint32_t ignore = ignore_default;
 
   int max_targets = 6;

@@ -143,6 +143,43 @@ inline std::recursive_mutex& bind_mutex() {
   return value;
 }
 
+inline std::vector<std::string>& panel_label_stack() {
+  static std::vector<std::string> value{};
+  return value;
+}
+
+inline void push_panel_label(const std::string& name) {
+  panel_label_stack().push_back(name);
+}
+
+inline void pop_panel_label() {
+  if (!panel_label_stack().empty()) {
+    panel_label_stack().pop_back();
+  }
+}
+
+inline std::string current_panel_path() {
+  std::string out{};
+  for (const std::string& name : panel_label_stack()) {
+    if (!out.empty()) out += '/';
+    out += name;
+  }
+  return out;
+}
+
+inline std::string make_target_key_from_label(const char* label) {
+  std::string base = current_panel_path();
+  if (!base.empty()) {
+    base += '/';
+  }
+  base += (label != nullptr ? label : "");
+  for (char& c : base) {
+    if (c == ' ') c = '_';
+    else if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+  }
+  return base;
+}
+
 inline std::string& popup_target_key() {
   static std::string value{};
   return value;
@@ -284,192 +321,6 @@ inline void register_builtin_targets() {
   }
 
   targets_registered() = true;
-
-  register_target("aimbot.master", "Enable", &config.aimbot.master);
-  register_target("aimbot.auto_shoot", "Auto shoot", &config.aimbot.auto_shoot);
-  register_target("aimbot.draw_fov", "Draw FOV", &config.aimbot.draw_fov);
-  register_target("aimbot.shoot_through_glass", "Shoot through glass", &config.aimbot.shoot_through_glass);
-  register_target("aimbot.spread_compensation", "Spread compensation", &config.aimbot.spread_compensation);
-  register_target("aimbot.debug_overlay", "Aimbot debug overlay", &config.aimbot.debug_overlay);
-  register_target("aimbot.aim_mode", "Aim mode", reinterpret_cast<int*>(&config.aimbot.aim_mode));
-  register_target("aimbot.fov", "Aim FOV", &config.aimbot.fov);
-  register_target("aimbot.smooth_factor", "Smooth factor", &config.aimbot.smooth_factor);
-  register_target("aimbot.assist_strength", "Assist strength", &config.aimbot.assist_strength);
-  register_target("aimbot.target_type", "Target", reinterpret_cast<int*>(&config.aimbot.target_type));
-  register_target("aimbot.projectile_mode", "Projectile mode", reinterpret_cast<int*>(&config.aimbot.projectile_mode));
-  register_target("aimbot.melee_walk_to_target", "Melee walk to target", &config.aimbot.melee_walk_to_target);
-  register_target("aimbot.projectile_wall_splash", "Wall splash", &config.aimbot.projectile_wall_splash);
-  register_target("aimbot.projectile_seam_shot", "Seam shot", &config.aimbot.projectile_seam_shot);
-  register_target("aimbot.projectile_splash_radius_scale", "Splash radius scale", &config.aimbot.projectile_splash_radius_scale);
-  register_target("aimbot.projectile_path_steps", "Projectile path steps", &config.aimbot.projectile_path_steps);
-  register_target("aimbot.projectile_splash_samples", "Splash samples", &config.aimbot.projectile_splash_samples);
-  register_target("aimbot.projectile_prediction_ticks", "Projectile prediction ticks", &config.aimbot.projectile_prediction_ticks);
-  register_target("aimbot.projectile_strafe_prediction", "Projectile strafe prediction", &config.aimbot.projectile_strafe_prediction);
-  register_target("aimbot.projectile_strafe_confidence", "Projectile strafe confidence", &config.aimbot.projectile_strafe_confidence);
-  register_target("aimbot.projectile_trace_interval", "Projectile trace interval", &config.aimbot.projectile_trace_interval);
-  register_target("aimbot.projectile_splash_debug", "Projectile splash debug", &config.aimbot.projectile_splash_debug);
-  register_target("aimbot.ignore", "Ignore", reinterpret_cast<int*>(&config.aimbot.ignore));
-  register_target("aimbot.auto_rev", "Heavy auto rev", &config.aimbot.auto_rev);
-  register_target("aimbot.auto_unrev", "Heavy auto unrev", &config.aimbot.auto_unrev);
-  register_target("aimbot.auto_rev_threshold", "Heavy rev threshold", &config.aimbot.auto_rev_threshold);
-  register_target("aimbot.auto_scope", "Sniper auto scope", &config.aimbot.auto_scope);
-  register_target("aimbot.auto_unscope", "Sniper auto unscope", &config.aimbot.auto_unscope);
-  register_target("aimbot.auto_scope_threshold", "Auto scope threshold", &config.aimbot.auto_scope_threshold);
-  register_target("aimbot.scoped_only", "Scoped only", &config.aimbot.scoped_only);
-  register_target("aimbot.wait_for_headshot", "Wait for headshot", &config.aimbot.wait_for_headshot);
-
-  register_target("esp.master", "Enable", &config.esp.master);
-  register_target("esp.player.box", "Box", &config.esp.player.box);
-  register_target("esp.player.box_style", "Box type", reinterpret_cast<int*>(&config.esp.player.box_style));
-  register_target("esp.player.health_bar", "Health bar", &config.esp.player.health_bar);
-  register_target("esp.player.name", "Name", &config.esp.player.name);
-  register_target("esp.player.class_icon", "Class icon", &config.esp.player.class_icon);
-  register_target("esp.player.class_icon_scale", "CI scale", &config.esp.player.class_icon_scale);
-  register_target("esp.player.class_icon_teammates", "Class icon team", &config.esp.player.class_icon_teammates);
-  register_target("esp.player.head_emoji", "Head emoji", &config.esp.player.head_emoji);
-  register_target("esp.player.head_emoji_scale", "Emoji scale", &config.esp.player.head_emoji_scale);
-  register_target("esp.player.head_emoji_style", "Emoji style", &config.esp.player.head_emoji_style);
-  register_target("esp.player.head_emoji_teammates", "Emoji team", &config.esp.player.head_emoji_teammates);
-  register_target("esp.player.flags.target_indicator", "Target flag", &config.esp.player.flags.target_indicator);
-  register_target("esp.player.flags.friend_indicator", "Friend flag", &config.esp.player.flags.friend_indicator);
-  register_target("esp.player.flags.scoped_indicator", "Scoped flag", &config.esp.player.flags.scoped_indicator);
-  register_target("esp.player.enemy", "Enemy", &config.esp.player.enemy);
-  register_target("esp.player.team", "Team", &config.esp.player.team);
-  register_target("esp.player.friends", "Friends", &config.esp.player.friends);
-  register_target("esp.pickup.box", "Pickup box", &config.esp.pickup.box);
-  register_target("esp.pickup.box_style", "Pickup box type", reinterpret_cast<int*>(&config.esp.pickup.box_style));
-  register_target("esp.pickup.name", "Pickup name", &config.esp.pickup.name);
-  register_target("esp.intelligence.box", "Intel box", &config.esp.intelligence.box);
-  register_target("esp.intelligence.box_style", "Intel box type", reinterpret_cast<int*>(&config.esp.intelligence.box_style));
-  register_target("esp.intelligence.name", "Intel name", &config.esp.intelligence.name);
-  register_target("esp.buildings.box", "Buildings box", &config.esp.buildings.box);
-  register_target("esp.buildings.box_style", "Buildings box type", reinterpret_cast<int*>(&config.esp.buildings.box_style));
-  register_target("esp.buildings.health_bar", "Buildings health", &config.esp.buildings.health_bar);
-  register_target("esp.buildings.name", "Buildings name", &config.esp.buildings.name);
-  register_target("esp.buildings.team", "Buildings team", &config.esp.buildings.team);
-
-  register_target("glow.master", "Enable glow", &config.glow.master);
-  register_target("glow.outline_scale", "Glow outline size", &config.glow.outline_scale);
-  register_target("glow.blur_scale", "Glow blur strength", &config.glow.blur_scale);
-  register_target("glow.start", "Glow fade near", &config.glow.start);
-  register_target("glow.end", "Glow fade far", &config.glow.end);
-  register_target("glow.smooth_alpha", "Glow distance fade", &config.glow.smooth_alpha);
-  register_target("glow.filled_body", "Glow filled body", &config.glow.filled_body);
-  register_target("glow.player.enemy", "Glow enemy", &config.glow.player.enemy);
-  register_target("glow.player.team", "Glow team", &config.glow.player.team);
-  register_target("glow.player.friends", "Glow friends", &config.glow.player.friends);
-  register_target("glow.player.local", "Glow local", &config.glow.player.local);
-
-  register_target("chams.master", "Enable", &config.chams.master);
-  register_target("chams.player.enemy", "Enemy", &config.chams.player.enemy);
-  register_target("chams.player.enemy_material_type", "Enemy material", reinterpret_cast<int*>(&config.chams.player.enemy_material_type));
-  register_target("chams.player.enemy_material_z_type", "Enemy z material", reinterpret_cast<int*>(&config.chams.player.enemy_material_z_type));
-  register_target("chams.player.enemy_flags.ignore_z", "Enemy ignore z", &config.chams.player.enemy_flags.ignore_z);
-  register_target("chams.player.team", "Team", &config.chams.player.team);
-  register_target("chams.player.team_material_type", "Team material", reinterpret_cast<int*>(&config.chams.player.team_material_type));
-  register_target("chams.player.team_material_z_type", "Team z material", reinterpret_cast<int*>(&config.chams.player.team_material_z_type));
-  register_target("chams.player.team_flags.ignore_z", "Team ignore z", &config.chams.player.team_flags.ignore_z);
-  register_target("chams.player.friends", "Friends", &config.chams.player.friends);
-  register_target("chams.player.friend_material_type", "Friend material", reinterpret_cast<int*>(&config.chams.player.friend_material_type));
-  register_target("chams.player.friend_material_z_type", "Friend z material", reinterpret_cast<int*>(&config.chams.player.friend_material_z_type));
-  register_target("chams.player.friends_flags.ignore_z", "Friend ignore z", &config.chams.player.friends_flags.ignore_z);
-  register_target("chams.player.local", "Local", &config.chams.player.local);
-  register_target("chams.player.local_material_type", "Local material", reinterpret_cast<int*>(&config.chams.player.local_material_type));
-  register_target("chams.player.enemy_overlay_material_type", "Enemy overlay material", reinterpret_cast<int*>(&config.chams.player.enemy_overlay_material_type));
-  register_target("chams.player.enemy_overlay_material_z_type", "Enemy overlay z material", reinterpret_cast<int*>(&config.chams.player.enemy_overlay_material_z_type));
-  register_target("chams.player.enemy_overlay_flags.ignore_z", "Enemy overlay ignore z", &config.chams.player.enemy_overlay_flags.ignore_z);
-
-  register_target("visuals.removals.scope", "Remove scope", &config.visuals.removals.scope);
-  register_target("visuals.removals.zoom", "Remove zoom", &config.visuals.removals.zoom);
-  register_target("visuals.thirdperson.enabled", "Thirdperson", &config.visuals.thirdperson.enabled);
-  register_target("visuals.thirdperson.crosshair", "Thirdperson crosshair", &config.visuals.thirdperson.crosshair);
-  register_target("visuals.thirdperson.distance", "Thirdperson distance", &config.visuals.thirdperson.distance);
-  register_target("visuals.thirdperson.right", "Thirdperson right", &config.visuals.thirdperson.right);
-  register_target("visuals.thirdperson.up", "Thirdperson up", &config.visuals.thirdperson.up);
-  register_target("visuals.thirdperson.scale", "Thirdperson scale", &config.visuals.thirdperson.scale);
-  register_target("visuals.thirdperson.collision", "Thirdperson collision", &config.visuals.thirdperson.collision);
-  register_target("visuals.override_fov", "Override FOV", &config.visuals.override_fov);
-  register_target("visuals.custom_fov", "Custom FOV", &config.visuals.custom_fov);
-  register_target("visuals.override_viewmodel_fov", "Override viewmodel FOV", &config.visuals.override_viewmodel_fov);
-  register_target("visuals.custom_viewmodel_fov", "Viewmodel FOV", &config.visuals.custom_viewmodel_fov);
-
-  register_target("misc.movement.bhop", "Bhop", &config.misc.movement.bhop);
-  register_target("misc.movement.auto_strafe", "Auto strafe", reinterpret_cast<int*>(&config.misc.movement.auto_strafe));
-  register_target("misc.movement.auto_strafe_turn_scale", "Strafe turn scale", &config.misc.movement.auto_strafe_turn_scale);
-  register_target("misc.movement.auto_strafe_max_delta", "Strafe max delta", &config.misc.movement.auto_strafe_max_delta);
-  register_target("misc.movement.no_push", "No push", &config.misc.movement.no_push);
-  register_target("misc.movement.taunt_slide", "Taunt slide", &config.misc.movement.taunt_slide);
-  register_target("misc.exploits.tickbase", "Tickbase", &config.misc.exploits.tickbase);
-  register_target("misc.exploits.tickbase_recharge", "Tickbase recharge", &config.misc.exploits.tickbase_recharge);
-  register_target("misc.exploits.doubletap", "Doubletap", &config.misc.exploits.doubletap);
-  register_target("misc.exploits.doubletap_ticks", "Doubletap ticks", &config.misc.exploits.doubletap_ticks);
-  register_target("misc.exploits.warp", "Warp", &config.misc.exploits.warp);
-  register_target("misc.exploits.warp_ticks", "Warp ticks", &config.misc.exploits.warp_ticks);
-  register_target("misc.exploits.fakelag", "Fakelag", &config.misc.exploits.fakelag);
-  register_target("misc.exploits.fakelag_ticks", "Fakelag ticks", &config.misc.exploits.fakelag_ticks);
-  register_target("misc.exploits.anti_aim", "Anti-aim", &config.misc.exploits.anti_aim);
-  register_target("misc.exploits.anti_aim_real_pitch", "AA real pitch", reinterpret_cast<int*>(&config.misc.exploits.anti_aim_real_pitch));
-  register_target("misc.exploits.anti_aim_fake_pitch", "AA fake pitch", reinterpret_cast<int*>(&config.misc.exploits.anti_aim_fake_pitch));
-  register_target("misc.exploits.anti_aim_real_yaw_base", "AA real base", reinterpret_cast<int*>(&config.misc.exploits.anti_aim_real_yaw_base));
-  register_target("misc.exploits.anti_aim_fake_yaw_base", "AA fake base", reinterpret_cast<int*>(&config.misc.exploits.anti_aim_fake_yaw_base));
-  register_target("misc.exploits.anti_aim_real_yaw", "AA real yaw", reinterpret_cast<int*>(&config.misc.exploits.anti_aim_real_yaw));
-  register_target("misc.exploits.anti_aim_fake_yaw", "AA fake yaw", reinterpret_cast<int*>(&config.misc.exploits.anti_aim_fake_yaw));
-  register_target("misc.exploits.anti_aim_real_yaw_offset", "AA real offset", &config.misc.exploits.anti_aim_real_yaw_offset);
-  register_target("misc.exploits.anti_aim_fake_yaw_offset", "AA fake offset", &config.misc.exploits.anti_aim_fake_yaw_offset);
-  register_target("misc.exploits.anti_aim_spin_speed", "AA spin speed", &config.misc.exploits.anti_aim_spin_speed);
-  register_target("misc.exploits.anti_aim_anti_overlap", "AA anti-overlap", &config.misc.exploits.anti_aim_anti_overlap);
-  register_target("misc.exploits.antiwarp", "Antiwarp", &config.misc.exploits.antiwarp);
-  register_target("misc.automation.autotaunt", "Auto taunt", &config.misc.automation.autotaunt);
-  register_target("misc.automation.chatspam", "Chatspam", reinterpret_cast<int*>(&config.misc.automation.chatspam));
-  register_target("misc.automation.killsay", "Killsay", reinterpret_cast<int*>(&config.misc.automation.killsay));
-  register_target("misc.exploits.null_graphics", "Null graphics", &config.misc.exploits.null_graphics);
-  register_target("misc.exploits.null_graphics_render_stubs", "Null render stubs", &config.misc.exploits.null_graphics_render_stubs);
-  register_target("misc.exploits.experimental_nographic_hooks", "Experimental nographic hooks", &config.misc.exploits.experimental_nographic_hooks);
-  register_target("debug.font_height", "Font height", &config.debug.font_height);
-  register_target("debug.font_weight", "Font weight", &config.debug.font_weight);
-
-  register_target("misc.automation.navbot_enabled", "Enable navbot", &config.misc.automation.navbot_enabled);
-  register_target("misc.automation.navbot_draw_path", "Draw nav path", &config.misc.automation.navbot_draw_path);
-  register_target("misc.automation.navbot_dont_path_during_warmup", "Skip path in warmup", &config.misc.automation.navbot_dont_path_during_warmup);
-  register_target("misc.automation.navbot_dont_path_unless_match_started", "Path only in match", &config.misc.automation.navbot_dont_path_unless_match_started);
-  register_target("misc.automation.navbot_warmup_only_blu_cp_pl", "Warmup BLU path only", &config.misc.automation.navbot_warmup_only_blu_cp_pl);
-  register_target("misc.automation.navbot_auto_weapon", "Auto weapon", &config.misc.automation.navbot_auto_weapon);
-  register_target("misc.automation.navbot_look_at_path", "Look at path", &config.misc.automation.navbot_look_at_path);
-  register_target("misc.automation.navbot_look_at_path_speed", "Navbot look speed", &config.misc.automation.navbot_look_at_path_speed);
-  register_target("misc.automation.navbot_crumb_blacklist_seconds", "Crumb blacklist", &config.misc.automation.navbot_crumb_blacklist_seconds);
-  register_target("misc.automation.medic_autoheal", "Medic autoheal", &config.misc.automation.medic_autoheal);
-  register_target("misc.automation.medic_autovacc", "Medic autovacc", &config.misc.automation.medic_autovacc);
-  register_target("misc.automation.medic_autouber", "Medic autouber", &config.misc.automation.medic_autouber);
-  register_target("misc.automation.medic_auto_crossbow", "Medic Crossbow", &config.misc.automation.medic_auto_crossbow);
-  register_target("misc.automation.medic_heal_targets_mask", "Medic heal targets", reinterpret_cast<int*>(&config.misc.automation.medic_heal_targets_mask));
-  register_target("misc.automation.medic_heal_only", "Medic heal only", &config.misc.automation.medic_heal_only);
-  register_target("misc.automation.auto_class_select", "Auto class select", &config.misc.automation.auto_class_select);
-  register_target("misc.automation.class_selected", "Preferred class", reinterpret_cast<int*>(&config.misc.automation.class_selected));
-  register_target("misc.automation.anti_afk", "Anti AFK", &config.misc.automation.anti_afk);
-  register_target("misc.automation.anti_autobalance", "Anti autobalance", &config.misc.automation.anti_autobalance);
-  register_target("misc.automation.voice_command_spam", "Voice command spam", reinterpret_cast<int*>(&config.misc.automation.voice_command_spam));
-  register_target("misc.automation.micspam", "Micspam", &config.misc.automation.micspam);
-  register_target("misc.automation.micspam_interval_on_seconds", "Micspam on", &config.misc.automation.micspam_interval_on_seconds);
-  register_target("misc.automation.micspam_interval_off_seconds", "Micspam off", &config.misc.automation.micspam_interval_off_seconds);
-  register_target("misc.automation.auto_item", "Auto item", &config.misc.automation.auto_item);
-  register_target("misc.automation.auto_item_interval_ms", "Auto item interval", &config.misc.automation.auto_item_interval_ms);
-  register_target("misc.automation.auto_item_weapons", "Auto item weapons", &config.misc.automation.auto_item_weapons);
-  register_target("misc.automation.auto_item_hats", "Auto item hats", &config.misc.automation.auto_item_hats);
-  register_target("misc.automation.auto_item_noisemaker", "Auto item noisemaker", &config.misc.automation.auto_item_noisemaker);
-  register_target("misc.automation.auto_item_debug", "Auto item debug", &config.misc.automation.auto_item_debug);
-  register_target("misc.automation.auto_queue", "Auto queue", &config.misc.automation.auto_queue);
-  register_target("misc.automation.auto_report", "Auto report", &config.misc.automation.auto_report);
-  register_target("misc.automation.auto_queue_mode", "Queue mode", &config.misc.automation.auto_queue_mode);
-  register_target("misc.automation.auto_requeue", "Auto requeue", &config.misc.automation.auto_requeue);
-  register_target("misc.automation.requeue_on_kick", "Requeue on kick", &config.misc.automation.requeue_on_kick);
-  register_target("misc.automation.auto_casual_join", "Auto casual join", &config.misc.automation.auto_casual_join);
-  register_target("misc.automation.rq_if_players_lte", "RQ if players <=", &config.misc.automation.rq_if_players_lte);
-  register_target("misc.automation.rq_if_players_gte", "RQ if players >=", &config.misc.automation.rq_if_players_gte);
-  register_target("misc.automation.rq_if_ipc_bots_gt", "RQ if IPC bots >", &config.misc.automation.rq_if_ipc_bots_gt);
-  register_target("misc.automation.rq_if_no_navmesh", "RQ if no navmesh", &config.misc.automation.rq_if_no_navmesh);
-  register_target("misc.automation.rq_ignore_friends", "RQ ignore friends", &config.misc.automation.rq_ignore_friends);
-  register_target("misc.automation.requeue_action", "Requeue action", reinterpret_cast<int*>(&config.misc.automation.requeue_action));
-  register_target("misc.automation.anti_motd", "Auto-close MOTD", &config.misc.automation.anti_motd);
 }
 
 inline void register_builtin_button_targets() {
@@ -506,9 +357,18 @@ inline bind_entry* ensure_entry(value_t* target, const char* label) {
   register_builtin_targets();
   register_builtin_button_targets();
 
-  const auto it = pointer_to_key().find(target);
-  if (it == pointer_to_key().end()) {
+  if (target == nullptr) {
     return nullptr;
+  }
+
+  auto it = pointer_to_key().find(target);
+  if (it == pointer_to_key().end()) {
+    const std::string generated = make_target_key_from_label(label);
+    register_target(generated.c_str(), label, target);
+    it = pointer_to_key().find(target);
+    if (it == pointer_to_key().end()) {
+      return nullptr;
+    }
   }
 
   bind_entry* entry = find_entry(it->second);

@@ -185,6 +185,33 @@ inline bool aimbot_add_local_hitbox_point(Vec3* points, int* point_count, int ma
   return true;
 }
 
+inline float aimbot_effective_multipoint_scale() {
+  const float configured = config.aimbot.multipoint_scale;
+  if (!std::isfinite(configured)) {
+    return 0.0f;
+  }
+
+  return std::clamp(configured, 0.0f, 100.0f) / 100.0f;
+}
+
+inline float aimbot_effective_bone_size_subtract() {
+  const float configured = config.aimbot.bone_size_subtract;
+  if (!std::isfinite(configured)) {
+    return 0.0f;
+  }
+
+  return std::clamp(configured, 0.0f, 12.0f);
+}
+
+inline float aimbot_effective_bone_size_min_scale() {
+  const float configured = config.aimbot.bone_size_min_scale;
+  if (!std::isfinite(configured)) {
+    return 0.4f;
+  }
+
+  return std::clamp(configured, 0.05f, 1.0f);
+}
+
 inline int aimbot_build_local_hitbox_points(const studio_box& hitbox,
   const matrix_3x4& bone_to_world,
   const Vec3& shoot_pos,
@@ -199,25 +226,35 @@ inline int aimbot_build_local_hitbox_points(const studio_box& hitbox,
     return point_count;
   }
 
+  const float scale = std::max(aimbot_effective_multipoint_scale(), aimbot_effective_bone_size_min_scale());
+  if (scale <= 0.0f) {
+    return point_count;
+  }
+
   const Vec3 local_shoot_pos = aimbot_inverse_transform_point(shoot_pos, bone_to_world);
   aimbot_add_local_hitbox_point(points, &point_count, max_points, aimbot_clamp_to_hitbox(local_shoot_pos, hitbox));
 
-  const Vec3 extent = (hitbox.bbmax - hitbox.bbmin) * 0.5f;
-  constexpr float point_scale = 0.62f;
+  const float subtract = aimbot_effective_bone_size_subtract();
+  const Vec3 extent_raw = (hitbox.bbmax - hitbox.bbmin) * 0.5f;
+  const Vec3 extent{
+    std::max(extent_raw.x - subtract, extent_raw.x * aimbot_effective_bone_size_min_scale()),
+    std::max(extent_raw.y - subtract, extent_raw.y * aimbot_effective_bone_size_min_scale()),
+    std::max(extent_raw.z - subtract, extent_raw.z * aimbot_effective_bone_size_min_scale())
+  };
 
   if (std::fabs(extent.x) > 1.0f) {
-    aimbot_add_local_hitbox_point(points, &point_count, max_points, center + Vec3{extent.x * point_scale, 0.0f, 0.0f});
-    aimbot_add_local_hitbox_point(points, &point_count, max_points, center - Vec3{extent.x * point_scale, 0.0f, 0.0f});
+    aimbot_add_local_hitbox_point(points, &point_count, max_points, center + Vec3{extent.x * scale, 0.0f, 0.0f});
+    aimbot_add_local_hitbox_point(points, &point_count, max_points, center - Vec3{extent.x * scale, 0.0f, 0.0f});
   }
 
   if (std::fabs(extent.y) > 1.0f) {
-    aimbot_add_local_hitbox_point(points, &point_count, max_points, center + Vec3{0.0f, extent.y * point_scale, 0.0f});
-    aimbot_add_local_hitbox_point(points, &point_count, max_points, center - Vec3{0.0f, extent.y * point_scale, 0.0f});
+    aimbot_add_local_hitbox_point(points, &point_count, max_points, center + Vec3{0.0f, extent.y * scale, 0.0f});
+    aimbot_add_local_hitbox_point(points, &point_count, max_points, center - Vec3{0.0f, extent.y * scale, 0.0f});
   }
 
   if (std::fabs(extent.z) > 1.0f) {
-    aimbot_add_local_hitbox_point(points, &point_count, max_points, center + Vec3{0.0f, 0.0f, extent.z * point_scale});
-    aimbot_add_local_hitbox_point(points, &point_count, max_points, center - Vec3{0.0f, 0.0f, extent.z * point_scale});
+    aimbot_add_local_hitbox_point(points, &point_count, max_points, center + Vec3{0.0f, 0.0f, extent.z * scale});
+    aimbot_add_local_hitbox_point(points, &point_count, max_points, center - Vec3{0.0f, 0.0f, extent.z * scale});
   }
 
   return point_count;
@@ -394,7 +431,11 @@ inline bool aimbot_hitbox_matches_mask(int hitbox_id, uint32_t hitbox_mask) {
 inline int aimbot_hitbox_priority(Player* localplayer, Player* target, Weapon* weapon, int hitbox_id) {
   bool prefer_head = false;
   if (localplayer != nullptr && target != nullptr) {
-    prefer_head = aimbot_headshot_ready_for_priority(localplayer, weapon);
+    const uint32_t modifiers = config.aimbot.hitscan_modifiers;
+    const bool user_wants_head =
+      (modifiers & Aim::hitscan_mod_wait_for_headshot) != 0 ||
+      (modifiers & Aim::hitscan_mod_headshot_only) != 0;
+    prefer_head = user_wants_head || aimbot_headshot_ready_for_priority(localplayer, weapon);
   }
 
   switch (hitbox_id) {
@@ -479,7 +520,7 @@ inline aimbot_point aimbot_find_best_point(Player* localplayer,
     studio_hitbox_set* hitbox_set = hdr != nullptr ? hdr->hitbox_set(target->get_hitbox_set()) : nullptr;
     if (hitbox_set != nullptr) {
       matrix_3x4 bone_to_world[128]{};
-      if (target->setup_bones(bone_to_world, 128, 0x100, target->get_simulation_time())) {
+      if (target->setup_bones(bone_to_world, 128, 0x7FF00, target->get_simulation_time())) {
         const Vec3 shoot_pos = localplayer->get_shoot_pos();
         for (int hitbox_id = aim_hitbox_head; hitbox_id <= aim_hitbox_right_foot; ++hitbox_id) {
           if (!aimbot_hitbox_matches_mask(hitbox_id, hitbox_mask) || hitbox_id >= hitbox_set->num_hitboxes) {
@@ -1088,6 +1129,10 @@ inline bool aimbot_weapon_requires_scope(Weapon* weapon) {
     attribute_manager->attrib_hook_value(0, "sniper_only_fire_zoomed", weapon->to_entity()) != 0;
 }
 
+inline bool aimbot_modifier_enabled(uint32_t flag) {
+  return (config.aimbot.hitscan_modifiers & flag) != 0;
+}
+
 inline bool aimbot_scoped_only_ready(Player* localplayer, Weapon* weapon) {
   if (localplayer == nullptr || weapon == nullptr) return false;
   const bool scoped_hitscan_rifle = aimbot_is_scoped_hitscan_rifle(weapon);
@@ -1095,7 +1140,7 @@ inline bool aimbot_scoped_only_ready(Player* localplayer, Weapon* weapon) {
     return true;
   }
   if (aimbot_weapon_requires_scope(weapon)) return false;
-  if (!config.aimbot.scoped_only) return true;
+  if (!aimbot_modifier_enabled(Aim::hitscan_mod_scoped_only)) return true;
   return !scoped_hitscan_rifle;
 }
 
@@ -1120,8 +1165,13 @@ inline bool aimbot_sniper_headshot_ready(Player* localplayer, Weapon* weapon) {
 }
 
 inline bool aimbot_wait_for_headshot_ready(Player* localplayer, Weapon* weapon, const aimbot_candidate& candidate) {
-  if (!config.aimbot.wait_for_headshot || localplayer == nullptr || weapon == nullptr) return true;
+  if (!aimbot_modifier_enabled(Aim::hitscan_mod_wait_for_headshot) || localplayer == nullptr || weapon == nullptr) return true;
   if (candidate.player == nullptr || !weapon->is_headshot_weapon()) return true;
+
+  // The wait only applies when we're actually trying for a headshot. If we
+  // already settled on a body / limb (head occluded fallback, body-aim-if-lethal,
+  // mask doesn't include head, etc.) there's nothing to wait for.
+  if (candidate.hitbox != aim_hitbox_head) return true;
 
   if (weapon->is_sniper_rifle()) {
     return aimbot_sniper_headshot_ready(localplayer, weapon);
@@ -1135,6 +1185,142 @@ inline bool aimbot_wait_for_headshot_ready(Player* localplayer, Weapon* weapon, 
   default:
     return true;
   }
+}
+
+inline float aimbot_sniper_estimated_charge(Weapon* weapon) {
+  if (weapon == nullptr) {
+    return 0.0f;
+  }
+
+  const float charge = weapon->get_charged_damage();
+  return std::isfinite(charge) ? std::max(charge, 50.0f) : 50.0f;
+}
+
+inline int aimbot_sniper_estimated_damage(Player* localplayer,
+  Weapon* weapon,
+  Player* target,
+  bool headshot) {
+  if (weapon == nullptr || target == nullptr) {
+    return 0;
+  }
+
+  const float base_damage = aimbot_sniper_estimated_charge(weapon);
+  float multiplier = 1.0f;
+  if (attribute_manager != nullptr) {
+    multiplier = attribute_manager->attrib_hook_value(
+      multiplier,
+      headshot ? "headshot_damage_modify" : "mult_dmg",
+      weapon->to_entity());
+  }
+
+  return static_cast<int>(std::ceil(base_damage * multiplier));
+}
+
+inline bool aimbot_revolver_lethal_body(Player* localplayer, Weapon* weapon, Player* target) {
+  if (localplayer == nullptr || weapon == nullptr || target == nullptr) {
+    return false;
+  }
+
+  const Vec3 origin_delta = target->get_origin() - localplayer->get_origin();
+  const float dist = std::sqrt(
+    (origin_delta.x * origin_delta.x) +
+    (origin_delta.y * origin_delta.y) +
+    (origin_delta.z * origin_delta.z));
+  const float ramp = std::clamp((900.0f - dist) / (900.0f - 90.0f), 0.0f, 1.0f);
+  const float base_damage = std::lerp(21.0f, 60.0f, ramp);
+  float multiplier = 1.0f;
+  if (attribute_manager != nullptr) {
+    multiplier = attribute_manager->attrib_hook_value(multiplier, "mult_dmg", weapon->to_entity());
+  }
+
+  const int dmg = static_cast<int>(std::ceil(base_damage * multiplier));
+  return target->get_health() <= dmg;
+}
+
+inline bool aimbot_body_aim_lethal(Player* localplayer, Weapon* weapon, Player* target) {
+  if (!aimbot_modifier_enabled(Aim::hitscan_mod_body_aim_if_lethal) ||
+      localplayer == nullptr ||
+      weapon == nullptr ||
+      target == nullptr ||
+      !weapon->is_headshot_weapon()) {
+    return false;
+  }
+
+  if (weapon->is_sniper_rifle()) {
+    const int bodyshot_damage = aimbot_sniper_estimated_damage(localplayer, weapon, target, false);
+    return target->get_health() > 0 && target->get_health() <= bodyshot_damage;
+  }
+
+  if (weapon->get_weapon_id() == TF_WEAPON_REVOLVER &&
+      attribute_manager != nullptr &&
+      attribute_manager->attrib_hook_value(0, "set_weapon_mode", weapon->to_entity()) == 1) {
+    return aimbot_revolver_lethal_body(localplayer, weapon, target);
+  }
+
+  return false;
+}
+
+inline bool aimbot_wait_for_charge_ready(Player* localplayer,
+  Weapon* weapon,
+  const aimbot_candidate& candidate) {
+  if (!aimbot_modifier_enabled(Aim::hitscan_mod_wait_for_charge) ||
+      localplayer == nullptr ||
+      weapon == nullptr ||
+      candidate.entity == nullptr) {
+    return true;
+  }
+
+  if (!weapon->is_sniper_rifle() || !localplayer->is_scoped()) {
+    return true;
+  }
+
+  const float charge = weapon->get_charged_damage();
+  if (charge >= 150.0f) {
+    return true;
+  }
+
+  if (candidate.player != nullptr) {
+    const bool headshot_hitbox = candidate.hitbox == aim_hitbox_head;
+    const int dmg = aimbot_sniper_estimated_damage(localplayer, weapon, candidate.player, headshot_hitbox);
+    if (candidate.player->get_health() > 0 && candidate.player->get_health() <= dmg) {
+      return true;
+    }
+    return false;
+  }
+
+  return charge >= 50.0f;
+}
+
+inline bool aimbot_should_tapfire(Player* localplayer,
+  Weapon* weapon,
+  const aimbot_candidate& candidate) {
+  if (!aimbot_modifier_enabled(Aim::hitscan_mod_tapfire) ||
+      localplayer == nullptr ||
+      weapon == nullptr ||
+      candidate.entity == nullptr) {
+    return false;
+  }
+
+  if (weapon->is_sniper_rifle() || weapon->is_melee()) {
+    return false;
+  }
+
+  const float spread = weapon->get_hitscan_spread();
+  if (!std::isfinite(spread) || spread <= 0.00001f) {
+    return false;
+  }
+
+  if (candidate.distance < config.aimbot.tapfire_distance) {
+    return false;
+  }
+
+  const float tick_interval = global_vars != nullptr && global_vars->interval_per_tick > 0.0f
+    ? global_vars->interval_per_tick
+    : static_cast<float>(TICK_INTERVAL);
+  const float server_time = static_cast<float>(localplayer->get_tickbase()) * tick_interval;
+  const float time_since_last = server_time - weapon->get_last_attack();
+  const float settle_time = weapon->get_bullets_per_shot() > 1 ? 0.25f : 1.25f;
+  return time_since_last <= settle_time;
 }
 
 inline bool aimbot_is_projectile_weapon(Weapon* weapon) {
@@ -1498,6 +1684,13 @@ inline bool aimbot_should_auto_scope(Player* localplayer, Weapon* weapon, const 
   if (aimbot_autoscope_scoped_state(localplayer) || !weapon->can_secondary_attack()) return false;
   if (!localplayer->is_on_ground()) return false;
   if (candidate.distance > config.aimbot.auto_scope_threshold) return false;
+
+  // The candidate already carries a visible hitbox position chosen by hitscan_aim.
+  // Trust that instead of re-tracing to the (often-occluded) feet origin.
+  if (candidate.visible && aimbot_vec3_is_finite(candidate.aim_position)) {
+    return true;
+  }
+
   if (!candidate.visible) {
     return aimbot_simple_move_sim_valid_no_visibility(localplayer, candidate.player, 0.2f);
   }
