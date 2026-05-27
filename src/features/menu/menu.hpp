@@ -1393,19 +1393,13 @@ static void draw_aimbot_content() {
     "Scoped only",
     "Wait for headshot",
     "Wait for charge",
-    "Headshot only",
-    "Body-aim if lethal",
-    "Tapfire",
-    "Peek compensation"
+    "Body-aim if lethal"
   };
   const uint32_t hitscan_modifier_bits[] = {
     Aim::hitscan_mod_scoped_only,
     Aim::hitscan_mod_wait_for_headshot,
     Aim::hitscan_mod_wait_for_charge,
-    Aim::hitscan_mod_headshot_only,
-    Aim::hitscan_mod_body_aim_if_lethal,
-    Aim::hitscan_mod_tapfire,
-    Aim::hitscan_mod_peek_compensation
+    Aim::hitscan_mod_body_aim_if_lethal
   };
 
   cat_menu::begin_flow_layout("aimbot_layout", 3);
@@ -1433,18 +1427,15 @@ static void draw_aimbot_content() {
     cat_menu::multi_select_combo("Ignore", &config.aimbot.ignore, ignore_items, ignore_bits, IM_ARRAYSIZE(ignore_items));
     cat_menu::slider_int("Max targets", &config.aimbot.max_targets, 1, 6);
   });
-  cat_menu::flow_panel("Projectile", 1, 296.0f, [&]() {
+  cat_menu::flow_panel("Projectile", 1, 196.0f, [&]() {
     cat_menu::combo("Projectile mode", (int*)&config.aimbot.projectile_mode, projectile_mode_items, IM_ARRAYSIZE(projectile_mode_items));
-    cat_menu::checkbox("Wall splash", &config.aimbot.projectile_wall_splash);
-    cat_menu::checkbox("Seam shot", &config.aimbot.projectile_seam_shot);
-    cat_menu::checkbox("Strafe prediction", &config.aimbot.projectile_strafe_prediction);
-    cat_menu::checkbox("Splash debug", &config.aimbot.projectile_splash_debug);
     cat_menu::slider_float("Splash radius scale", &config.aimbot.projectile_splash_radius_scale, 0.50f, 1.50f, "%.2fx");
-    cat_menu::slider_int("Path steps", &config.aimbot.projectile_path_steps, 2, 64);
-    cat_menu::slider_int("Splash samples", &config.aimbot.projectile_splash_samples, 4, 64);
     cat_menu::slider_int("Prediction ticks", &config.aimbot.projectile_prediction_ticks, 8, 420);
-    cat_menu::slider_float("Strafe confidence", &config.aimbot.projectile_strafe_confidence, 0.0f, 100.0f, "%.0f%%");
-    cat_menu::slider_int("Trace interval", &config.aimbot.projectile_trace_interval, 1, 8);
+    cat_menu::slider_int("Projectile max targets", &config.aimbot.projectile_max_targets, 1, 12);
+    cat_menu::checkbox("Projectile debug", &config.aimbot.projectile_debug);
+    cat_menu::checkbox("Autoairblast", &config.aimbot.autoairblast);
+    cat_menu::checkbox("Grappling hook", &config.aimbot.grappling_hook);
+    cat_menu::checkbox("Passtime pass", &config.aimbot.passtime_pass);
   });
   cat_menu::flow_panel("Heavy", 2, 92.0f, [&]() {
     cat_menu::checkbox("Heavy auto rev", &config.aimbot.auto_rev);
@@ -1464,13 +1455,11 @@ static void draw_aimbot_content() {
     cat_menu::checkbox("Nographics simple bounds", &config.aimbot.melee_nographics_simple_bounds);
     cat_menu::slider_int("Swing extra ticks", &config.aimbot.melee_swing_extra_ticks, 0, 8);
   });
-  cat_menu::flow_panel("Hitscan", 2, 156.0f, [&]() {
+  cat_menu::flow_panel("Hitscan", 2, 126.0f, [&]() {
     cat_menu::multi_select_combo("Modifiers", &config.aimbot.hitscan_modifiers, hitscan_modifier_items, hitscan_modifier_bits, IM_ARRAYSIZE(hitscan_modifier_items));
     cat_menu::slider_float("Multipoint scale", &config.aimbot.multipoint_scale, 0.0f, 100.0f, "%.0f%%");
     cat_menu::slider_float("Bone size subtract", &config.aimbot.bone_size_subtract, 0.0f, 12.0f, "%.1f HU");
     cat_menu::slider_float("Bone size min scale", &config.aimbot.bone_size_min_scale, 0.05f, 1.0f, "%.2f");
-    cat_menu::slider_float("Tapfire distance", &config.aimbot.tapfire_distance, 200.0f, 2400.0f, "%.0f HU");
-    cat_menu::slider_int("Peek ticks", &config.aimbot.peek_ticks, 0, 32);
   });
   cat_menu::end_flow_layout();
 }

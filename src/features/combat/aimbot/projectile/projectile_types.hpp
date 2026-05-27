@@ -18,6 +18,7 @@ V  o o  V  file: src/features/combat/aimbot/projectile/projectile_types.hpp
 #include "core/types.hpp"
 #include "games/tf2/sdk/entities/entity.hpp"
 #include "games/tf2/sdk/interfaces/engine_trace.hpp"
+#include "games/tf2/sdk/interfaces/vphysics.hpp"
 
 struct LocalPredictionProjectileParameters {
   float speed = 0.0f;
@@ -91,6 +92,9 @@ struct projectile_sim_profile {
   float lifetime = 0.0f;
   float initial_lift = 0.0f;
   float drag = 0.0f;
+  Vec3 drag_basis{};
+  Vec3 angular_drag_basis{};
+  Vec3 angular_velocity{};
   unsigned int trace_mask = MASK_SOLID;
   projectile_sim_fire_setup_mode fire_setup_mode = projectile_sim_fire_setup_mode::traced_forward;
   projectile_sim_spawn_trace_mode spawn_trace_mode = projectile_sim_spawn_trace_mode::none;
@@ -99,6 +103,7 @@ struct projectile_sim_profile {
   bool inherit_velocity = true;
   bool hull_trace = false;
   bool collide_world = true;
+  bool physics_sim = false;
 };
 
 struct projectile_sim_launch {
@@ -138,17 +143,25 @@ struct projectile_simulation {
   projectile_sim_result result{};
   Vec3 position{};
   Vec3 velocity{};
+  IPhysicsEnvironment* physics_environment = nullptr;
+  IPhysicsObject* physics_object = nullptr;
+  CPhysCollide* physics_collide = nullptr;
+  bool physics_active = false;
   float time = 0.0f;
   int tick = 0;
   int max_ticks = 0;
   bool initialized = false;
   bool finished = false;
 
+  ~projectile_simulation();
   bool init(const projectile_sim_launch& launch_in,
     const projectile_sim_profile& profile_in,
     Entity* skip_entity_in = nullptr,
     Entity* target_entity_in = nullptr,
     projectile_sim_trace_mode trace_mode_in = projectile_sim_trace_mode::none);
+  void shutdown_physics();
+  bool init_physics();
+  bool step_physics(float dt);
   bool step();
   projectile_sim_result run();
 };

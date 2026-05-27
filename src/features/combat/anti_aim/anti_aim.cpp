@@ -330,7 +330,7 @@ void fix_movement(user_cmd* cmd, const Vec3& source_angles, float source_forward
     return false;
   }
 
-  if (aimbot_has_active_target()) {
+  if (aimbot::has_active_target()) {
     return false;
   }
 

@@ -20,7 +20,7 @@ V  o o  V  file: src/features/combat/backtrack/backtrack.cpp
 #include "features/combat/aimbot/aim_utils.hpp"
 #include "features/combat/aimbot/resolver.hpp"
 #include "features/menu/config.hpp"
-#include "features/movement/local_prediction/local_prediction.hpp"
+#include "features/movement/local_prediction/move_sim.hpp"
 
 #include "games/tf2/sdk/interfaces/client_state.hpp"
 #include "games/tf2/sdk/interfaces/convar_system.hpp"

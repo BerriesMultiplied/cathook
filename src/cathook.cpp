@@ -70,6 +70,7 @@ V  o o  V  file: src/cathook.cpp
 #include "games/tf2/sdk/interfaces/game_event_manager.hpp"
 #include "games/tf2/sdk/interfaces/file_system.hpp"
 #include "games/tf2/sdk/interfaces/mdl_cache.hpp"
+#include "games/tf2/sdk/interfaces/vphysics.hpp"
 
 #include "libsigscan/libsigscan.h"
 #include "funchook/funchook.h"
@@ -974,6 +975,16 @@ bool initialize_game_runtime() {
 
   engine_trace = (EngineTrace*)get_interface("./bin/linux64/engine.so", "EngineTraceClient003");
   error_assert(engine_trace == nullptr, "EngineTraceClient003 is missing");
+
+  if (!cathook::core::wait_for_module("vphysics.so")) {
+    return false;
+  }
+
+  physics = (IPhysics*)get_interface("./bin/linux64/vphysics.so", "VPhysics031");
+  error_assert(physics == nullptr, "VPhysics031 is missing");
+
+  physics_collision = (IPhysicsCollision*)get_interface("./bin/linux64/vphysics.so", "VPhysicsCollision007");
+  error_assert(physics_collision == nullptr, "VPhysicsCollision007 is missing");
 
   model_render = (ModelRender*)get_interface("./bin/linux64/engine.so", "VEngineModel016");
   error_assert(model_render == nullptr, "VEngineModel016 is missing");

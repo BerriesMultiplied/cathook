@@ -477,12 +477,13 @@ Player* choose_navbot_enemy(Player* localplayer)
     return nullptr;
   }
 
-  if (target_player != nullptr
-    && !target_player->is_dormant()
-    && target_player->is_alive()
-    && target_player->get_team() != localplayer->get_team())
+  Player* aimbot_target = aimbot::active_target_player();
+  if (aimbot_target != nullptr
+    && !aimbot_target->is_dormant()
+    && aimbot_target->is_alive()
+    && aimbot_target->get_team() != localplayer->get_team())
   {
-    return target_player;
+    return aimbot_target;
   }
 
   Player* best_enemy = nullptr;

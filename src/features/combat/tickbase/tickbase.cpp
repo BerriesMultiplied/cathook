@@ -419,7 +419,7 @@ void apply_fakelag(user_cmd* cmd)
     return;
   }
 
-  if (is_attack_command(cmd) || aimbot_has_active_target()) {
+  if (is_attack_command(cmd) || aimbot::has_active_target()) {
     g_state.send_packet = true;
     return;
   }
@@ -454,7 +454,7 @@ void apply_anti_aim_choke(user_cmd* cmd)
     return;
   }
 
-  if (anti_aim::should_preserve_shot(cmd) || aimbot_has_active_target()) {
+  if (anti_aim::should_preserve_shot(cmd) || aimbot::has_active_target()) {
     g_state.send_packet = true;
     return;
   }

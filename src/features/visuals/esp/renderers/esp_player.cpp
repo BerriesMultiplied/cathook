@@ -90,7 +90,7 @@ void flags_esp_player(Vec3 screen, Vec3 screen_offset, Player* player, unsigned 
   float flags_x_offset = (screen.y - screen_offset.y)*WIDTH_FRACTION;
   float flags_y_offset = 0;
     
-  if (config.esp.player.flags.target_indicator == true && player == target_player) {
+  if (config.esp.player.flags.target_indicator == true && player == aimbot::active_target_player()) {
     surface->draw_set_text_color(255, 0, 0, 255);
     surface->draw_set_text_pos(screen.x + flags_x_offset + surface->get_character_width(esp_player_font, L"TARGET"[0]), screen_offset.y + flags_y_offset);
 

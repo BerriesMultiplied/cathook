@@ -1502,7 +1502,7 @@ void draw_player_esp(ImDrawList* draw_list, Player* player, Player* localplayer,
 
   float flag_y = bounds.min_y;
   const auto flag_x = bounds.max_x + cathook_text_padding;
-  if (config.esp.player.flags.target_indicator && player == target_player) {
+  if (config.esp.player.flags.target_indicator && player == aimbot::active_target_player()) {
     draw_text(draw_list, ImVec2(flag_x, flag_y), IM_COL32(255, 0, 0, 255), "TARGET");
     flag_y += ImGui::GetTextLineHeight();
   }
@@ -1975,7 +1975,7 @@ void draw_backtrack_visualizer_imgui()
 
 void draw_projectile_debug_imgui()
 {
-  if (!config.aimbot.projectile_splash_debug || engine == nullptr || global_vars == nullptr || !engine->is_in_game()) {
+  if (!config.aimbot.projectile_debug || engine == nullptr || global_vars == nullptr || !engine->is_in_game()) {
     return;
   }
 

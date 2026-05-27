@@ -19,6 +19,7 @@ V  o o  V  file: src/features/combat/aimbot/aim_utils.hpp
 #include <cstddef>
 
 #include "aimbot_debug.hpp"
+#include "aimbot.hpp"
 
 #include "core/entity_cache.hpp"
 #include "core/ipc/ipc_client.hpp"
@@ -26,7 +27,7 @@ V  o o  V  file: src/features/combat/aimbot/aim_utils.hpp
 
 #include "features/automation/nographics/nographics.hpp"
 #include "features/menu/config.hpp"
-#include "features/movement/local_prediction/local_prediction.hpp"
+#include "features/movement/local_prediction/move_sim.hpp"
 
 #include "games/tf2/sdk/entities/player.hpp"
 #include "games/tf2/sdk/entities/building.hpp"
@@ -440,8 +441,7 @@ inline int aimbot_hitbox_priority(Player* localplayer, Player* target, Weapon* w
   if (localplayer != nullptr && target != nullptr) {
     const uint32_t modifiers = config.aimbot.hitscan_modifiers;
     const bool user_wants_head =
-      (modifiers & Aim::hitscan_mod_wait_for_headshot) != 0 ||
-      (modifiers & Aim::hitscan_mod_headshot_only) != 0;
+      (modifiers & Aim::hitscan_mod_wait_for_headshot) != 0;
     prefer_head = user_wants_head || aimbot_headshot_ready_for_priority(localplayer, weapon);
   }
 
@@ -1299,38 +1299,6 @@ inline bool aimbot_wait_for_charge_ready(Player* localplayer,
   return charge >= 50.0f;
 }
 
-inline bool aimbot_should_tapfire(Player* localplayer,
-  Weapon* weapon,
-  const aimbot_candidate& candidate) {
-  if (!aimbot_modifier_enabled(Aim::hitscan_mod_tapfire) ||
-      localplayer == nullptr ||
-      weapon == nullptr ||
-      candidate.entity == nullptr) {
-    return false;
-  }
-
-  if (weapon->is_sniper_rifle() || weapon->is_melee()) {
-    return false;
-  }
-
-  const float spread = weapon->get_hitscan_spread();
-  if (!std::isfinite(spread) || spread <= 0.00001f) {
-    return false;
-  }
-
-  if (candidate.distance < config.aimbot.tapfire_distance) {
-    return false;
-  }
-
-  const float tick_interval = global_vars != nullptr && global_vars->interval_per_tick > 0.0f
-    ? global_vars->interval_per_tick
-    : static_cast<float>(TICK_INTERVAL);
-  const float server_time = static_cast<float>(localplayer->get_tickbase()) * tick_interval;
-  const float time_since_last = server_time - weapon->get_last_attack();
-  const float settle_time = weapon->get_bullets_per_shot() > 1 ? 0.25f : 1.25f;
-  return time_since_last <= settle_time;
-}
-
 inline bool aimbot_is_projectile_weapon(Weapon* weapon) {
   if (weapon == nullptr) return false;
 
@@ -1689,7 +1657,7 @@ inline bool aimbot_simple_move_sim_valid_no_visibility(Player* localplayer, Play
 inline bool aimbot_should_auto_scope(Player* localplayer, Weapon* weapon, const aimbot_candidate& candidate) {
   if (!config.aimbot.auto_scope || localplayer == nullptr || weapon == nullptr || candidate.player == nullptr) return false;
   if (localplayer->get_tf_class() != tf_class::SNIPER || !weapon->is_sniper_rifle()) return false;
-  if (aimbot_autoscope_scoped_state(localplayer) || !weapon->can_secondary_attack()) return false;
+  if (aimbot::autoscope_scoped_state(localplayer) || !weapon->can_secondary_attack()) return false;
   if (!localplayer->is_on_ground()) return false;
   if (candidate.distance > config.aimbot.auto_scope_threshold) return false;
 
@@ -1708,7 +1676,7 @@ inline bool aimbot_should_auto_scope(Player* localplayer, Weapon* weapon, const 
 inline bool aimbot_should_auto_unscope(Player* localplayer, Weapon* weapon, const aimbot_candidate& candidate) {
   if (!config.aimbot.auto_unscope || localplayer == nullptr || weapon == nullptr || candidate.player == nullptr) return false;
   if (localplayer->get_tf_class() != tf_class::SNIPER || !weapon->is_sniper_rifle()) return false;
-  if (!aimbot_autoscope_scoped_state(localplayer)) return false;
+  if (!aimbot::autoscope_scoped_state(localplayer)) return false;
 
   float scoped_time = (localplayer->get_tickbase() * TICK_INTERVAL) - localplayer->get_fov_time();
   if (scoped_time < 0.15f) return false;

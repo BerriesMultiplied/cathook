@@ -190,8 +190,8 @@ inline void proj_aim_budget_begin_for_distance(float distance_units) {
   b.reuse_trace_hits = reuse_trace_hits;
   b.fallback_sim_count = fallback_sim_count;
 
-  const float d0 = std::max(1.0f, config.aimbot.projectile_far_distance_begin);
-  const float d1 = std::max(d0 + 1.0f, config.aimbot.projectile_far_distance_full);
+  constexpr float d0 = 2200.0f;
+  constexpr float d1 = 4200.0f;
   float tier = 0.0f;
   if (distance_units >= d1) {
     tier = 1.0f;
@@ -200,9 +200,9 @@ inline void proj_aim_budget_begin_for_distance(float distance_units) {
   }
 
   b.intercept_path_stride_mul = tier >= 0.99f ? 3 : (tier > 0.35f ? 2 : 1);
-  b.intercept_error_cap_add = tier * config.aimbot.projectile_far_error_cap_add;
-  b.splash_solve_budget_percent = static_cast<int>(std::lerp(100.0f, static_cast<float>(config.aimbot.projectile_far_splash_budget_percent), tier));
-  b.path_steps_percent = static_cast<int>(std::lerp(100.0f, static_cast<float>(config.aimbot.projectile_far_path_steps_percent), tier));
+  b.intercept_error_cap_add = tier * 120.0f;
+  b.splash_solve_budget_percent = static_cast<int>(std::lerp(100.0f, 42.0f, tier));
+  b.path_steps_percent = static_cast<int>(std::lerp(100.0f, 55.0f, tier));
   b.trace_call_cap = tier >= 0.99f ? 240 : (tier > 0.35f ? 300 : 360);
   b.sim_call_cap = tier >= 0.99f ? 40 : (tier > 0.35f ? 56 : 72);
   b.splash_candidate_cap = tier >= 0.99f ? 48 : (tier > 0.35f ? 72 : 96);

@@ -18,6 +18,7 @@ V  o o  V  file: src/features/combat/aimbot/melee_aim.hpp
 #include "aim_utils.hpp"
 #include "core/entity_cache.hpp"
 #include "features/combat/backtrack/backtrack.hpp"
+#include "features/movement/local_prediction/move_sim.hpp"
 
 namespace melee_aim_detail {
 
@@ -88,7 +89,7 @@ inline Vec3 predict_local_swing_start(Player* localplayer, float swing_time) {
   if (swing_time < 0.001f) {
     return localplayer->get_shoot_pos();
   }
-  LocalPredictionEntityPath path = local_prediction_predict_entity_path(localplayer, swing_time, false);
+  move_sim::path path = move_sim::predict_entity_path(localplayer, swing_time, false, false);
   if (!path.valid || path.positions.empty()) {
     return localplayer->get_shoot_pos();
   }
@@ -318,7 +319,7 @@ inline std::vector<swing_sample> build_target_samples(Player* target, float swin
   }
 
   const float effective_horizon = std::max(swing_time, static_cast<float>(TICK_INTERVAL));
-  LocalPredictionEntityPath path = local_prediction_predict_entity_path(target, effective_horizon, false, true);
+  move_sim::path path = move_sim::predict_entity_path(target, effective_horizon, false, true);
   if (!path.valid || path.positions.empty()) {
     return out;
   }
@@ -526,7 +527,7 @@ inline aimbot_candidate melee_aim_find_simple_candidate(Player* localplayer,
 
   candidate.entity = player;
   candidate.player = player;
-  candidate.preferred = has_aimbot_preference(player);
+  candidate.preferred = aimbot::has_preference(player);
   candidate.bone = hitbox_point.valid ? hitbox_point.bone : aimbot_default_bone(localplayer, player, weapon);
   candidate.hitbox = hitbox_point.valid ? hitbox_point.hitbox : aim_hitbox_pelvis;
   candidate.aim_position = best.aim_position;
@@ -644,7 +645,7 @@ inline aimbot_candidate melee_aim_find_candidate(Player* localplayer,
 
   candidate.entity = player;
   candidate.player = player;
-  candidate.preferred = has_aimbot_preference(player);
+  candidate.preferred = aimbot::has_preference(player);
   candidate.bone = hitbox_point.valid ? hitbox_point.bone : aimbot_default_bone(localplayer, player, weapon);
   candidate.hitbox = hitbox_point.valid ? hitbox_point.hitbox : aim_hitbox_pelvis;
   candidate.aim_position = best.aim_position;

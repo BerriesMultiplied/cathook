@@ -213,21 +213,13 @@ void config_store::import_config(const Config& config)
     set_int("aimbot.melee_swing_extra_ticks", config.aimbot.melee_swing_extra_ticks);
     set_int("aimbot.projectile_mode", static_cast<int>(config.aimbot.projectile_mode));
     set_int("aimbot.projectile_hitboxes", static_cast<int>(config.aimbot.projectile_hitboxes));
-    set_bool("aimbot.projectile_wall_splash", config.aimbot.projectile_wall_splash);
-    set_bool("aimbot.projectile_seam_shot", config.aimbot.projectile_seam_shot);
     set_float("aimbot.projectile_splash_radius_scale", config.aimbot.projectile_splash_radius_scale);
-    set_int("aimbot.projectile_path_steps", config.aimbot.projectile_path_steps);
-    set_int("aimbot.projectile_splash_samples", config.aimbot.projectile_splash_samples);
     set_int("aimbot.projectile_prediction_ticks", config.aimbot.projectile_prediction_ticks);
-    set_bool("aimbot.projectile_strafe_prediction", config.aimbot.projectile_strafe_prediction);
-    set_float("aimbot.projectile_strafe_confidence", config.aimbot.projectile_strafe_confidence);
-    set_int("aimbot.projectile_trace_interval", config.aimbot.projectile_trace_interval);
-    set_bool("aimbot.projectile_splash_debug", config.aimbot.projectile_splash_debug);
-    set_float("aimbot.projectile_far_distance_begin", config.aimbot.projectile_far_distance_begin);
-    set_float("aimbot.projectile_far_distance_full", config.aimbot.projectile_far_distance_full);
-    set_float("aimbot.projectile_far_error_cap_add", config.aimbot.projectile_far_error_cap_add);
-    set_int("aimbot.projectile_far_splash_budget_percent", config.aimbot.projectile_far_splash_budget_percent);
-    set_int("aimbot.projectile_far_path_steps_percent", config.aimbot.projectile_far_path_steps_percent);
+    set_int("aimbot.projectile_max_targets", config.aimbot.projectile_max_targets);
+    set_bool("aimbot.projectile_debug", config.aimbot.projectile_debug);
+    set_bool("aimbot.autoairblast", config.aimbot.autoairblast);
+    set_bool("aimbot.grappling_hook", config.aimbot.grappling_hook);
+    set_bool("aimbot.passtime_pass", config.aimbot.passtime_pass);
     set_bool("aimbot.auto_scope", config.aimbot.auto_scope);
     set_bool("aimbot.auto_unscope", config.aimbot.auto_unscope);
     set_float("aimbot.auto_scope_threshold", config.aimbot.auto_scope_threshold);
@@ -235,8 +227,6 @@ void config_store::import_config(const Config& config)
     set_bool("aimbot.auto_unrev", config.aimbot.auto_unrev);
     set_float("aimbot.auto_rev_threshold", config.aimbot.auto_rev_threshold);
     set_int("aimbot.hitscan_modifiers", static_cast<int>(config.aimbot.hitscan_modifiers));
-    set_float("aimbot.tapfire_distance", config.aimbot.tapfire_distance);
-    set_int("aimbot.peek_ticks", config.aimbot.peek_ticks);
     set_float("aimbot.multipoint_scale", config.aimbot.multipoint_scale);
     set_float("aimbot.bone_size_subtract", config.aimbot.bone_size_subtract);
     set_float("aimbot.bone_size_min_scale", config.aimbot.bone_size_min_scale);
@@ -583,52 +573,21 @@ void config_store::export_config(Config& config) const
         0,
         3));
     config.aimbot.projectile_hitboxes = static_cast<uint32_t>(get_int("aimbot.projectile_hitboxes", static_cast<int>(config.aimbot.projectile_hitboxes)));
-    config.aimbot.projectile_wall_splash = get_bool("aimbot.projectile_wall_splash", config.aimbot.projectile_wall_splash);
-    config.aimbot.projectile_seam_shot = get_bool("aimbot.projectile_seam_shot", config.aimbot.projectile_seam_shot);
     config.aimbot.projectile_splash_radius_scale = get_float("aimbot.projectile_splash_radius_scale", config.aimbot.projectile_splash_radius_scale);
-    config.aimbot.projectile_path_steps = std::clamp(
-        get_int("aimbot.projectile_path_steps", config.aimbot.projectile_path_steps),
-        2,
-        64);
-    config.aimbot.projectile_splash_samples = std::clamp(
-        get_int("aimbot.projectile_splash_samples", config.aimbot.projectile_splash_samples),
-        4,
-        64);
     config.aimbot.projectile_prediction_ticks = std::clamp(
         get_int("aimbot.projectile_prediction_ticks", config.aimbot.projectile_prediction_ticks),
         8,
         420);
-    config.aimbot.projectile_strafe_prediction = get_bool(
-        "aimbot.projectile_strafe_prediction",
-        config.aimbot.projectile_strafe_prediction);
-    config.aimbot.projectile_strafe_confidence = std::clamp(
-        get_float("aimbot.projectile_strafe_confidence", config.aimbot.projectile_strafe_confidence),
-        0.0f,
-        100.0f);
-    config.aimbot.projectile_trace_interval = std::clamp(
-        get_int("aimbot.projectile_trace_interval", config.aimbot.projectile_trace_interval),
+    config.aimbot.projectile_max_targets = std::clamp(
+        get_int("aimbot.projectile_max_targets", config.aimbot.projectile_max_targets),
         1,
-        8);
-    config.aimbot.projectile_splash_debug = get_bool(
-        "aimbot.projectile_splash_debug",
-        config.aimbot.projectile_splash_debug);
-    config.aimbot.projectile_far_distance_begin = std::max(
-        1.0f,
-        get_float("aimbot.projectile_far_distance_begin", config.aimbot.projectile_far_distance_begin));
-    config.aimbot.projectile_far_distance_full = std::max(
-        config.aimbot.projectile_far_distance_begin + 1.0f,
-        get_float("aimbot.projectile_far_distance_full", config.aimbot.projectile_far_distance_full));
-    config.aimbot.projectile_far_error_cap_add = std::max(
-        0.0f,
-        get_float("aimbot.projectile_far_error_cap_add", config.aimbot.projectile_far_error_cap_add));
-    config.aimbot.projectile_far_splash_budget_percent = std::clamp(
-        get_int("aimbot.projectile_far_splash_budget_percent", config.aimbot.projectile_far_splash_budget_percent),
-        8,
-        100);
-    config.aimbot.projectile_far_path_steps_percent = std::clamp(
-        get_int("aimbot.projectile_far_path_steps_percent", config.aimbot.projectile_far_path_steps_percent),
-        15,
-        100);
+        12);
+    config.aimbot.projectile_debug = get_bool(
+        "aimbot.projectile_debug",
+        config.aimbot.projectile_debug);
+    config.aimbot.autoairblast = get_bool("aimbot.autoairblast", config.aimbot.autoairblast);
+    config.aimbot.grappling_hook = get_bool("aimbot.grappling_hook", config.aimbot.grappling_hook);
+    config.aimbot.passtime_pass = get_bool("aimbot.passtime_pass", config.aimbot.passtime_pass);
     config.aimbot.auto_scope = get_bool("aimbot.auto_scope", config.aimbot.auto_scope);
     config.aimbot.auto_unscope = get_bool("aimbot.auto_unscope", config.aimbot.auto_unscope);
     config.aimbot.auto_scope_threshold = get_float(
@@ -642,23 +601,11 @@ void config_store::export_config(Config& config) const
         if (get_bool("aimbot.scoped_only", false))         legacy |= Aim::hitscan_mod_scoped_only;
         if (get_bool("aimbot.wait_for_headshot", false))   legacy |= Aim::hitscan_mod_wait_for_headshot;
         if (get_bool("aimbot.wait_for_charge", false))     legacy |= Aim::hitscan_mod_wait_for_charge;
-        if (get_bool("aimbot.headshot_only", false))       legacy |= Aim::hitscan_mod_headshot_only;
         if (get_bool("aimbot.body_aim_if_lethal", false))  legacy |= Aim::hitscan_mod_body_aim_if_lethal;
-        if (get_bool("aimbot.tapfire", false))             legacy |= Aim::hitscan_mod_tapfire;
-        if (get_bool("aimbot.peek_compensation", false))   legacy |= Aim::hitscan_mod_peek_compensation;
         const int default_mods = static_cast<int>(legacy != 0 ? legacy : config.aimbot.hitscan_modifiers);
         config.aimbot.hitscan_modifiers = static_cast<uint32_t>(
-            std::clamp(get_int("aimbot.hitscan_modifiers", default_mods),
-                       0,
-                       static_cast<int>(Aim::hitscan_mod_all)));
+            get_int("aimbot.hitscan_modifiers", default_mods) & static_cast<int>(Aim::hitscan_mod_all));
     }
-    config.aimbot.tapfire_distance = std::max(
-        0.0f,
-        get_float("aimbot.tapfire_distance", config.aimbot.tapfire_distance));
-    config.aimbot.peek_ticks = std::clamp(
-        get_int("aimbot.peek_ticks", config.aimbot.peek_ticks),
-        0,
-        32);
     config.aimbot.multipoint_scale = std::clamp(
         get_float("aimbot.multipoint_scale", config.aimbot.multipoint_scale),
         0.0f,

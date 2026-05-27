@@ -87,14 +87,10 @@ struct Aim {
     hitscan_mod_scoped_only       = 1u << 0,
     hitscan_mod_wait_for_headshot = 1u << 1,
     hitscan_mod_wait_for_charge   = 1u << 2,
-    hitscan_mod_headshot_only     = 1u << 3,
-    hitscan_mod_body_aim_if_lethal = 1u << 4,
-    hitscan_mod_tapfire           = 1u << 5,
-    hitscan_mod_peek_compensation = 1u << 6,
+    hitscan_mod_body_aim_if_lethal = 1u << 3,
     hitscan_mod_default = hitscan_mod_body_aim_if_lethal,
     hitscan_mod_all = hitscan_mod_scoped_only | hitscan_mod_wait_for_headshot |
-      hitscan_mod_wait_for_charge | hitscan_mod_headshot_only |
-      hitscan_mod_body_aim_if_lethal | hitscan_mod_tapfire | hitscan_mod_peek_compensation
+      hitscan_mod_wait_for_charge | hitscan_mod_body_aim_if_lethal
   };
 
   bool master = true;
@@ -130,21 +126,13 @@ struct Aim {
 
   ProjectileMode projectile_mode = ProjectileMode::DIRECT_THEN_SPLASH;
   uint32_t projectile_hitboxes = aim_hitbox_mask_auto;
-  bool projectile_wall_splash = true;
-  bool projectile_seam_shot = true;
   float projectile_splash_radius_scale = 1.0f;
-  int projectile_path_steps = 16;
-  int projectile_splash_samples = 18;
   int projectile_prediction_ticks = 360;
-  bool projectile_strafe_prediction = true;
-  float projectile_strafe_confidence = 55.0f;
-  int projectile_trace_interval = 2;
-  bool projectile_splash_debug = false;
-  float projectile_far_distance_begin = 2200.0f;
-  float projectile_far_distance_full = 4200.0f;
-  float projectile_far_error_cap_add = 120.0f;
-  int projectile_far_splash_budget_percent = 42;
-  int projectile_far_path_steps_percent = 55;
+  int projectile_max_targets = 6;
+  bool projectile_debug = false;
+  bool autoairblast = false;
+  bool grappling_hook = false;
+  bool passtime_pass = false;
   
   bool auto_scope = false;
   bool auto_unscope = false;
@@ -153,8 +141,6 @@ struct Aim {
   bool auto_unrev = false;
   float auto_rev_threshold = 450.0f;
   uint32_t hitscan_modifiers = hitscan_mod_default;
-  float tapfire_distance = 900.0f;
-  int peek_ticks = 8;
   float multipoint_scale = 75.0f;
   float bone_size_subtract = 1.0f;
   float bone_size_min_scale = 0.4f;

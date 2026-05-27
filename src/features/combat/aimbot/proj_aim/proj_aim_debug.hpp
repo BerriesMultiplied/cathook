@@ -173,7 +173,7 @@ inline void proj_aim_reset_debug_stats(Weapon* weapon,
   const LocalPredictionEntityPath& target_path,
   uint32_t configured_hitbox_mask,
   uint32_t effective_hitbox_mask) {
-  if (!config.aimbot.projectile_splash_debug) {
+  if (!config.aimbot.projectile_debug) {
     return;
   }
 
@@ -209,7 +209,7 @@ inline void proj_aim_reset_debug_stats(Weapon* weapon,
 }
 
 inline void proj_aim_commit_debug_stats() {
-  if (!config.aimbot.projectile_splash_debug || !proj_aim_current_debug_stats.valid) {
+  if (!config.aimbot.projectile_debug || !proj_aim_current_debug_stats.valid) {
     return;
   }
 
@@ -229,7 +229,7 @@ inline void proj_aim_commit_debug_stats() {
 }
 
 inline void proj_aim_set_scan_debug_stats(int scan_targets, int scan_attempts, int scan_cap) {
-  if (!config.aimbot.projectile_splash_debug) {
+  if (!config.aimbot.projectile_debug) {
     return;
   }
 
@@ -248,7 +248,7 @@ inline void proj_aim_set_scan_debug_stats(int scan_targets, int scan_attempts, i
 inline void proj_aim_store_debug_path(const LocalPredictionEntityPath& target_path,
   const LocalPredictionInterceptResult& intercept,
   const aimbot_candidate& candidate) {
-  if (!config.aimbot.projectile_splash_debug || global_vars == nullptr || !intercept.valid) {
+  if (!config.aimbot.projectile_debug || global_vars == nullptr || !intercept.valid) {
     return;
   }
 

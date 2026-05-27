@@ -250,7 +250,7 @@ inline aimbot_candidate proj_aim_find_simple_candidate(Player* localplayer,
   const size_t direct_point_count = proj_aim_simple_direct_points(localplayer, weapon, player, hitbox_mask, direct_points);
 
   LocalPredictionEntityPath debug_path{};
-  if (config.aimbot.projectile_splash_debug) {
+  if (config.aimbot.projectile_debug) {
     debug_path = proj_aim_simple_debug_path(player, target_base_origin, target_velocity, profile.params.max_time);
     proj_aim_reset_debug_stats(weapon, player, debug_path, configured_hitbox_mask, hitbox_mask);
     proj_aim_current_debug_stats.direct_points = static_cast<int>(direct_point_count);
@@ -262,7 +262,7 @@ inline aimbot_candidate proj_aim_find_simple_candidate(Player* localplayer,
   int direct_candidate_priority = INT_MAX;
   for (size_t point_index = 0; point_index < direct_point_count; ++point_index) {
     const proj_aim_direct_point& sample = direct_points[point_index];
-    if (config.aimbot.projectile_splash_debug) {
+    if (config.aimbot.projectile_debug) {
       ++proj_aim_current_debug_stats.direct_solves;
     }
 
@@ -276,7 +276,7 @@ inline aimbot_candidate proj_aim_find_simple_candidate(Player* localplayer,
     if (!intercept.valid || intercept.intercept_time < profile.arm_time) {
       continue;
     }
-    if (config.aimbot.projectile_splash_debug) {
+    if (config.aimbot.projectile_debug) {
       ++proj_aim_current_debug_stats.direct_intercepts;
     }
 
@@ -286,7 +286,7 @@ inline aimbot_candidate proj_aim_find_simple_candidate(Player* localplayer,
     }
 
     if (!proj_aim_trace_simple_path(localplayer, player, weapon, intercept)) {
-      if (config.aimbot.projectile_splash_debug) {
+      if (config.aimbot.projectile_debug) {
         ++proj_aim_current_debug_stats.direct_trace_rejects;
       }
       continue;
@@ -295,7 +295,7 @@ inline aimbot_candidate proj_aim_find_simple_candidate(Player* localplayer,
     aimbot_candidate point_candidate{};
     point_candidate.entity = player;
     point_candidate.player = player;
-    point_candidate.preferred = has_aimbot_preference(player);
+    point_candidate.preferred = aimbot::has_preference(player);
     point_candidate.bone = sample.bone;
     point_candidate.hitbox = sample.hitbox;
     point_candidate.aim_position = intercept.target_origin;
@@ -320,7 +320,7 @@ inline aimbot_candidate proj_aim_find_simple_candidate(Player* localplayer,
         (point_priority == direct_candidate_priority && std::fabs(point_candidate.fov - direct_candidate.fov) <= 0.01f &&
          point_candidate.distance < direct_candidate.distance)) {
       direct_candidate_priority = point_priority;
-      if (config.aimbot.projectile_splash_debug) {
+      if (config.aimbot.projectile_debug) {
         proj_aim_store_debug_path(debug_path, intercept, point_candidate);
         ++proj_aim_current_debug_stats.direct_candidates;
         proj_aim_current_debug_stats.best_direct = true;
@@ -332,7 +332,7 @@ inline aimbot_candidate proj_aim_find_simple_candidate(Player* localplayer,
     }
   }
 
-  if (config.aimbot.projectile_splash_debug) {
+  if (config.aimbot.projectile_debug) {
     proj_aim_commit_debug_stats();
   }
   return direct_candidate;
@@ -363,11 +363,11 @@ inline aimbot_candidate proj_aim_find_candidate(Player* localplayer, Weapon* wea
   const uint32_t hitbox_mask = proj_aim_effective_hitbox_mask(localplayer, weapon, player);
   proj_aim_reset_debug_stats(weapon, player, target_path, configured_hitbox_mask, hitbox_mask);
   const std::vector<proj_aim_direct_point> direct_points = proj_aim_direct_points(localplayer, weapon, player, hitbox_mask);
-  if (config.aimbot.projectile_splash_debug) {
+  if (config.aimbot.projectile_debug) {
     proj_aim_current_debug_stats.direct_points = static_cast<int>(direct_points.size());
   }
   std::vector<proj_aim_direct_history> direct_history{};
-  if (config.aimbot.projectile_splash_debug) {
+  if (config.aimbot.projectile_debug) {
     direct_history.reserve(direct_points.size());
   }
 
@@ -375,7 +375,7 @@ inline aimbot_candidate proj_aim_find_candidate(Player* localplayer, Weapon* wea
   int direct_candidate_priority = INT_MAX;
   if (profile.supports_direct) {
     for (const proj_aim_direct_point& sample : direct_points) {
-      if (config.aimbot.projectile_splash_debug) {
+      if (config.aimbot.projectile_debug) {
         ++proj_aim_current_debug_stats.direct_solves;
       }
       LocalPredictionInterceptResult intercept = local_prediction_find_projectile_intercept(
@@ -388,7 +388,7 @@ inline aimbot_candidate proj_aim_find_candidate(Player* localplayer, Weapon* wea
       if (!intercept.valid || intercept.intercept_time < profile.arm_time) {
         continue;
       }
-      if (config.aimbot.projectile_splash_debug) {
+      if (config.aimbot.projectile_debug) {
         ++proj_aim_current_debug_stats.direct_intercepts;
       }
 
@@ -398,13 +398,13 @@ inline aimbot_candidate proj_aim_find_candidate(Player* localplayer, Weapon* wea
       }
 
       if (!proj_aim_trace_path(localplayer, player, weapon, intercept)) {
-        if (config.aimbot.projectile_splash_debug) {
+        if (config.aimbot.projectile_debug) {
           ++proj_aim_current_debug_stats.direct_trace_rejects;
         }
         continue;
       }
 
-      if (config.aimbot.projectile_splash_debug) {
+      if (config.aimbot.projectile_debug) {
         direct_history.push_back({
           .predicted_origin = intercept.has_target_base_origin
             ? intercept.target_base_origin
@@ -418,7 +418,7 @@ inline aimbot_candidate proj_aim_find_candidate(Player* localplayer, Weapon* wea
       aimbot_candidate point_candidate{};
       point_candidate.entity = player;
       point_candidate.player = player;
-      point_candidate.preferred = has_aimbot_preference(player);
+      point_candidate.preferred = aimbot::has_preference(player);
       point_candidate.bone = sample.bone;
       point_candidate.hitbox = sample.hitbox;
       point_candidate.aim_position = intercept.target_origin;
@@ -445,7 +445,7 @@ inline aimbot_candidate proj_aim_find_candidate(Player* localplayer, Weapon* wea
            point_candidate.distance < direct_candidate.distance)) {
         proj_aim_store_debug_path(target_path, intercept, point_candidate);
         direct_candidate_priority = point_priority;
-        if (config.aimbot.projectile_splash_debug) {
+        if (config.aimbot.projectile_debug) {
           ++proj_aim_current_debug_stats.direct_candidates;
           proj_aim_current_debug_stats.best_direct = true;
           proj_aim_current_debug_stats.best_time = intercept.intercept_time;
@@ -459,7 +459,7 @@ inline aimbot_candidate proj_aim_find_candidate(Player* localplayer, Weapon* wea
 
   const bool direct_confident = proj_aim_direct_candidate_confident(profile, direct_candidate);
   if (config.aimbot.projectile_mode == Aim::ProjectileMode::DIRECT_THEN_SPLASH && direct_confident) {
-    if (config.aimbot.projectile_splash_debug) {
+    if (config.aimbot.projectile_debug) {
       proj_aim_last_direct_history = std::move(direct_history);
       proj_aim_last_splash_history.clear();
       proj_aim_commit_debug_stats();
@@ -478,7 +478,7 @@ inline aimbot_candidate proj_aim_find_candidate(Player* localplayer, Weapon* wea
       target_path);
   }
 
-  if (config.aimbot.projectile_splash_debug) {
+  if (config.aimbot.projectile_debug) {
     proj_aim_last_direct_history = std::move(direct_history);
   }
 
@@ -505,7 +505,7 @@ inline aimbot_candidate proj_aim_find_candidate(Player* localplayer, Weapon* wea
     break;
   }
 
-  if (config.aimbot.projectile_splash_debug) {
+  if (config.aimbot.projectile_debug) {
     proj_aim_commit_debug_stats();
   }
   return result;

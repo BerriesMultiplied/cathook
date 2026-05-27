@@ -13,6 +13,7 @@ V  o o  V  file: src/features/combat/aimbot/proj_aim/proj_aim_splash.hpp
 
 #include "proj_aim_budget.hpp"
 #include "proj_aim_trace.hpp"
+#include "../aimbot.hpp"
 
 inline std::vector<proj_aim_path_sample> proj_aim_limited_path_samples(const LocalPredictionEntityPath& target_path) {
   std::vector<proj_aim_path_sample> samples{};
@@ -20,7 +21,7 @@ inline std::vector<proj_aim_path_sample> proj_aim_limited_path_samples(const Loc
     return samples;
   }
 
-  int path_steps_cfg = config.aimbot.projectile_path_steps;
+  int path_steps_cfg = 16;
   if (proj_aim_budget().active) {
     path_steps_cfg = std::max(2, (path_steps_cfg * proj_aim_budget().path_steps_percent) / 100);
   }
@@ -285,13 +286,13 @@ inline aimbot_candidate proj_aim_find_splash_candidate(Player* localplayer,
   const Vec3 local_origin = localplayer->get_shoot_pos();
   const uint32_t hitbox_mask = proj_aim_effective_hitbox_mask(localplayer, weapon, player);
   const std::vector<proj_aim_path_sample> predicted_samples = proj_aim_limited_path_samples(target_path);
-  const int splash_samples = std::clamp(config.aimbot.projectile_splash_samples, 4, 64);
+  constexpr int splash_samples = 18;
   const std::vector<proj_aim_hitbox_sample> hitbox_samples = proj_aim_hitbox_samples(player, hitbox_mask);
   const int splash_solve_budget = [&]() {
     int base = std::clamp(
       static_cast<int>(predicted_samples.size()) * splash_samples,
       24,
-      config.aimbot.projectile_splash_debug ? 768 : 384);
+      config.aimbot.projectile_debug ? 768 : 384);
     if (proj_aim_budget().active) {
       base = std::max(16, (base * proj_aim_budget().splash_solve_budget_percent) / 100);
     }
@@ -303,7 +304,7 @@ inline aimbot_candidate proj_aim_find_splash_candidate(Player* localplayer,
   std::vector<proj_aim_splash_point> splash_points{};
   splash_points.reserve((static_cast<size_t>(splash_samples) + 6) * 2);
   std::vector<proj_aim_splash_history> splash_history{};
-  if (config.aimbot.projectile_splash_debug) {
+  if (config.aimbot.projectile_debug) {
     splash_history.reserve(predicted_samples.size() * static_cast<size_t>(std::min(splash_samples, 12)));
     proj_aim_current_debug_stats.splash_path_samples = static_cast<int>(predicted_samples.size());
   }
@@ -332,14 +333,14 @@ inline aimbot_candidate proj_aim_find_splash_candidate(Player* localplayer,
       local_origin,
       predicted_origin,
       current_splash_samples,
-      config.aimbot.projectile_wall_splash,
-      config.aimbot.projectile_seam_shot,
+      true,
+      true,
       &sample_offsets,
       &splash_points);
     if (splash_points.size() > static_cast<size_t>(available_samples)) {
       splash_points.resize(static_cast<size_t>(available_samples));
     }
-    if (config.aimbot.projectile_splash_debug) {
+    if (config.aimbot.projectile_debug) {
       proj_aim_current_debug_stats.splash_offsets += static_cast<int>(splash_points.size());
     }
 
@@ -353,7 +354,7 @@ inline aimbot_candidate proj_aim_find_splash_candidate(Player* localplayer,
       }
 
       const Vec3& splash_point = sample_point.point;
-      if (config.aimbot.projectile_splash_debug) {
+      if (config.aimbot.projectile_debug) {
         ++proj_aim_current_debug_stats.splash_solves;
       }
       ++splash_solves;
@@ -368,7 +369,7 @@ inline aimbot_candidate proj_aim_find_splash_candidate(Player* localplayer,
       if (!intercept.valid) {
         continue;
       }
-      if (config.aimbot.projectile_splash_debug) {
+      if (config.aimbot.projectile_debug) {
         ++proj_aim_current_debug_stats.splash_intercepts;
       }
 
@@ -390,13 +391,13 @@ inline aimbot_candidate proj_aim_find_splash_candidate(Player* localplayer,
 
       Vec3 explosion_origin{};
       if (!proj_aim_trace_splash_path(localplayer, player, weapon, intercept, splash_radius, hitbox_mask, &explosion_origin, &impact_target_origin, false)) {
-        if (config.aimbot.projectile_splash_debug) {
+        if (config.aimbot.projectile_debug) {
           ++proj_aim_current_debug_stats.splash_trace_rejects;
         }
         continue;
       }
 
-      if (config.aimbot.projectile_splash_debug) {
+      if (config.aimbot.projectile_debug) {
         splash_history.push_back({
           .predicted_origin = impact_target_origin,
           .splash_point = splash_point,
@@ -420,7 +421,7 @@ inline aimbot_candidate proj_aim_find_splash_candidate(Player* localplayer,
           &best_hitbox,
           &best_bone,
           &best_point_distance)) {
-        if (config.aimbot.projectile_splash_debug) {
+        if (config.aimbot.projectile_debug) {
           ++proj_aim_current_debug_stats.splash_damage_rejects;
         }
         continue;
@@ -429,7 +430,7 @@ inline aimbot_candidate proj_aim_find_splash_candidate(Player* localplayer,
       aimbot_candidate splash_candidate{};
       splash_candidate.entity = player;
       splash_candidate.player = player;
-      splash_candidate.preferred = has_aimbot_preference(player);
+      splash_candidate.preferred = aimbot::has_preference(player);
       splash_candidate.bone = best_bone;
       splash_candidate.hitbox = best_hitbox;
       splash_candidate.aim_position = explosion_origin;
@@ -446,12 +447,12 @@ inline aimbot_candidate proj_aim_find_splash_candidate(Player* localplayer,
       splash_candidate.projectile_target_base_origin = impact_target_origin;
       splash_candidate.projectile_target_offset = Vec3{};
 
-      if (config.aimbot.projectile_splash_debug) {
+      if (config.aimbot.projectile_debug) {
         ++proj_aim_current_debug_stats.splash_candidates;
       }
       if (aimbot_candidate_better(splash_candidate, best_candidate)) {
         proj_aim_store_debug_path(target_path, intercept, splash_candidate);
-        if (config.aimbot.projectile_splash_debug) {
+        if (config.aimbot.projectile_debug) {
           proj_aim_current_debug_stats.best_splash = true;
           proj_aim_current_debug_stats.best_time = intercept.intercept_time;
           proj_aim_current_debug_stats.best_fov = intercept_fov;
@@ -466,7 +467,7 @@ inline aimbot_candidate proj_aim_find_splash_candidate(Player* localplayer,
     }
   }
 
-  if (config.aimbot.projectile_splash_debug) {
+  if (config.aimbot.projectile_debug) {
     proj_aim_last_splash_history = std::move(splash_history);
   }
   return best_candidate;

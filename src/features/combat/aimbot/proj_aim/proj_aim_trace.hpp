@@ -15,7 +15,7 @@ V  o o  V  file: src/features/combat/aimbot/proj_aim/proj_aim_trace.hpp
 
 #include "proj_aim_budget.hpp"
 #include "proj_aim_weapon.hpp"
-#include "features/movement/local_prediction/local_prediction.hpp"
+#include "features/combat/aimbot/projectile/projectile_sim.hpp"
 
 inline bool proj_aim_trace_between(const Vec3& start, const Vec3& end, Entity* skip_entity, Entity* target_entity) {
   if (engine_trace == nullptr) {

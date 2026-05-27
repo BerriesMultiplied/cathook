@@ -27,7 +27,7 @@ V  o o  V  file: src/core/hooks/frame_stage_notify.cpp
 #include "features/combat/aimbot/aimbot.hpp"
 #include "features/combat/aimbot/resolver.hpp"
 #include "features/combat/backtrack/backtrack.hpp"
-#include "features/movement/local_prediction/local_prediction.hpp"
+#include "features/movement/local_prediction/move_sim.hpp"
 #include "features/automation/navbot/navbot_controller.hpp"
 #include "features/visuals/thirdperson.hpp"
 #include "features/visuals/glow/player_model_glow.hpp"

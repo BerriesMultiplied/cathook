@@ -24,7 +24,7 @@ V  o o  V  file: src/features/automation/medic_automation/medic_automation.cpp
 
 #include "features/combat/aimbot/aim_utils.hpp"
 #include "features/menu/config.hpp"
-#include "features/movement/local_prediction/local_prediction.hpp"
+#include "features/combat/aimbot/projectile/projectile_sim.hpp"
 
 #include "games/tf2/sdk/entities/player.hpp"
 #include "games/tf2/sdk/entities/weapon.hpp"

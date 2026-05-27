@@ -16,7 +16,7 @@
 #include "core/entity_cache.hpp"
 
 #include "features/combat/backtrack/backtrack.hpp"
-#include "features/movement/local_prediction/local_prediction.hpp"
+#include "features/combat/aimbot/projectile/projectile_sim.hpp"
 
 namespace aim_targeting {
 
@@ -136,9 +136,9 @@ inline int projectile_target_attempt_cap(size_t target_count) {
   if (target_count >= 8) cap = std::min(cap, 3);
   else if (target_count >= 6) cap = std::min(cap, 4);
 
-  const int user_cap = std::clamp(config.aimbot.max_targets, 1, 6);
+  const int user_cap = std::clamp(config.aimbot.projectile_max_targets, 1, 12);
   cap = std::min(cap, user_cap);
-  return std::clamp(cap, 1, 6);
+  return std::clamp(cap, 1, 12);
 }
 
 inline bool projectile_target_hint_better(const projectile_target_hint& left, const projectile_target_hint& right) {
@@ -194,8 +194,8 @@ inline aimbot_candidate find_best_projectile_candidate(Player* localplayer,
     const Vec3 lead_pos = aim_pos + (target_velocity * approximate_time);
     const Vec3 aim_angles = aimbot_calculate_angles_to_position(shoot_pos, aim_pos);
     const Vec3 lead_angles = aimbot_calculate_angles_to_position(shoot_pos, lead_pos);
-    const bool preferred = has_aimbot_preference(player);
-    const bool current = player == target_player || preferred;
+    const bool preferred = aimbot::has_preference(player);
+    const bool current = player == aimbot::active_target_player() || preferred;
     const float current_fov = aimbot_calculate_fov(aim_angles, original_view_angles);
     const float lead_fov = aimbot_calculate_fov(lead_angles, original_view_angles);
     const float fov = std::min(current_fov, lead_fov);
@@ -295,7 +295,7 @@ inline aimbot_candidate find_best_candidate(Player* localplayer, Weapon* weapon,
           weapon,
           player,
           original_view_angles,
-          has_aimbot_preference(player));
+          aimbot::has_preference(player));
         if (aimbot_candidate_better(backtrack_candidate, candidate)) {
           candidate = backtrack_candidate;
         }

@@ -198,6 +198,7 @@ bool navbot_is_in_water_transition(Player* localplayer)
 
 bool navbot_engage_target_visible(Player* localplayer)
 {
+  Player* target_player = aimbot::active_target_player();
   if (localplayer == nullptr || target_player == nullptr)
   {
     return false;

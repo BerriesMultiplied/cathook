@@ -87,7 +87,7 @@ static bool aimbot_should_clear_autoreload() {
     return false;
   }
 
-  return target_entity != nullptr || has_aimbot_preference(aimbot_preference.preferred_target);
+  return aimbot::active_target_entity() != nullptr || aimbot::has_any_preference();
 }
 
 // really stupid but i guess it works :thumbsup: - pupnoodle
@@ -115,7 +115,7 @@ static bool should_run_taunt_slide(Player* localplayer) {
 }
 
 static bool run_move_features(user_cmd* user_cmd) {
-  clear_aimbot_active_target();
+  aimbot::clear_frame_target();
   backtrack::on_create_move(user_cmd);
   const Vec3 original_view_angles = user_cmd->view_angles;
 
@@ -139,35 +139,33 @@ static bool run_move_features(user_cmd* user_cmd) {
   const float corrected_forward_move = user_cmd->forwardmove;
 
   if (suppress_aimbot_for_reload) {
-    target_player = nullptr;
-    target_entity = nullptr;
-    clear_aimbot_preference();
-    reset_autoscope_scope_state();
-    reset_aimbot_input_history();
+    aimbot::clear_target_state();
+    aimbot::reset_autoscope_state();
+    aimbot::reset_input_history();
     user_cmd->buttons &= ~(IN_ATTACK | IN_ATTACK2 | IN_ATTACK3);
     user_cmd->buttons |= IN_RELOAD;
   } else if (suppress_aimbot_for_medic) {
-    target_player = nullptr;
-    target_entity = nullptr;
-    clear_aimbot_preference();
-    reset_autoscope_scope_state();
-    reset_aimbot_input_history();
+    aimbot::clear_target_state();
+    aimbot::reset_autoscope_state();
+    aimbot::reset_input_history();
   } else if (aimbot_should_clear_autoreload()) {
     user_cmd->buttons &= ~IN_RELOAD;
   }
 
   start_engine_prediction(user_cmd);
-  const bool aimbot_psilent = suppress_aimbot ? false : aimbot(user_cmd, original_view_angles);
+  const aimbot::aimbot_run_result aimbot_result = suppress_aimbot
+    ? aimbot::aimbot_run_result{}
+    : aimbot::run(user_cmd, original_view_angles);
   movement_fix(user_cmd, original_view_angles, corrected_forward_move, corrected_side_move);
   if (!menu_movement_blocked && !suppress_aimbot && !navbot::controller().should_prioritize_danger_movement()) {
-    aimbot_apply_walk_to_target(entity_list->get_localplayer(), user_cmd);
+    aimbot::apply_walk_to_target(entity_list->get_localplayer(), user_cmd);
   }
 
   end_engine_prediction();
 
   const bool moonwalk_psilent = !menu_movement_blocked && moonwalk_create_move(user_cmd);
 
-  return aimbot_psilent || moonwalk_psilent;
+  return aimbot_result.psilent_command || moonwalk_psilent;
 }
 
 // Called approx every frame.

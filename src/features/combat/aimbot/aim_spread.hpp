@@ -16,7 +16,7 @@
 #include "hitscan_aim.hpp"
 
 #include "features/combat/aimbot/proj_aim.hpp"
-#include "features/movement/local_prediction/local_prediction.hpp"
+#include "features/combat/aimbot/projectile/projectile_sim.hpp"
 
 #include "games/tf2/sdk/interfaces/convar_system.hpp"
 
