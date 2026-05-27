@@ -1882,20 +1882,21 @@ void draw_backtrack_visualizer_imgui()
       continue;
     }
 
-    const int draw_count = std::min(history->record_count, max_draw_ticks);
     Vec3 previous_screen{};
     bool previous_valid = false;
+    int drawn_records = 0;
 
-    for (int record_index = 0; record_index < draw_count; ++record_index) {
+    for (int record_index = 0; record_index < history->record_count && drawn_records < max_draw_ticks; ++record_index) {
       const auto& record = history->records[record_index];
       if (!backtrack::is_record_valid(record, player) || record.hitbox_count <= 0 || !record.hitboxes[0].valid) {
         previous_valid = false;
         continue;
       }
 
-      const float age_fraction = static_cast<float>(record_index) / static_cast<float>(std::max(draw_count, 1));
+      const float age_fraction = static_cast<float>(drawn_records) / static_cast<float>(std::max(max_draw_ticks, 1));
       const int alpha_byte = std::clamp(static_cast<int>((1.0f - age_fraction) * 220.0f), 35, 220);
       const ImU32 color = IM_COL32(base_color.r, base_color.g, base_color.b, alpha_byte);
+      ++drawn_records;
 
       auto bounds = esp_bounds{};
       switch (config.backtrack.visualizer_mode) {

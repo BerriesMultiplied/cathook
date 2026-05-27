@@ -17,6 +17,7 @@ V  o o  V  file: src/features/combat/aimbot/aim_utils.hpp
 #include <cfloat>
 #include <climits>
 #include <cstddef>
+#include <cstring>
 
 #include "aimbot_debug.hpp"
 #include "aimbot.hpp"
@@ -42,6 +43,7 @@ struct aimbot_candidate {
   Player* player = nullptr;
   int bone = 0;
   int hitbox = -1;
+  int studio_hitbox = -1;
   Vec3 aim_position{};
   Vec3 aim_angles{};
   float fov = FLT_MAX;
@@ -410,6 +412,492 @@ inline int aimbot_default_bone(Player* localplayer, Player* target, Weapon* weap
   return bone;
 }
 
+inline bool aimbot_model_name_is(Player* target, const char* name) {
+  if (target == nullptr || name == nullptr || model_info == nullptr) {
+    return false;
+  }
+
+  const model_t* model = target->get_model();
+  studio_hdr* hdr = model != nullptr ? model_info->get_studio_model(model) : nullptr;
+  if (hdr == nullptr) {
+    return false;
+  }
+
+  const std::size_t name_length = std::strlen(name);
+  if (name_length >= sizeof(hdr->name)) {
+    return false;
+  }
+
+  return std::strncmp(hdr->name, name, name_length) == 0 && hdr->name[name_length] == '\0';
+}
+
+inline bool aimbot_model_name_is_any(Player* target, const char* first, const char* second, const char* third = nullptr) {
+  return aimbot_model_name_is(target, first) ||
+    aimbot_model_name_is(target, second) ||
+    (third != nullptr && aimbot_model_name_is(target, third));
+}
+
+inline int aimbot_studio_hitbox_to_base(Player* target, int hitbox_id) {
+  if (aimbot_model_name_is(target, "models/bots/engineer/bot_engineer.mdl")) {
+    switch (hitbox_id) {
+    case 0: return aim_hitbox_head;
+    case 1: return aim_hitbox_spine_0;
+    case 2: return aim_hitbox_spine_1;
+    case 3: return aim_hitbox_spine_2;
+    case 4: return aim_hitbox_spine_3;
+    case 5: return aim_hitbox_left_upper_arm;
+    case 6: return aim_hitbox_left_forearm;
+    case 7: return aim_hitbox_left_hand;
+    case 8: return aim_hitbox_right_upper_arm;
+    case 9: return aim_hitbox_right_forearm;
+    case 10: return aim_hitbox_right_hand;
+    case 11: return aim_hitbox_left_thigh;
+    case 12: return aim_hitbox_left_calf;
+    case 13: return aim_hitbox_left_foot;
+    case 14: return aim_hitbox_right_thigh;
+    case 15: return aim_hitbox_right_calf;
+    case 16: return aim_hitbox_right_foot;
+    default: return -1;
+    }
+  }
+
+  if (aimbot_model_name_is_any(target, "models/vsh/player/saxton_hale.mdl", "models/vsh/player/hell_hale.mdl", "models/vsh/player/santa_hale.mdl")) {
+    switch (hitbox_id) {
+    case 0: return aim_hitbox_head;
+    case 1:
+    case 14: return aim_hitbox_pelvis;
+    case 15: return aim_hitbox_spine_0;
+    case 16: return aim_hitbox_spine_1;
+    case 17: return aim_hitbox_spine_2;
+    case 18: return aim_hitbox_spine_3;
+    case 12: return aim_hitbox_left_upper_arm;
+    case 10: return aim_hitbox_left_forearm;
+    case 8: return aim_hitbox_left_hand;
+    case 13: return aim_hitbox_right_upper_arm;
+    case 11: return aim_hitbox_right_forearm;
+    case 9: return aim_hitbox_right_hand;
+    case 6: return aim_hitbox_left_thigh;
+    case 4: return aim_hitbox_left_calf;
+    case 2: return aim_hitbox_left_foot;
+    case 7: return aim_hitbox_right_thigh;
+    case 5: return aim_hitbox_right_calf;
+    case 3: return aim_hitbox_right_foot;
+    default: return -1;
+    }
+  }
+
+  if (aimbot_model_name_is_any(target, "models/player/scout_infected.mdl", "models/player/soldier_infected.mdl", "models/player/sniper_infected.mdl")) {
+    switch (hitbox_id) {
+    case 6: return aim_hitbox_head;
+    case 0:
+    case 5: return aim_hitbox_pelvis;
+    case 1: return aim_hitbox_spine_0;
+    case 2: return aim_hitbox_spine_1;
+    case 3: return aim_hitbox_spine_2;
+    case 4: return aim_hitbox_spine_3;
+    case 7:
+    case 9: return aim_hitbox_left_upper_arm;
+    case 11: return aim_hitbox_left_forearm;
+    case 19: return aim_hitbox_left_hand;
+    case 8:
+    case 10: return aim_hitbox_right_upper_arm;
+    case 12: return aim_hitbox_right_forearm;
+    case 20: return aim_hitbox_right_hand;
+    case 13: return aim_hitbox_left_thigh;
+    case 15: return aim_hitbox_left_calf;
+    case 17: return aim_hitbox_left_foot;
+    case 14: return aim_hitbox_right_thigh;
+    case 16: return aim_hitbox_right_calf;
+    case 18: return aim_hitbox_right_foot;
+    default: return -1;
+    }
+  }
+
+  if (aimbot_model_name_is(target, "models/player/pyro_infected.mdl")) {
+    switch (hitbox_id) {
+    case 6: return aim_hitbox_head;
+    case 0:
+    case 5: return aim_hitbox_pelvis;
+    case 1: return aim_hitbox_spine_0;
+    case 2: return aim_hitbox_spine_1;
+    case 3: return aim_hitbox_spine_2;
+    case 4: return aim_hitbox_spine_3;
+    case 7:
+    case 8: return aim_hitbox_left_upper_arm;
+    case 9: return aim_hitbox_left_forearm;
+    case 10: return aim_hitbox_left_hand;
+    case 11:
+    case 12: return aim_hitbox_right_upper_arm;
+    case 13: return aim_hitbox_right_forearm;
+    case 14: return aim_hitbox_right_hand;
+    case 15: return aim_hitbox_left_thigh;
+    case 16: return aim_hitbox_left_calf;
+    case 17: return aim_hitbox_left_foot;
+    case 19: return aim_hitbox_right_thigh;
+    case 20: return aim_hitbox_right_calf;
+    case 21: return aim_hitbox_right_foot;
+    default: return -1;
+    }
+  }
+
+  if (aimbot_model_name_is(target, "models/player/demo_infected.mdl")) {
+    switch (hitbox_id) {
+    case 16: return aim_hitbox_head;
+    case 0:
+    case 15: return aim_hitbox_pelvis;
+    case 1: return aim_hitbox_spine_0;
+    case 2: return aim_hitbox_spine_1;
+    case 3: return aim_hitbox_spine_2;
+    case 4: return aim_hitbox_spine_3;
+    case 5:
+    case 6: return aim_hitbox_left_upper_arm;
+    case 13: return aim_hitbox_left_forearm;
+    case 17: return aim_hitbox_left_hand;
+    case 7:
+    case 8: return aim_hitbox_right_upper_arm;
+    case 14: return aim_hitbox_right_forearm;
+    case 18: return aim_hitbox_right_hand;
+    case 9: return aim_hitbox_left_thigh;
+    case 10: return aim_hitbox_left_calf;
+    case 19: return aim_hitbox_left_foot;
+    case 11: return aim_hitbox_right_thigh;
+    case 12: return aim_hitbox_right_calf;
+    case 20: return aim_hitbox_right_foot;
+    default: return -1;
+    }
+  }
+
+  if (aimbot_model_name_is(target, "models/player/heavy_infected.mdl")) {
+    switch (hitbox_id) {
+    case 6: return aim_hitbox_head;
+    case 0:
+    case 5: return aim_hitbox_pelvis;
+    case 1: return aim_hitbox_spine_0;
+    case 2: return aim_hitbox_spine_1;
+    case 3: return aim_hitbox_spine_2;
+    case 4: return aim_hitbox_spine_3;
+    case 7:
+    case 9: return aim_hitbox_left_upper_arm;
+    case 11: return aim_hitbox_left_forearm;
+    case 17: return aim_hitbox_left_hand;
+    case 8:
+    case 10: return aim_hitbox_right_upper_arm;
+    case 12: return aim_hitbox_right_forearm;
+    case 18: return aim_hitbox_right_hand;
+    case 13: return aim_hitbox_left_thigh;
+    case 15: return aim_hitbox_left_calf;
+    case 19: return aim_hitbox_left_foot;
+    case 14: return aim_hitbox_right_thigh;
+    case 16: return aim_hitbox_right_calf;
+    case 20: return aim_hitbox_right_foot;
+    default: return -1;
+    }
+  }
+
+  if (aimbot_model_name_is(target, "models/player/engineer_infected.mdl")) {
+    switch (hitbox_id) {
+    case 8: return aim_hitbox_head;
+    case 0:
+    case 7: return aim_hitbox_pelvis;
+    case 3: return aim_hitbox_spine_0;
+    case 4: return aim_hitbox_spine_1;
+    case 5: return aim_hitbox_spine_2;
+    case 6: return aim_hitbox_spine_3;
+    case 11:
+    case 12: return aim_hitbox_left_upper_arm;
+    case 13: return aim_hitbox_left_forearm;
+    case 20: return aim_hitbox_left_hand;
+    case 14:
+    case 15: return aim_hitbox_right_upper_arm;
+    case 16: return aim_hitbox_right_forearm;
+    case 19: return aim_hitbox_right_hand;
+    case 9: return aim_hitbox_left_thigh;
+    case 10: return aim_hitbox_left_calf;
+    case 17: return aim_hitbox_left_foot;
+    case 1: return aim_hitbox_right_thigh;
+    case 2: return aim_hitbox_right_calf;
+    case 18: return aim_hitbox_right_foot;
+    default: return -1;
+    }
+  }
+
+  if (aimbot_model_name_is(target, "models/player/medic_infected.mdl")) {
+    switch (hitbox_id) {
+    case 6: return aim_hitbox_head;
+    case 0:
+    case 5: return aim_hitbox_pelvis;
+    case 1: return aim_hitbox_spine_0;
+    case 2: return aim_hitbox_spine_1;
+    case 3: return aim_hitbox_spine_2;
+    case 4: return aim_hitbox_spine_3;
+    case 7:
+    case 9: return aim_hitbox_left_upper_arm;
+    case 11: return aim_hitbox_left_forearm;
+    case 17: return aim_hitbox_left_hand;
+    case 8:
+    case 10: return aim_hitbox_right_upper_arm;
+    case 12: return aim_hitbox_right_forearm;
+    case 18: return aim_hitbox_right_hand;
+    case 13: return aim_hitbox_left_thigh;
+    case 15: return aim_hitbox_left_calf;
+    case 22: return aim_hitbox_left_foot;
+    case 14: return aim_hitbox_right_thigh;
+    case 16: return aim_hitbox_right_calf;
+    case 23: return aim_hitbox_right_foot;
+    default: return -1;
+    }
+  }
+
+  if (aimbot_model_name_is(target, "models/player/spy_infected.mdl")) {
+    switch (hitbox_id) {
+    case 6: return aim_hitbox_head;
+    case 0:
+    case 5: return aim_hitbox_pelvis;
+    case 1: return aim_hitbox_spine_0;
+    case 2: return aim_hitbox_spine_1;
+    case 3: return aim_hitbox_spine_2;
+    case 4: return aim_hitbox_spine_3;
+    case 7:
+    case 9: return aim_hitbox_left_upper_arm;
+    case 11: return aim_hitbox_left_forearm;
+    case 13: return aim_hitbox_left_hand;
+    case 8:
+    case 10: return aim_hitbox_right_upper_arm;
+    case 12: return aim_hitbox_right_forearm;
+    case 14: return aim_hitbox_right_hand;
+    case 15: return aim_hitbox_left_thigh;
+    case 17: return aim_hitbox_left_calf;
+    case 19: return aim_hitbox_left_foot;
+    case 16: return aim_hitbox_right_thigh;
+    case 18: return aim_hitbox_right_calf;
+    case 20: return aim_hitbox_right_foot;
+    default: return -1;
+    }
+  }
+
+  return hitbox_id;
+}
+
+inline int aimbot_base_hitbox_to_studio(Player* target, int hitbox_id) {
+  if (aimbot_model_name_is(target, "models/bots/engineer/bot_engineer.mdl")) {
+    switch (hitbox_id) {
+    case aim_hitbox_head: return 0;
+    case aim_hitbox_pelvis:
+    case aim_hitbox_spine_0: return 1;
+    case aim_hitbox_spine_1: return 2;
+    case aim_hitbox_spine_2: return 3;
+    case aim_hitbox_spine_3: return 4;
+    case aim_hitbox_left_upper_arm: return 5;
+    case aim_hitbox_left_forearm: return 6;
+    case aim_hitbox_left_hand: return 7;
+    case aim_hitbox_right_upper_arm: return 8;
+    case aim_hitbox_right_forearm: return 9;
+    case aim_hitbox_right_hand: return 10;
+    case aim_hitbox_left_thigh: return 11;
+    case aim_hitbox_left_calf: return 12;
+    case aim_hitbox_left_foot: return 13;
+    case aim_hitbox_right_thigh: return 14;
+    case aim_hitbox_right_calf: return 15;
+    case aim_hitbox_right_foot: return 16;
+    default: return -1;
+    }
+  }
+
+  if (aimbot_model_name_is_any(target, "models/vsh/player/saxton_hale.mdl", "models/vsh/player/hell_hale.mdl", "models/vsh/player/santa_hale.mdl")) {
+    switch (hitbox_id) {
+    case aim_hitbox_head: return 0;
+    case aim_hitbox_pelvis: return 14;
+    case aim_hitbox_spine_0: return 15;
+    case aim_hitbox_spine_1: return 16;
+    case aim_hitbox_spine_2: return 17;
+    case aim_hitbox_spine_3: return 18;
+    case aim_hitbox_left_upper_arm: return 12;
+    case aim_hitbox_left_forearm: return 10;
+    case aim_hitbox_left_hand: return 8;
+    case aim_hitbox_right_upper_arm: return 13;
+    case aim_hitbox_right_forearm: return 11;
+    case aim_hitbox_right_hand: return 9;
+    case aim_hitbox_left_thigh: return 6;
+    case aim_hitbox_left_calf: return 4;
+    case aim_hitbox_left_foot: return 2;
+    case aim_hitbox_right_thigh: return 7;
+    case aim_hitbox_right_calf: return 5;
+    case aim_hitbox_right_foot: return 3;
+    default: return -1;
+    }
+  }
+
+  if (aimbot_model_name_is_any(target, "models/player/scout_infected.mdl", "models/player/soldier_infected.mdl", "models/player/sniper_infected.mdl")) {
+    switch (hitbox_id) {
+    case aim_hitbox_head: return 6;
+    case aim_hitbox_pelvis: return 0;
+    case aim_hitbox_spine_0: return 1;
+    case aim_hitbox_spine_1: return 2;
+    case aim_hitbox_spine_2: return 3;
+    case aim_hitbox_spine_3: return 4;
+    case aim_hitbox_left_upper_arm: return 9;
+    case aim_hitbox_left_forearm: return 11;
+    case aim_hitbox_left_hand: return 19;
+    case aim_hitbox_right_upper_arm: return 10;
+    case aim_hitbox_right_forearm: return 12;
+    case aim_hitbox_right_hand: return 20;
+    case aim_hitbox_left_thigh: return 13;
+    case aim_hitbox_left_calf: return 15;
+    case aim_hitbox_left_foot: return 17;
+    case aim_hitbox_right_thigh: return 14;
+    case aim_hitbox_right_calf: return 16;
+    case aim_hitbox_right_foot: return 18;
+    default: return -1;
+    }
+  }
+
+  if (aimbot_model_name_is(target, "models/player/pyro_infected.mdl")) {
+    switch (hitbox_id) {
+    case aim_hitbox_head: return 6;
+    case aim_hitbox_pelvis: return 0;
+    case aim_hitbox_spine_0: return 1;
+    case aim_hitbox_spine_1: return 2;
+    case aim_hitbox_spine_2: return 3;
+    case aim_hitbox_spine_3: return 4;
+    case aim_hitbox_left_upper_arm: return 8;
+    case aim_hitbox_left_forearm: return 9;
+    case aim_hitbox_left_hand: return 10;
+    case aim_hitbox_right_upper_arm: return 12;
+    case aim_hitbox_right_forearm: return 13;
+    case aim_hitbox_right_hand: return 14;
+    case aim_hitbox_left_thigh: return 15;
+    case aim_hitbox_left_calf: return 16;
+    case aim_hitbox_left_foot: return 17;
+    case aim_hitbox_right_thigh: return 19;
+    case aim_hitbox_right_calf: return 20;
+    case aim_hitbox_right_foot: return 21;
+    default: return -1;
+    }
+  }
+
+  if (aimbot_model_name_is(target, "models/player/demo_infected.mdl")) {
+    switch (hitbox_id) {
+    case aim_hitbox_head: return 16;
+    case aim_hitbox_pelvis: return 0;
+    case aim_hitbox_spine_0: return 1;
+    case aim_hitbox_spine_1: return 2;
+    case aim_hitbox_spine_2: return 3;
+    case aim_hitbox_spine_3: return 4;
+    case aim_hitbox_left_upper_arm: return 6;
+    case aim_hitbox_left_forearm: return 13;
+    case aim_hitbox_left_hand: return 17;
+    case aim_hitbox_right_upper_arm: return 8;
+    case aim_hitbox_right_forearm: return 14;
+    case aim_hitbox_right_hand: return 18;
+    case aim_hitbox_left_thigh: return 9;
+    case aim_hitbox_left_calf: return 10;
+    case aim_hitbox_left_foot: return 19;
+    case aim_hitbox_right_thigh: return 11;
+    case aim_hitbox_right_calf: return 12;
+    case aim_hitbox_right_foot: return 20;
+    default: return -1;
+    }
+  }
+
+  if (aimbot_model_name_is(target, "models/player/heavy_infected.mdl")) {
+    switch (hitbox_id) {
+    case aim_hitbox_head: return 6;
+    case aim_hitbox_pelvis: return 0;
+    case aim_hitbox_spine_0: return 1;
+    case aim_hitbox_spine_1: return 2;
+    case aim_hitbox_spine_2: return 3;
+    case aim_hitbox_spine_3: return 4;
+    case aim_hitbox_left_upper_arm: return 9;
+    case aim_hitbox_left_forearm: return 11;
+    case aim_hitbox_left_hand: return 17;
+    case aim_hitbox_right_upper_arm: return 10;
+    case aim_hitbox_right_forearm: return 12;
+    case aim_hitbox_right_hand: return 18;
+    case aim_hitbox_left_thigh: return 13;
+    case aim_hitbox_left_calf: return 15;
+    case aim_hitbox_left_foot: return 19;
+    case aim_hitbox_right_thigh: return 14;
+    case aim_hitbox_right_calf: return 16;
+    case aim_hitbox_right_foot: return 20;
+    default: return -1;
+    }
+  }
+
+  if (aimbot_model_name_is(target, "models/player/engineer_infected.mdl")) {
+    switch (hitbox_id) {
+    case aim_hitbox_head: return 8;
+    case aim_hitbox_pelvis: return 0;
+    case aim_hitbox_spine_0: return 3;
+    case aim_hitbox_spine_1: return 4;
+    case aim_hitbox_spine_2: return 5;
+    case aim_hitbox_spine_3: return 6;
+    case aim_hitbox_left_upper_arm: return 12;
+    case aim_hitbox_left_forearm: return 13;
+    case aim_hitbox_left_hand: return 20;
+    case aim_hitbox_right_upper_arm: return 15;
+    case aim_hitbox_right_forearm: return 16;
+    case aim_hitbox_right_hand: return 19;
+    case aim_hitbox_left_thigh: return 9;
+    case aim_hitbox_left_calf: return 10;
+    case aim_hitbox_left_foot: return 17;
+    case aim_hitbox_right_thigh: return 1;
+    case aim_hitbox_right_calf: return 2;
+    case aim_hitbox_right_foot: return 18;
+    default: return -1;
+    }
+  }
+
+  if (aimbot_model_name_is(target, "models/player/medic_infected.mdl")) {
+    switch (hitbox_id) {
+    case aim_hitbox_head: return 6;
+    case aim_hitbox_pelvis: return 0;
+    case aim_hitbox_spine_0: return 1;
+    case aim_hitbox_spine_1: return 2;
+    case aim_hitbox_spine_2: return 3;
+    case aim_hitbox_spine_3: return 4;
+    case aim_hitbox_left_upper_arm: return 9;
+    case aim_hitbox_left_forearm: return 11;
+    case aim_hitbox_left_hand: return 17;
+    case aim_hitbox_right_upper_arm: return 10;
+    case aim_hitbox_right_forearm: return 12;
+    case aim_hitbox_right_hand: return 18;
+    case aim_hitbox_left_thigh: return 13;
+    case aim_hitbox_left_calf: return 15;
+    case aim_hitbox_left_foot: return 22;
+    case aim_hitbox_right_thigh: return 14;
+    case aim_hitbox_right_calf: return 16;
+    case aim_hitbox_right_foot: return 23;
+    default: return -1;
+    }
+  }
+
+  if (aimbot_model_name_is(target, "models/player/spy_infected.mdl")) {
+    switch (hitbox_id) {
+    case aim_hitbox_head: return 6;
+    case aim_hitbox_pelvis: return 0;
+    case aim_hitbox_spine_0: return 1;
+    case aim_hitbox_spine_1: return 2;
+    case aim_hitbox_spine_2: return 3;
+    case aim_hitbox_spine_3: return 4;
+    case aim_hitbox_left_upper_arm: return 9;
+    case aim_hitbox_left_forearm: return 11;
+    case aim_hitbox_left_hand: return 13;
+    case aim_hitbox_right_upper_arm: return 10;
+    case aim_hitbox_right_forearm: return 12;
+    case aim_hitbox_right_hand: return 14;
+    case aim_hitbox_left_thigh: return 15;
+    case aim_hitbox_left_calf: return 17;
+    case aim_hitbox_left_foot: return 19;
+    case aim_hitbox_right_thigh: return 16;
+    case aim_hitbox_right_calf: return 18;
+    case aim_hitbox_right_foot: return 20;
+    default: return -1;
+    }
+  }
+
+  return hitbox_id;
+}
+
 inline bool aimbot_hitbox_matches_mask(int hitbox_id, uint32_t hitbox_mask) {
   switch (hitbox_id) {
   case aim_hitbox_head:
@@ -534,11 +1022,14 @@ inline aimbot_point aimbot_find_best_point(Player* localplayer,
       if (target->setup_bones(bone_to_world, 128, 0x7FF00, target->get_simulation_time())) {
         const Vec3 shoot_pos = localplayer->get_shoot_pos();
         for (int hitbox_id = aim_hitbox_head; hitbox_id <= aim_hitbox_right_foot; ++hitbox_id) {
-          if (!aimbot_hitbox_matches_mask(hitbox_id, hitbox_mask) || hitbox_id >= hitbox_set->num_hitboxes) {
+          const int studio_hitbox_id = aimbot_base_hitbox_to_studio(target, hitbox_id);
+          if (!aimbot_hitbox_matches_mask(hitbox_id, hitbox_mask) ||
+              studio_hitbox_id < 0 ||
+              studio_hitbox_id >= hitbox_set->num_hitboxes) {
             continue;
           }
 
-          studio_box* hitbox = hitbox_set->hitbox(hitbox_id);
+          studio_box* hitbox = hitbox_set->hitbox(studio_hitbox_id);
           if (hitbox == nullptr || hitbox->bone < 0 || hitbox->bone >= 128) {
             continue;
           }
@@ -594,7 +1085,9 @@ inline aimbot_point aimbot_find_best_point(Player* localplayer,
 
     Vec3 hitbox_position{};
     int hitbox_bone = 0;
-    if (!target->get_hitbox_center(hitbox_id, &hitbox_position, &hitbox_bone)) {
+    const int studio_hitbox_id = aimbot_base_hitbox_to_studio(target, hitbox_id);
+    if (studio_hitbox_id < 0 ||
+        !target->get_hitbox_center(studio_hitbox_id, &hitbox_position, &hitbox_bone)) {
       continue;
     }
 
@@ -633,7 +1126,9 @@ inline aimbot_point aimbot_find_best_point(Player* localplayer,
 
   int fallback_bone = 0;
   Vec3 fallback_position{};
-  if (!target->get_hitbox_center(fallback_hitbox, &fallback_position, &fallback_bone) ||
+  const int fallback_studio_hitbox = aimbot_base_hitbox_to_studio(target, fallback_hitbox);
+  if (fallback_studio_hitbox < 0 ||
+      !target->get_hitbox_center(fallback_studio_hitbox, &fallback_position, &fallback_bone) ||
       !aimbot_vec3_is_finite(fallback_position)) {
     fallback_bone = fallback_hitbox == aim_hitbox_head
       ? target->get_head_bone()

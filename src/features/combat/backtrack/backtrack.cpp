@@ -105,6 +105,11 @@ send_datagram_fn g_send_datagram_original = nullptr;
          localplayer_valid();
 }
 
+[[nodiscard]] bool should_run_fake_latency_network()
+{
+  return should_run_network_state() && config.backtrack.fake_latency_ms > 0.0f;
+}
+
 [[nodiscard]] bool should_record()
 {
   return is_enabled() &&
@@ -298,7 +303,7 @@ send_datagram_fn g_send_datagram_original = nullptr;
 
 bool add_record_hitbox(backtrack_record* record,
   const studio_box& hitbox,
-  int hitbox_id,
+  int studio_hitbox_id,
   const matrix_3x4& bone_to_world)
 {
   if (record == nullptr || record->hitbox_count >= max_hitboxes || hitbox.bone < 0 || hitbox.bone >= max_bones) {
@@ -311,10 +316,16 @@ bool add_record_hitbox(backtrack_record* record,
     return false;
   }
 
+  const int base_hitbox = aimbot_studio_hitbox_to_base(record->player, studio_hitbox_id);
+  if (base_hitbox < 0) {
+    return false;
+  }
+
   backtrack_hitbox& out = record->hitboxes[record->hitbox_count++];
   out.valid = true;
   out.bone = hitbox.bone;
-  out.hitbox = hitbox_id;
+  out.hitbox = base_hitbox;
+  out.studio_hitbox = studio_hitbox_id;
   out.group = hitbox.group;
   out.center = world_center;
   out.mins = hitbox.bbmin;
@@ -461,7 +472,7 @@ void send_interp_settings(net_channel* channel, float interp)
 
 int send_datagram_hook(net_channel* channel, bf_write* data)
 {
-  if (g_send_datagram_original == nullptr || channel == nullptr || !should_run_network_state()) {
+  if (g_send_datagram_original == nullptr || channel == nullptr || !should_run_fake_latency_network()) {
     return g_send_datagram_original != nullptr ? g_send_datagram_original(channel, data) : 0;
   }
 
@@ -533,7 +544,11 @@ backtrack_timing current_timing()
 void on_create_move(user_cmd* user_cmd)
 {
   (void)user_cmd;
-  install_net_channel_hook();
+  if (is_enabled() && config.backtrack.fake_latency_ms > 0.0f) {
+    install_net_channel_hook();
+  } else {
+    restore_net_channel_hook();
+  }
 
   static bool was_enabled = false;
   const bool enabled_now = is_enabled();
@@ -553,7 +568,9 @@ void on_create_move(user_cmd* user_cmd)
   }
 
   update_sequences(channel);
-  g_latency_ramp = std::min(1.0f, g_latency_ramp + tick_interval());
+  g_latency_ramp = config.backtrack.fake_latency_ms > 0.0f
+    ? std::min(1.0f, g_latency_ramp + tick_interval())
+    : 0.0f;
   send_interp_settings(channel, interpolation_time());
 }
 
@@ -778,6 +795,7 @@ aimbot_candidate find_hitscan_candidate(Player* localplayer,
         candidate.preferred = preferred;
         candidate.bone = hitbox.bone;
         candidate.hitbox = hitbox.hitbox;
+        candidate.studio_hitbox = hitbox.studio_hitbox;
         candidate.aim_position = point;
         candidate.aim_angles = aim_angles;
         candidate.fov = fov;

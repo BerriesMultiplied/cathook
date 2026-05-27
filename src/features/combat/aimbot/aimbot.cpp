@@ -117,6 +117,9 @@ Vec3 candidate_command_angles(Player* localplayer, const aimbot_candidate& candi
   if (localplayer == nullptr) {
     return candidate.command_angles;
   }
+  if ((candidate.projectile_direct || candidate.projectile_splash) && aimbot_vec3_is_finite(candidate.aim_angles)) {
+    return candidate.aim_angles;
+  }
   if (candidate.player != nullptr && aimbot_vec3_is_finite(candidate.command_angles)) {
     return candidate.command_angles;
   }
@@ -276,9 +279,6 @@ bool melee_ready(const aimbot_run_context& ctx) {
   if (!ctx.melee) {
     return true;
   }
-  if (!aimbot_mode_uses_visible_steering() && ctx.target.visible) {
-    return true;
-  }
   if (ctx.target.player != nullptr) {
     return ctx.target.melee_has_prediction &&
       melee_aim_trace_candidate(
@@ -300,6 +300,9 @@ bool projectile_ready(const aimbot_run_context& ctx) {
   if (!ctx.target.projectile_direct && !ctx.target.projectile_splash) {
     return true;
   }
+  if (ctx.target.projectile_direct) {
+    return aim_targeting::projectile_solution_ready(ctx.local, ctx.weapon, ctx.cmd, ctx.target, ctx.projectile_angles);
+  }
   if (!aimbot_mode_uses_visible_steering()) {
     return aim_targeting::projectile_solution_ready(ctx.local, ctx.weapon, ctx.cmd, ctx.target, ctx.projectile_angles);
   }
@@ -313,7 +316,11 @@ bool hitscan_settled(const aimbot_run_context& ctx) {
   if (!ctx.hitscan || !aimbot_mode_uses_visible_steering()) {
     return true;
   }
-  return aimbot_calculate_fov(ctx.applied_angles, ctx.target_angles) <= 0.85f;
+  if (ctx.hitscan_fire.ready &&
+      hitscan_aim_trace_candidate(ctx.local, ctx.target, ctx.applied_angles)) {
+    return true;
+  }
+  return aimbot_calculate_fov(ctx.applied_angles, ctx.target_angles) <= 1.75f;
 }
 
 bool hitscan_fast_head_backtrack_better(const aimbot_candidate& candidate, const aimbot_candidate& best) {

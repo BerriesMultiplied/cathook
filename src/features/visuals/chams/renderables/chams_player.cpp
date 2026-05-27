@@ -49,20 +49,21 @@ void draw_backtrack_chams(Player* player, void* me, void* state, ModelRenderInfo
   }
 
   const int max_ticks = std::clamp(config.chams.player.backtrack_ticks, 1, backtrack::max_records);
-  const int draw_count = std::min(history->record_count, max_ticks);
-  for (int record_index = draw_count - 1; record_index >= 1; --record_index) {
+  int drawn_records = 0;
+  for (int record_index = history->record_count - 1; record_index >= 1 && drawn_records < max_ticks; --record_index) {
     const auto& record = history->records[record_index];
     if (!backtrack::is_record_valid(record, player) || record.bone_count <= 0) {
       continue;
     }
 
     const float alpha_scale = std::clamp(
-      1.0f - (static_cast<float>(record_index) / static_cast<float>(std::max(draw_count, 1))),
+      static_cast<float>(drawn_records + 1) / static_cast<float>(std::max(max_ticks, 1)),
       0.12f,
       1.0f);
     const auto settings = get_backtrack_chams_settings(alpha_scale);
     auto* bones = reinterpret_cast<VMatrix*>(const_cast<matrix_3x4*>(record.bones.data()));
     apply_chams_settings(me, state, pinfo, bones, settings, false);
+    ++drawn_records;
   }
 }
 

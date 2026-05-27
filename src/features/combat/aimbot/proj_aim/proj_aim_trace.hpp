@@ -63,9 +63,14 @@ inline std::vector<proj_aim_hitbox_sample> proj_aim_hitbox_samples(Player* targe
       continue;
     }
 
+    const int studio_hitbox_id = aimbot_base_hitbox_to_studio(target, hitbox_id);
+    if (studio_hitbox_id < 0) {
+      continue;
+    }
+
     Vec3 point{};
     int bone = 0;
-    if (!target->get_hitbox_center(hitbox_id, &point, &bone)) {
+    if (!target->get_hitbox_center(studio_hitbox_id, &point, &bone)) {
       continue;
     }
 
@@ -92,8 +97,13 @@ inline std::vector<Vec3> proj_aim_target_points(Player* target, uint32_t hitbox_
       continue;
     }
 
+    const int studio_hitbox_id = aimbot_base_hitbox_to_studio(target, hitbox_id);
+    if (studio_hitbox_id < 0) {
+      continue;
+    }
+
     Vec3 point{};
-    if (target->get_hitbox_center(hitbox_id, &point)) {
+    if (target->get_hitbox_center(studio_hitbox_id, &point)) {
       points.emplace_back(point);
     }
   }
@@ -319,6 +329,7 @@ inline bool proj_aim_trace_path_segment_loop(Player* localplayer,
     : intercept.target_origin;
   const Vec3 target_mins = target->get_player_mins(target->is_ducking()) + predicted_origin - inflate;
   const Vec3 target_maxs = target->get_player_maxs(target->is_ducking()) + predicted_origin + inflate;
+  const float point_tolerance = proj_aim_direct_trace_point_tolerance(weapon, sim_profile);
 
   for (size_t index = 1; index < step_count; ++index) {
     const Vec3 start = steps[index - 1].position;
@@ -350,7 +361,11 @@ inline bool proj_aim_trace_path_segment_loop(Player* localplayer,
       return false;
     }
     if (reaches_target) {
-      return true;
+      float point_fraction = 0.0f;
+      if (proj_aim_segment_point_distance(start, end, intercept.target_origin, &point_fraction) <= point_tolerance &&
+          point_fraction + 0.001f >= target_enter_fraction) {
+        return true;
+      }
     }
   }
 

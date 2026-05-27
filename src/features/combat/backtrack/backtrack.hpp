@@ -29,6 +29,7 @@ struct backtrack_hitbox {
   bool valid = false;
   int bone = -1;
   int hitbox = -1;
+  int studio_hitbox = -1;
   int group = 0;
   Vec3 center{};
   Vec3 mins{};
