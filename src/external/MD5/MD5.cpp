@@ -201,3 +201,19 @@ void MD5Value_t::Zero()
 {
 	memset(bits, 0, sizeof(bits));
 }
+
+bool MD5Value_t::IsZero() const
+{
+	for (int i = 0; i < MD5_DIGEST_LENGTH; ++i) {
+		if (bits[i] != 0) return false;
+	}
+	return true;
+}
+
+void MD5_ProcessSingleBuffer(const void* p, int len, MD5Value_t& md5Result)
+{
+	MD5Context_t ctx;
+	MD5Init(&ctx);
+	MD5Update(&ctx, (unsigned char const*)p, (unsigned int)len);
+	MD5Final(md5Result.bits, &ctx);
+}

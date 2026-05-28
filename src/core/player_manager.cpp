@@ -11,6 +11,7 @@ V  o o  V  file: src/core/player_manager.cpp
 
 #include "core/player_manager.hpp"
 
+#include "core/identify/identify.hpp"
 #include "core/ipc/ipc_client.hpp"
 #include "core/logger.hpp"
 #include "games/tf2/sdk/entities/player.hpp"
@@ -82,7 +83,7 @@ std::unordered_map<std::uint32_t, stored_player> runtime_players{};
 
 [[nodiscard]] bool should_persist(player_state state)
 {
-  return state != player_state::default_state && state != player_state::ipc && state != player_state::textmode;
+  return state != player_state::default_state && state != player_state::ipc && state != player_state::textmode && state != player_state::identified;
 }
 
 [[nodiscard]] bool state_is_friendly(player_state state)
@@ -90,7 +91,8 @@ std::unordered_map<std::uint32_t, stored_player> runtime_players{};
   return state == player_state::friend_state ||
          state == player_state::party ||
          state == player_state::ipc ||
-         state == player_state::textmode;
+         state == player_state::textmode ||
+         state == player_state::identified;
 }
 
 [[nodiscard]] bool state_is_ignored(player_state state)
@@ -160,6 +162,10 @@ void tick()
     if (cat_ipc::client::is_local_ipc_friend(account_id))
     {
       set_runtime_state(account_id, player_state::ipc, info.name);
+    }
+    else if (cathook::core::identify::is_peer(account_id, info.name))
+    {
+      set_runtime_state(account_id, player_state::identified, info.name);
     }
   }
 }
@@ -333,6 +339,8 @@ const char* state_name(player_state state)
       return "textmode";
     case player_state::party:
       return "party";
+    case player_state::identified:
+      return "identified";
     case player_state::default_state:
     default:
       return "default";
@@ -378,6 +386,10 @@ std::optional<player_state> parse_state(std::string_view state_name)
   if (normalized == "party")
   {
     return player_state::party;
+  }
+  if (normalized == "identified" || normalized == "identify")
+  {
+    return player_state::identified;
   }
 
   return std::nullopt;

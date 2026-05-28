@@ -15,6 +15,7 @@ V  o o  V  file: src/core/hooks/fire_event_client_side.cpp
 
 #include "games/tf2/sdk/interfaces/global_vars.hpp"
 
+#include "core/identify/identify.hpp"
 #include "core/ipc/ipc_client.hpp"
 #include "core/math/math.hpp"
 #include "features/automation/medic_automation/medic_automation.hpp"
@@ -83,6 +84,13 @@ bool fire_event_client_side_hook(void* me, GameEvent* event) {
     Player* attacker = entity_list->get_player_from_id(event->get_int("attacker"));
     resolver::note_player_hurt(attacker, victim);
     hitmarker::on_player_hurt(attacker, victim, event->get_int("damageamount"), event->get_bool("crit"), event->get_int("custom") == 1);
+  }
+
+  if (event_name == "player_death") {
+    Player* victim = entity_list->get_player_from_id(event->get_int("userid"));
+    if (victim != nullptr && victim == entity_list->get_localplayer()) {
+      cathook::core::identify::on_player_death(event->get_int("attacker"));
+    }
   }
 
   return fire_event_client_side_original(me, event);

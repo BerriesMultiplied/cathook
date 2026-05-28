@@ -81,6 +81,7 @@ V  o o  V  file: src/cathook.cpp
 #include "core/overwrite_dlopen.cpp"
 #include "core/hooks/hooks.cpp"
 #include "core/ipc/ipc_client.cpp"
+#include "core/identify/identify.cpp"
 #include "core/player_manager.cpp"
 #include "features/combat/backtrack/backtrack.cpp"
 #include "features/combat/tickbase/tickbase.cpp"
@@ -576,6 +577,7 @@ bool unload_module_runtime() {
 
   print("Uninjecting...\n");
   cathook::core::unregister_commands();
+  cathook::core::identify::stop();
   cat_ipc::client::shutdown();
   cathook::core::players::shutdown();
 
@@ -1075,6 +1077,7 @@ bool initialize_game_runtime() {
   nographics::prepare_render_patches();
   autoitem::initialize();
   cathook::core::players::initialize();
+  cathook::core::identify::start();
 
   cathook::core::register_commands();
   cathook::core::execute_startup_autoexec();

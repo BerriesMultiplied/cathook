@@ -30,6 +30,7 @@ enum class player_state
   ipc,
   textmode,
   party,
+  identified,
 };
 
 struct player_entry

@@ -275,7 +275,8 @@ public:
       const auto account_id = static_cast<std::uint32_t>(pinfo.friends_id);
       const auto state = cathook::core::players::state_for(account_id);
       if (state == cathook::core::players::player_state::friend_state ||
-          state == cathook::core::players::player_state::party) {
+          state == cathook::core::players::player_state::party ||
+          state == cathook::core::players::player_state::identified) {
         return true;
       }
 

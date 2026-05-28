@@ -20,6 +20,7 @@ V  o o  V  file: src/core/hooks/frame_stage_notify.cpp
 #include "core/entity_cache.hpp"
 #include "core/commands.hpp"
 #include "core/detach.hpp"
+#include "core/identify/identify.hpp"
 #include "core/ipc/ipc_client.hpp"
 #include "core/player_manager.hpp"
 
@@ -217,6 +218,7 @@ void frame_stage_notify_hook(void* me, ClientFrameStage current_stage) {
   if (current_stage == FRAME_NET_UPDATE_END) {
     run_match_exec_on_level_change();
     cat_ipc::client::tick();
+    cathook::core::identify::tick();
     cathook::core::players::tick();
     automation::controller().on_frame_stage_notify();
     navbot::controller().on_frame_stage_notify();
