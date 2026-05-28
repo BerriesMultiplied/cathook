@@ -26,6 +26,18 @@ V  o o  V  file: src/core/hooks/fire_event_client_side.cpp
 
 #include <cfloat>
 
+#define TF_DEATH_DOMINATION				0x0001	// killer is dominating victim
+#define TF_DEATH_ASSISTER_DOMINATION	0x0002	// assister is dominating victim
+#define TF_DEATH_REVENGE				0x0004	// killer got revenge on victim
+#define TF_DEATH_ASSISTER_REVENGE		0x0008	// assister got revenge on victim
+#define TF_DEATH_FIRST_BLOOD			0x0010  // death triggered a first blood
+#define TF_DEATH_FEIGN_DEATH			0x0020  // feign death
+#define TF_DEATH_INTERRUPTED			0x0040	// interrupted a player doing an important game event (like capping or carrying flag)
+#define TF_DEATH_GIBBED					0x0080	// player was gibbed
+#define TF_DEATH_PURGATORY				0x0100	// player died while in purgatory
+#define TF_DEATH_MINIBOSS				0x0200	// player killed was a miniboss
+#define TF_DEATH_AUSTRALIUM				0x0400	// player killed by a Australium Weapon
+
 bool (*fire_event_client_side_original)(void*, GameEvent*) = NULL;
 
 bool fire_event_client_side_hook(void* me, GameEvent* event) {
@@ -87,10 +99,14 @@ bool fire_event_client_side_hook(void* me, GameEvent* event) {
   }
 
   if (event_name == "player_death") {
-    Player* victim = entity_list->get_player_from_id(event->get_int("userid"));
-    if (victim != nullptr && victim == entity_list->get_localplayer()) {
-      cathook::core::identify::on_player_death(event->get_int("attacker"));
-    }
+	if (event->get_int("death_flags") & TF_DEATH_FEIGN_DEATH) {
+		// Dead ringer death, ignore
+	} else {
+	    Player* victim = entity_list->get_player_from_id(event->get_int("userid"));
+	    if (victim != nullptr && victim == entity_list->get_localplayer()) {
+	      cathook::core::identify::on_player_death(event->get_int("attacker"));
+	    }
+	}
   }
 
   return fire_event_client_side_original(me, event);
