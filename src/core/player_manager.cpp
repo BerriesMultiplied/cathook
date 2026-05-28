@@ -181,6 +181,8 @@ void tick()
   }
 
   static const int connected_offset = tf2_netvars::find_offset("DT_TFPlayerResource", { "baseclass", "m_bConnected" });
+  static const int ping_offset = tf2_netvars::find_offset("DT_TFPlayerResource", { "baseclass", "m_iPing" });
+
   if (connected_offset <= 0)
   {
     return;
@@ -204,10 +206,17 @@ void tick()
       continue;
     }
 
+    const char* name_ptr = nullptr;
+    if (ping_offset > 816)
+    {
+      name_ptr = reinterpret_cast<const char* const*>(reinterpret_cast<uintptr_t>(player_resource) + ping_offset - 816)[index];
+    }
+    const std::string_view name = (name_ptr != nullptr && name_ptr[0] != '\0') ? name_ptr : info.name;
+
     const auto account_id = static_cast<std::uint32_t>(info.friends_id);
     if (cat_ipc::client::is_local_ipc_friend(account_id))
     {
-      set_runtime_state(account_id, player_state::ipc, info.name);
+      set_runtime_state(account_id, player_state::ipc, name);
     }
   }
 }

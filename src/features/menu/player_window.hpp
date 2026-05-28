@@ -104,6 +104,7 @@ inline std::vector<player_row> collect_player_rows() {
   static const int connected_offset = tf2_netvars::find_offset("DT_TFPlayerResource", { "baseclass", "m_bConnected" });
   static const int team_offset = tf2_netvars::find_offset("DT_TFPlayerResource", { "baseclass", "m_iTeam" });
   static const int alive_offset = tf2_netvars::find_offset("DT_TFPlayerResource", { "baseclass", "m_bAlive" });
+  static const int ping_offset = tf2_netvars::find_offset("DT_TFPlayerResource", { "baseclass", "m_iPing" });
 
   if (connected_offset <= 0 || team_offset <= 0 || alive_offset <= 0) {
     return rows;
@@ -123,11 +124,16 @@ inline std::vector<player_row> collect_player_rows() {
       continue;
     }
 
+    const char* name_ptr = nullptr;
+    if (ping_offset > 816) {
+      name_ptr = reinterpret_cast<const char* const*>(reinterpret_cast<uintptr_t>(player_resource) + ping_offset - 816)[index];
+    }
+
     player_row row{};
     row.entity_index = index;
     row.user_id = pinfo.user_id;
     row.account_id = static_cast<std::uint32_t>(pinfo.friends_id);
-    row.name = pinfo.name;
+    row.name = (name_ptr != nullptr && name_ptr[0] != '\0') ? name_ptr : pinfo.name;
     row.team = static_cast<tf_team>(read_player_resource_value<int>(player_resource, team_offset, index));
     row.alive = read_player_resource_value<bool>(player_resource, alive_offset, index);
     row.local = (index == local_index);
