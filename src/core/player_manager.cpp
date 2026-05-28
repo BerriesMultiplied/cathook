@@ -88,13 +88,16 @@ std::unordered_map<std::uint32_t, stored_player> runtime_players{};
   return state != player_state::default_state && state != player_state::ipc && state != player_state::textmode && state != player_state::identified;
 }
 
+
+} // namepsace
+bool state_is_cat(player_state state);
+namespace {
+
 [[nodiscard]] bool state_is_friendly(player_state state)
 {
   return state == player_state::friend_state ||
          state == player_state::party ||
-         state == player_state::ipc ||
-         state == player_state::textmode ||
-         state == player_state::identified;
+         state_is_cat(state);
 }
 
 [[nodiscard]] bool state_is_ignored(player_state state)
@@ -151,6 +154,13 @@ template <typename value_type>
 }
 
 } // namespace
+
+bool state_is_cat(player_state state)
+{
+  return state == player_state::ipc ||
+         state == player_state::textmode ||
+         state == player_state::identified;
+}
 
 void initialize()
 {
@@ -220,9 +230,9 @@ void tick()
     {
       set_runtime_state(account_id, player_state::ipc, name);
     }
-    else if (cathook::core::identify::is_peer(account_id, info.name))
+    else if (cathook::core::identify::is_peer(account_id, name))
     {
-      set_runtime_state(account_id, player_state::identified, info.name);
+      set_runtime_state(account_id, player_state::identified, name);
     }
   }
 }
@@ -378,6 +388,11 @@ bool is_ignored(std::uint32_t account_id)
 bool is_prioritized(std::uint32_t account_id)
 {
   return state_is_prioritized(state_for(account_id));
+}
+
+bool is_cat(std::uint32_t account_id)
+{
+  return state_is_cat(state_for(account_id));
 }
 
 const char* state_name(player_state state)

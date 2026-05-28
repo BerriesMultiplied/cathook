@@ -782,47 +782,7 @@ inline void command_playerlist_print_callback(const command_args& args)
   }
 }
 
-inline void command_playerlist_set_callback(const command_args& args)
-{
-  const char* command_name = command_invocation_name(args, "cat_playerlist_set");
-  const auto player = resolve_player_arg(args, command_name, 1);
-  if (!player)
-  {
-    return;
-  }
 
-  if (args.argc() < 3)
-  {
-    print("[%s] usage: %s <player> <default|friend|ignored|cheater|party>\n", command_name, command_name);
-    return;
-  }
-
-  const auto state = players::parse_state(args.argv(2));
-  if (!state || *state == players::player_state::ipc || *state == players::player_state::textmode)
-  {
-    print("[%s] unknown persistent state '%s'\n", command_name, args.argv(2));
-    return;
-  }
-
-  if (*state == players::player_state::default_state)
-  {
-    if (!players::clear_state(player->account_id))
-    {
-      print("[%s] failed to clear %u\n", command_name, player->account_id);
-      return;
-    }
-    print("[%s] cleared %u\n", command_name, player->account_id);
-    return;
-  }
-
-  if (!players::set_state(player->account_id, *state, player->name))
-  {
-    print("[%s] failed to set %u\n", command_name, player->account_id);
-    return;
-  }
-
-  print("[%s] set %u to %s\n", command_name, player->account_id, players::state_name(*state));
-}
 
 inline void command_playerlist_clear_callback(const command_args& args)
 {
@@ -861,35 +821,74 @@ inline void command_playerlist_info_callback(const command_args& args)
     players::is_prioritized(player->account_id) ? 1 : 0);
 }
 
-inline void command_ignore_callback(const command_args& args)
+inline void command_setrole_callback(const command_args& args)
 {
-  const char* command_name = command_invocation_name(args, "cat_ignore");
+  const char* command_name = command_invocation_name(args, "cat_setrole");
   const auto player = resolve_player_arg(args, command_name, 1);
   if (!player)
   {
     return;
   }
 
-  if (players::is_ignored(player->account_id))
+  if (args.argc() < 3)
+  {
+    print("[%s] usage: %s <player> <default|friend|ignored|cheater|party|cat>\n", command_name, command_name);
+    return;
+  }
+
+  const std::string_view role_name{args.argv(2)};
+
+  std::string normalized{role_name};
+  std::ranges::transform(normalized, normalized.begin(), [](const unsigned char c)
+  {
+    return static_cast<char>(std::tolower(c));
+  });
+
+  if (normalized == "cat")
+  {
+    if (!players::set_state(player->account_id, players::player_state::identified, player->name))
+    {
+      print("[%s] failed to set %u to cat\n", command_name, player->account_id);
+      return;
+    }
+    print("[%s] set %u to cat (identified)\n", command_name, player->account_id);
+    return;
+  }
+
+  const auto state = players::parse_state(role_name);
+  if (!state)
+  {
+    print("[%s] unknown role '%s'; valid: default friend ignored cheater party cat\n", command_name, args.argv(2));
+    return;
+  }
+
+  if (*state == players::player_state::ipc || *state == players::player_state::textmode)
+  {
+    print("[%s] '%s' is a runtime-only role and cannot be set manually\n", command_name, args.argv(2));
+    return;
+  }
+
+  if (*state == players::player_state::default_state)
   {
     if (!players::clear_state(player->account_id))
     {
-      print("[%s] failed to unignore %u\n", command_name, player->account_id);
+      print("[%s] failed to clear %u\n", command_name, player->account_id);
       return;
     }
-
-    print("[%s] unignored %u\n", command_name, player->account_id);
+    print("[%s] cleared %u\n", command_name, player->account_id);
     return;
   }
 
-  if (!players::set_state(player->account_id, players::player_state::ignored, player->name))
+  if (!players::set_state(player->account_id, *state, player->name))
   {
-    print("[%s] failed to ignore %u\n", command_name, player->account_id);
+    print("[%s] failed to set %u\n", command_name, player->account_id);
     return;
   }
 
-  print("[%s] ignored %u\n", command_name, player->account_id);
+  print("[%s] set %u to %s\n", command_name, player->account_id, players::state_name(*state));
 }
+
+
 
 inline void add_command(const char* name, command_callback_t callback, const char* help)
 {
@@ -931,10 +930,9 @@ inline void register_commands() {
   add_command("cat_playerlist_load", command_playerlist_load_callback, "Load the persistent player list");
   add_command("cat_playerlist_save", command_playerlist_save_callback, "Save the persistent player list");
   add_command("cat_playerlist_print", command_playerlist_print_callback, "Print player list entries; pass 'all' to include runtime IPC entries");
-  add_command("cat_playerlist_set", command_playerlist_set_callback, "Set a player list state");
+  add_command("cat_setrole", command_setrole_callback, "Set a player role: default friend ignored cheater party cat");
   add_command("cat_playerlist_clear", command_playerlist_clear_callback, "Clear a player list state");
   add_command("cat_playerlist_info", command_playerlist_info_callback, "Show one player list entry");
-  add_command("cat_ignore", command_ignore_callback, "Toggle ignored state for a player");
   commands_registered() = true;
 }
 
