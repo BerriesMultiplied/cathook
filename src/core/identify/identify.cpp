@@ -17,7 +17,6 @@
 
 #include <chrono>
 #include <cstdint>
-#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -33,25 +32,25 @@ namespace cathook::core::identify
 namespace
 {
 
-constexpr const char* SERVER_HOST    = "identify.bigmaccasnetwork.party";
-constexpr int SERVER_PORT    = 3000;
-constexpr int         BETRAYAL_LIMIT = 2;
+constexpr const char* SERVER_HOST      = "identify.bigmaccasnetwork.party";
+constexpr int         SERVER_PORT      = 3000;
+constexpr int         BETRAYAL_LIMIT   = 2;
 constexpr int         TICK_INTERVAL_MS = 1000;
 
 IdentifyClient* client = nullptr;
 
 // mutexs + lock guard to prevent desync
-std::mutex                       peer_mu{};
-std::unordered_set<std::string>  peer_hashes{};
+std::mutex                      peer_mu;
+std::unordered_set<std::string> peer_hashes;
 
-std::mutex                          identified_mu{};
-std::unordered_set<std::uint32_t>   identified_account_ids{};
+std::mutex                        identified_mu;
+std::unordered_set<std::uint32_t> identified_account_ids;
 
-std::mutex                                betrayals_mu{};
-std::unordered_map<std::uint32_t, int>    betrayals{};
+std::mutex                             betrayals_mu;
+std::unordered_map<std::uint32_t, int> betrayals;
 
-std::mutex                                              chat_mu{};
-std::vector<std::pair<std::string, std::string>>        chat_queue{};
+std::mutex                                       chat_mu;
+std::vector<std::pair<std::string, std::string>> chat_queue;
 
 std::filesystem::path betrayals_path()
 {
@@ -74,7 +73,7 @@ std::string player_hash(std::uint32_t friends_id, const char* name)
   return ss.str();
 }
 
-// netchannel address as our group key. empty when not on a sever.
+// netchannel address as our group key. empty when not on a server.
 std::string current_server_id()
 {
   if (engine == nullptr || !engine->is_in_game())
@@ -91,7 +90,7 @@ std::string local_player_hash()
 {
   if (engine == nullptr)
     return "";
-  const int local_idx = engine->get_localplayer_index();
+  int local_idx = engine->get_localplayer_index();
   if (local_idx <= 0)
     return "";
   player_info info{};
@@ -105,7 +104,8 @@ void save_betrayals_locked()
   std::error_code ec;
   std::filesystem::create_directories(cathook::core::config_directory(), ec);
   std::ofstream f(betrayals_path(), std::ios::trunc);
-  if (!f.is_open()) return;
+  if (!f.is_open())
+    return;
   for (const auto& [fid, count] : betrayals)
     f << fid << ':' << count << '\n';
 }
@@ -114,7 +114,7 @@ void on_peers(const std::vector<std::string>& hashes)
 {
   std::lock_guard lk{peer_mu};
   peer_hashes.clear();
-  for (const auto& h : hashes)
+  for (const std::string& h : hashes)
     peer_hashes.insert(h);
 }
 
@@ -142,20 +142,22 @@ void rebuild_identified_set()
   std::unordered_set<std::uint32_t> next;
   if (!peers_snapshot.empty())
   {
-    const int max_entities = entity_list->get_max_entities();
-    const int local_idx = engine->get_localplayer_index();
+    int max_entities = entity_list->get_max_entities();
+    int local_idx    = engine->get_localplayer_index();
     for (int i = 1; i <= max_entities; ++i)
     {
-      if (i == local_idx) continue;
-      auto* player = entity_list->player_from_index(i);
-      if (player == nullptr || player->get_class_id() != class_id::PLAYER)
+      if (i == local_idx)
+        continue;
+
+      Player* p = entity_list->player_from_index(static_cast<unsigned int>(i));
+      if (p == nullptr || p->get_class_id() != class_id::PLAYER)
         continue;
 
       player_info info{};
       if (!engine->get_player_info(i, &info) || info.fakeplayer || info.friends_id == 0)
         continue;
 
-      const auto account_id = static_cast<std::uint32_t>(info.friends_id);
+      std::uint32_t account_id = static_cast<std::uint32_t>(info.friends_id);
       {
         std::lock_guard blk{betrayals_mu};
         auto bit = betrayals.find(account_id);
@@ -164,7 +166,8 @@ void rebuild_identified_set()
       }
 
       std::string h = player_hash(account_id, info.name);
-      if (!peers_snapshot.count(h)) continue;
+      if (!peers_snapshot.count(h))
+        continue;
 
       next.insert(account_id);
     }
@@ -187,7 +190,8 @@ void drain_chat()
 
 void command_identify_send_callback(const cathook::core::command_args& args)
 {
-  if (client == nullptr) return;
+  if (client == nullptr)
+    return;
   if (args.argc() < 2)
   {
     print("usage: cat_identify_send <message>\n");
@@ -196,7 +200,8 @@ void command_identify_send_callback(const cathook::core::command_args& args)
   std::string msg;
   for (int i = 1; i < args.argc(); ++i)
   {
-    if (i > 1) msg += ' ';
+    if (i > 1)
+      msg += ' ';
     msg += args.argv(i);
   }
   client->sendChat(msg);
@@ -255,14 +260,16 @@ void stop()
 
 void tick()
 {
-  if (client == nullptr) return;
+  if (client == nullptr)
+    return;
 
   // cooldown
   using clock = std::chrono::steady_clock;
   static clock::time_point last_run{};
-  const auto now = clock::now();
-  const auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_run).count();
-  if (dt < TICK_INTERVAL_MS) return;
+  clock::time_point now = clock::now();
+  long dt = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_run).count();
+  if (dt < TICK_INTERVAL_MS)
+    return;
   last_run = now;
 
   client->updateIdentity(current_server_id(), local_player_hash());
@@ -272,25 +279,29 @@ void tick()
 
 bool is_peer(std::uint32_t account_id, std::string_view /*name*/)
 {
-  if (account_id == 0) return false;
+  if (account_id == 0)
+    return false;
   std::lock_guard lk{identified_mu};
   return identified_account_ids.contains(account_id);
 }
 
 void on_player_death(int attacker_user_id)
 {
-  if (engine == nullptr || entity_list == nullptr) return;
-  const int attacker_index = engine->get_player_index_from_id(attacker_user_id);
-  if (attacker_index <= 0) return;
+  if (engine == nullptr || entity_list == nullptr)
+    return;
+  int attacker_index = engine->get_player_index_from_id(attacker_user_id);
+  if (attacker_index <= 0)
+    return;
 
   player_info info{};
   if (!engine->get_player_info(attacker_index, &info) || info.friends_id == 0)
     return;
-  const auto account_id = static_cast<std::uint32_t>(info.friends_id);
+  std::uint32_t account_id = static_cast<std::uint32_t>(info.friends_id);
 
   {
     std::lock_guard lk{identified_mu};
-    if (!identified_account_ids.contains(account_id)) return;
+    if (!identified_account_ids.contains(account_id))
+      return;
   }
 
   int count = 0;
