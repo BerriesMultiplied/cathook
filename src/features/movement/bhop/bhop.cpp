@@ -9,6 +9,8 @@ V  o o  V  file: src/features/movement/bhop/bhop.cpp
   || (___\====
 */
 
+#include "features/movement/bhop/bhop.hpp"
+
 #include "features/menu/config.hpp"
 
 #include "core/math/math.hpp"
@@ -25,6 +27,8 @@ V  o o  V  file: src/features/movement/bhop/bhop.cpp
 
 namespace
 {
+
+int g_moonwalk_applied_command = -1;
 
 [[nodiscard]] float normalize_2d_yaw(float yaw)
 {
@@ -219,7 +223,10 @@ bool moonwalk(user_cmd* user_cmd, Player* localplayer)
   const float move_length = std::hypot(move_fwd, move_side);
   const float reverse_yaw = std::atan2(-move_side, -move_fwd) * radpi;
 
-  user_cmd->forwardmove = -move_length;
+  const float player_max_speed = localplayer->get_max_speed();
+  const float boost_length = player_max_speed > 1.0f ? std::max(move_length, player_max_speed) : move_length;
+
+  user_cmd->forwardmove = -boost_length;
   user_cmd->sidemove = 0.0f;
   user_cmd->view_angles.y = std::fmod(user_cmd->view_angles.y - reverse_yaw, 360.0f);
   user_cmd->view_angles.z = 270.0f;
@@ -255,5 +262,15 @@ bool moonwalk_create_move(user_cmd* user_cmd)
     return false;
   }
 
-  return moonwalk(user_cmd, localplayer);
+  const bool applied = moonwalk(user_cmd, localplayer);
+  if (applied) {
+    g_moonwalk_applied_command = user_cmd->command_number;
+  }
+
+  return applied;
+}
+
+bool moonwalk_applied_to_command(int command_number)
+{
+  return command_number > 0 && g_moonwalk_applied_command == command_number;
 }
