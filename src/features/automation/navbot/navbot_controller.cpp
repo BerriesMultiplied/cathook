@@ -942,7 +942,10 @@ void apply_look_at_path(Player* localplayer, user_cmd* user_cmd, const std::vect
   float pitch_delta = focus_z - eye_origin.z;
   float pitch_limit = std::clamp(config.misc.automation.navbot_look_at_path_pitch_limit, 0.0f, 89.0f);
 
-  float desired_pitch = std::clamp(-std::atan2(pitch_delta, planar_distance) * radpi, -pitch_limit, pitch_limit);
+  const bool og_mode = config.misc.automation.navbot_look_mode == Misc::Automation::navbot_look_at_path_mode::og;
+  float desired_pitch = og_mode
+    ? 0.0f
+    : std::clamp(-std::atan2(pitch_delta, planar_distance) * radpi, -pitch_limit, pitch_limit);
   float desired_yaw = std::atan2(delta.y, delta.x) * radpi;
 
   float pitch_speed = std::clamp(config.misc.automation.navbot_look_at_path_pitch_speed, 15.0f, 720.0f);

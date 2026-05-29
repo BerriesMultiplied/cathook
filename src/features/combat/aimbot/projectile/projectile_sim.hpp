@@ -940,97 +940,124 @@ inline bool projectile_sim_trace_step(const Vec3& start,
   return true;
 }
 
+struct projectile_physics_env {
+  IPhysicsEnvironment* environment = nullptr;
+  IPhysicsObject* object = nullptr;
+  CPhysCollide* collide = nullptr;
+
+  bool ensure() {
+    if (physics == nullptr || physics_collision == nullptr) {
+      return false;
+    }
+    if (environment == nullptr) {
+      environment = physics->CreateEnvironment();
+      if (environment == nullptr) {
+        return false;
+      }
+      environment->SetAirDensity(AIR_DENSITY);
+    }
+    if (collide == nullptr) {
+      collide = physics_collision->BBoxToCollide(Vec3{-2.0f, -2.0f, -2.0f}, Vec3{2.0f, 2.0f, 2.0f});
+      if (collide == nullptr) {
+        return false;
+      }
+    }
+    if (object == nullptr) {
+      objectparams_t params{};
+      params.mass = 1.0f;
+      params.inertia = 1.0f;
+      params.damping = 0.0f;
+      params.rotdamping = 0.0f;
+      params.rotInertiaLimit = 0.0f;
+      params.pName = "cathook_projectile_sim";
+      params.volume = 1.0f;
+      params.dragCoefficient = 0.0f;
+      params.enableCollisions = false;
+      object = environment->CreatePolyObject(collide, 0, Vec3{}, Vec3{}, &params);
+      if (object == nullptr) {
+        return false;
+      }
+      object->EnableCollisions(false);
+      object->Wake();
+    }
+    return true;
+  }
+
+  void destroy() {
+    if (environment != nullptr && object != nullptr) {
+      environment->DestroyObject(object);
+    }
+    object = nullptr;
+    if (physics_collision != nullptr && collide != nullptr) {
+      physics_collision->DestroyCollide(collide);
+    }
+    collide = nullptr;
+    if (physics != nullptr && environment != nullptr) {
+      physics->DestroyEnvironment(environment);
+    }
+    environment = nullptr;
+  }
+};
+
+inline projectile_physics_env& projectile_physics() {
+  static thread_local projectile_physics_env env{};
+  return env;
+}
+
 inline projectile_simulation::~projectile_simulation() {
   shutdown_physics();
 }
 
 inline void projectile_simulation::shutdown_physics() {
-  if (physics_environment != nullptr && physics_object != nullptr) {
-    physics_environment->DestroyObject(physics_object);
-  }
-  physics_object = nullptr;
-
-  if (physics_collision != nullptr && physics_collide != nullptr) {
-    physics_collision->DestroyCollide(physics_collide);
-  }
-  physics_collide = nullptr;
-
-  if (physics != nullptr && physics_environment != nullptr) {
-    physics->DestroyEnvironment(physics_environment);
-  }
   physics_environment = nullptr;
+  physics_object = nullptr;
+  physics_collide = nullptr;
   physics_active = false;
 }
 
 inline bool projectile_simulation::init_physics() {
-  if (!profile.physics_sim || physics == nullptr || physics_collision == nullptr) {
+  if (!profile.physics_sim) {
     return false;
   }
 
-  Vec3 hull = profile.hull;
-  if (hull.x <= 0.0f && hull.y <= 0.0f && hull.z <= 0.0f) {
-    hull = Vec3{1.0f, 1.0f, 1.0f};
-  }
-
-  physics_environment = physics->CreateEnvironment();
-  if (physics_environment == nullptr) {
-    shutdown_physics();
+  projectile_physics_env& env = projectile_physics();
+  if (!env.ensure()) {
     return false;
   }
 
-  physics_environment->SetGravity(Vec3{0.0f, 0.0f, -profile.params.gravity});
-  physics_environment->SetAirDensity(AIR_DENSITY);
-  physics_environment->SetSimulationTimestep(profile.params.time_step);
-  physics_environment->ResetSimulationClock();
+  const float tick_interval = std::max(static_cast<float>(TICK_INTERVAL), 0.0001f);
+  env.environment->SetGravity(Vec3{0.0f, 0.0f, -profile.params.gravity});
+  env.environment->SetAirDensity(AIR_DENSITY);
+  env.environment->SetSimulationTimestep(tick_interval);
+  env.environment->ResetSimulationClock();
 
   physics_performanceparams_t performance{};
   performance.Defaults();
   performance.maxVelocity = std::max(k_flMaxVelocity, profile.params.speed * 1.25f);
   performance.maxAngularVelocity = k_flMaxAngularVelocity;
-  physics_environment->SetPerformanceSettings(&performance);
+  env.environment->SetPerformanceSettings(&performance);
 
-  const Vec3 mins = hull * -1.0f;
-  const Vec3 maxs = hull;
-  physics_collide = physics_collision->BBoxToCollide(mins, maxs);
-  if (physics_collide == nullptr) {
-    shutdown_physics();
-    return false;
-  }
+  // The per-weapon m_dragBasis vectors are measured against the game's drag coefficient of 1.0
+  // (see CDragController and Amalgam's ProjectileSimulation). The scalar profile.drag is only the
+  // analytic-fallback's per-second velocity loss and must NOT be used as the VPhysics coefficient,
+  // or the basis would be scaled down ~5-10x and the simulated drag would be far too weak.
+  const bool has_basis = profile.drag_basis.x != 0.0f || profile.drag_basis.y != 0.0f || profile.drag_basis.z != 0.0f;
+  float linear_drag = has_basis ? 1.0f : profile.drag;
+  float angular_drag = linear_drag;
+  env.object->SetDragCoefficient(&linear_drag, &angular_drag);
+  env.object->m_dragBasis = profile.drag_basis;
+  env.object->m_angDragBasis = profile.angular_drag_basis;
+  env.object->EnableGravity(profile.params.gravity > 0.0f);
+  env.object->EnableDrag(linear_drag > 0.0f);
+  env.object->EnableMotion(true);
+  env.object->EnableCollisions(false);
+  env.object->SetPosition(position, launch.angles, true);
+  env.object->SetVelocity(&velocity, &profile.angular_velocity);
+  env.object->Wake();
 
-  objectparams_t params{};
-  params.mass = 5.0f;
-  params.inertia = 1.0f;
-  params.damping = 0.0f;
-  params.rotdamping = 0.0f;
-  params.rotInertiaLimit = 0.05f;
-  params.pName = "cathook_projectile_sim";
-  params.volume = 1.0f;
-  params.dragCoefficient = profile.drag;
-  params.enableCollisions = false;
-
-  physics_object = physics_environment->CreatePolyObject(
-    physics_collide,
-    0,
-    position,
-    launch.angles,
-    &params);
-  if (physics_object == nullptr) {
-    shutdown_physics();
-    return false;
-  }
-
-  physics_object->EnableGravity(profile.params.gravity > 0.0f);
-  physics_object->EnableDrag(profile.drag > 0.0f);
-  physics_object->EnableCollisions(false);
-  physics_object->EnableMotion(true);
-  physics_object->m_dragBasis = profile.drag_basis;
-  physics_object->m_angDragBasis = profile.angular_drag_basis;
-
-  float linear_drag = profile.drag;
-  float angular_drag = profile.drag;
-  physics_object->SetDragCoefficient(&linear_drag, &angular_drag);
-  physics_object->SetVelocity(&velocity, &profile.angular_velocity);
-  physics_object->Wake();
+  physics_environment = env.environment;
+  physics_object = env.object;
+  physics_collide = env.collide;
   physics_active = true;
   return true;
 }
@@ -1099,7 +1126,8 @@ inline bool projectile_simulation::init(const projectile_sim_launch& launch_in,
   const projectile_sim_profile& profile_in,
   Entity* skip_entity_in,
   Entity* target_entity_in,
-  projectile_sim_trace_mode trace_mode_in) {
+  projectile_sim_trace_mode trace_mode_in,
+  bool allow_physics_in) {
   shutdown_physics();
   *this = {};
   if (!profile_in.valid || !launch_in.valid || profile_in.params.speed <= 0.0f || profile_in.params.time_step <= 0.0f || profile_in.lifetime <= 0.0f) {
@@ -1111,6 +1139,7 @@ inline bool projectile_simulation::init(const projectile_sim_launch& launch_in,
   skip_entity = skip_entity_in;
   target_entity = target_entity_in;
   trace_mode = trace_mode_in;
+  allow_physics = allow_physics_in;
   position = launch.origin;
   velocity = projectile_sim_initial_velocity(launch, profile);
   max_ticks = std::clamp(
@@ -1126,7 +1155,12 @@ inline bool projectile_simulation::init(const projectile_sim_launch& launch_in,
   });
   initialized = true;
   result.valid = true;
-  if (trace_mode != projectile_sim_trace_mode::none && profile.collide_world) {
+  // Use the real VPhysics integrator for every drag weapon (grenades/stickies/jars/cleaver),
+  // not only when a world-collision trace is requested. TF2's drag is per-axis and quadratic, so
+  // even a pure trajectory (trace_mode::none, used by the intercept verifiers) must run through
+  // physics to match the game. When physics is unavailable/disallowed we fall back to the analytic
+  // integrator. The world-collision trace inside step_physics stays gated on trace_mode.
+  if (allow_physics && profile.physics_sim) {
     init_physics();
   }
   return true;
@@ -1211,12 +1245,20 @@ inline projectile_sim_result projectile_sim_run(const projectile_sim_launch& lau
   Entity* target_entity = nullptr,
   projectile_sim_trace_mode trace_mode = projectile_sim_trace_mode::none) {
   const bool traced_sim = trace_mode != projectile_sim_trace_mode::none && profile.collide_world;
-  if (traced_sim && !proj_aim_budget_try_sim_call()) {
-    return {};
+  bool allow_physics = true;
+  if (traced_sim || profile.physics_sim) {
+    if (!proj_aim_budget_try_sim_call()) {
+      // A traced collision sim cannot be approximated, so bail. A pure verification trajectory can
+      // degrade to the cheaper analytic integrator instead of dropping the intercept entirely.
+      if (traced_sim) {
+        return {};
+      }
+      allow_physics = false;
+    }
   }
 
   projectile_simulation sim{};
-  if (!sim.init(launch, profile, skip_entity, target_entity, trace_mode)) {
+  if (!sim.init(launch, profile, skip_entity, target_entity, trace_mode, allow_physics)) {
     return {};
   }
 
@@ -1244,11 +1286,31 @@ inline Vec3 projectile_sim_position_at_time(const projectile_sim_launch& launch,
   const projectile_sim_profile& profile,
   float travel_time) {
   Vec3 velocity = projectile_sim_initial_velocity(launch, profile);
-  return Vec3{
-    launch.origin.x + (velocity.x * travel_time),
-    launch.origin.y + (velocity.y * travel_time),
-    launch.origin.z + ((velocity.z + profile.upward_velocity) * travel_time) - (0.5f * profile.params.gravity * travel_time * travel_time)
-  };
+  if (profile.drag <= 0.0f) {
+    return Vec3{
+      launch.origin.x + (velocity.x * travel_time),
+      launch.origin.y + (velocity.y * travel_time),
+      launch.origin.z + ((velocity.z + profile.upward_velocity) * travel_time) - (0.5f * profile.params.gravity * travel_time * travel_time)
+    };
+  }
+
+  if (travel_time <= 0.0f) {
+    return launch.origin;
+  }
+  const float dt = std::max(profile.params.time_step, static_cast<float>(TICK_INTERVAL));
+  Vec3 position = launch.origin;
+  float elapsed = 0.0f;
+  while (elapsed < travel_time) {
+    const float step = std::min(dt, travel_time - elapsed);
+    const Vec3 step_velocity = velocity + Vec3{0.0f, 0.0f, profile.upward_velocity};
+    position.x += step_velocity.x * step;
+    position.y += step_velocity.y * step;
+    position.z += (step_velocity.z * step) - (0.5f * profile.params.gravity * step * step);
+    velocity.z -= profile.params.gravity * step;
+    velocity = projectile_sim_apply_drag(velocity, profile, step);
+    elapsed += step;
+  }
+  return position;
 }
 
 inline bool projectile_sim_calc_angle_to_point(const Vec3& from,

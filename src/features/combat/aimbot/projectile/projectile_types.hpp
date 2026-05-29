@@ -150,6 +150,7 @@ struct projectile_simulation {
   IPhysicsObject* physics_object = nullptr;
   CPhysCollide* physics_collide = nullptr;
   bool physics_active = false;
+  bool allow_physics = true;
   float time = 0.0f;
   int tick = 0;
   int max_ticks = 0;
@@ -161,7 +162,8 @@ struct projectile_simulation {
     const projectile_sim_profile& profile_in,
     Entity* skip_entity_in = nullptr,
     Entity* target_entity_in = nullptr,
-    projectile_sim_trace_mode trace_mode_in = projectile_sim_trace_mode::none);
+    projectile_sim_trace_mode trace_mode_in = projectile_sim_trace_mode::none,
+    bool allow_physics_in = true);
   void shutdown_physics();
   bool init_physics();
   bool step_physics(float dt);
