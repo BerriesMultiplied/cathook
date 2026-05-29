@@ -299,14 +299,7 @@ bool melee_ready(const aimbot_run_context& ctx) {
     return true;
   }
   if (ctx.target.player != nullptr) {
-    return ctx.target.melee_has_prediction &&
-      melee_aim_trace_candidate(
-        ctx.local,
-        ctx.weapon,
-        ctx.target.player,
-        ctx.target.melee_target_origin,
-        ctx.target.melee_swing_start,
-        ctx.cmd->view_angles);
+    return melee_aim_ready_candidate(ctx.local, ctx.weapon, ctx.target.player, ctx.target, ctx.cmd->view_angles);
   }
   return ctx.target.entity != nullptr &&
     aimbot_entity_melee_reachable(ctx.local, ctx.weapon, ctx.target.entity, ctx.cmd->view_angles);

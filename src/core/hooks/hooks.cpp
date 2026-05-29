@@ -251,7 +251,7 @@ bool get_sdl_wrapper_target(void* func, const char* func_name, void*** ptr_to_fu
   return true;
 }
 
-bool sdl_hook(void* lib_handle, const char* func_name, void* hook, void** original) {
+bool sdl_hook(void* lib_handle, const char* func_name, void* hook, void** original, void*** target = nullptr) {
   void* func = dlsym(lib_handle, func_name);
 
   if (!func) {
@@ -271,11 +271,20 @@ bool sdl_hook(void* lib_handle, const char* func_name, void* hook, void** origin
     return false;
   }
 
-  *original = *ptr_to_func;
+  void* original_func = *ptr_to_func;
 
-  print("Original %s at %p\n", func_name, *original);
+  print("Original %s at %p\n", func_name, original_func);
 
-  return write_pointer_slot(ptr_to_func, hook);
+  if (!write_pointer_slot(ptr_to_func, hook)) {
+    return false;
+  }
+
+  *original = original_func;
+  if (target != nullptr) {
+    *target = ptr_to_func;
+  }
+
+  return true;
 }
 
 bool restore_sdl_hook(void* lib_handle, const char* func_name, void* original) {
@@ -293,4 +302,13 @@ bool restore_sdl_hook(void* lib_handle, const char* func_name, void* original) {
   }
 
   return write_pointer_slot(ptr_to_func, original);
+}
+
+bool restore_sdl_hook_target(void** target, void* original)
+{
+  if (target == nullptr || original == nullptr) {
+    return false;
+  }
+
+  return write_pointer_slot(target, original);
 }

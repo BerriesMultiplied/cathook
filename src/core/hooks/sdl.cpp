@@ -13,6 +13,9 @@ V  o o  V  file: src/core/hooks/sdl.cpp
 #include <SDL2/SDL_keyboard.h>
 #include <SDL2/SDL_syswm.h>
 #include <GL/glew.h>
+#include <atomic>
+#include <chrono>
+#include <thread>
 
 #include "imgui/dearimgui.hpp"
 
@@ -36,8 +39,44 @@ void (*swap_window_original)(void*) = NULL;
 Uint32 (*get_window_flags_original)(SDL_Window*) = NULL;
 SDL_bool (*get_window_WM_info_original)(SDL_Window* window, SDL_SysWMinfo* info) = NULL;
 void (*get_window_size_original)(SDL_Window* window, int* w, int* h) = NULL;
+void** poll_event_target = nullptr;
+void** swap_window_target = nullptr;
+void** get_window_flags_target = nullptr;
+void** get_window_WM_info_target = nullptr;
+void** get_window_size_target = nullptr;
 SDL_GLContext original_gl_context = NULL;
 SDL_GLContext menu_gl_context = NULL;
+std::atomic_bool sdl_hooks_installed = false;
+std::atomic_bool sdl_hooks_uninstalling = false;
+std::atomic_int sdl_active_hook_calls = 0;
+
+struct sdl_hook_call_guard
+{
+  sdl_hook_call_guard()
+  {
+    sdl_active_hook_calls.fetch_add(1, std::memory_order_acq_rel);
+  }
+
+  ~sdl_hook_call_guard()
+  {
+    sdl_active_hook_calls.fetch_sub(1, std::memory_order_acq_rel);
+  }
+};
+
+void begin_sdl_hook_uninstall()
+{
+  sdl_hooks_uninstalling.store(true, std::memory_order_release);
+
+  for (int attempt = 0; attempt < 100 && sdl_active_hook_calls.load(std::memory_order_acquire) > 0; ++attempt) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+}
+
+void finish_sdl_hook_uninstall()
+{
+  sdl_hooks_installed.store(false, std::memory_order_release);
+  sdl_hooks_uninstalling.store(false, std::memory_order_release);
+}
 
 static void update_imgui_sdl_display_size(SDL_Window* window) {
   if (window == nullptr) {
@@ -74,6 +113,10 @@ static void update_imgui_sdl_display_size(SDL_Window* window) {
 
 // This filters key events to the game
 int SDLCALL event_filter(void* userdata, SDL_Event* event) {
+  if (sdl_hooks_uninstalling.load(std::memory_order_acquire)) {
+    return 1;
+  }
+
   if (event == nullptr) {
     return 1;
   }
@@ -114,6 +157,12 @@ int SDLCALL event_filter(void* userdata, SDL_Event* event) {
 
 
 bool poll_event_hook(SDL_Event* event) {
+  if (sdl_hooks_uninstalling.load(std::memory_order_acquire)) {
+    return poll_event_original != nullptr ? poll_event_original(event) : false;
+  }
+
+  sdl_hook_call_guard guard{};
+
   if (poll_event_original == nullptr) {
     return false;
   }
@@ -134,6 +183,12 @@ bool poll_event_hook(SDL_Event* event) {
 
 
 int peep_events_hook(SDL_Event* events, int numevents, SDL_eventaction action, int min, int max) {
+  if (sdl_hooks_uninstalling.load(std::memory_order_acquire)) {
+    return peep_events_original != nullptr ? peep_events_original(events, numevents, action, min, max) : -1;
+  }
+
+  sdl_hook_call_guard guard{};
+
   int ret = peep_events_original(events, numevents, action, min, max);
 
   /*
@@ -148,87 +203,103 @@ int peep_events_hook(SDL_Event* events, int numevents, SDL_eventaction action, i
 
 
 void swap_window_hook(SDL_Window* window) {
-  if (swap_window_original == nullptr) {
+  void (*original)(void*) = swap_window_original;
+
+  if (original == nullptr) {
     return;
   }
 
-  if (nographics::should_skip_rendering_hooks()) {
-    swap_window_original(window);
-    cathook::core::service_detach_request();
+  if (sdl_hooks_uninstalling.load(std::memory_order_acquire)) {
+    original(window);
     return;
   }
 
-  if (!menu_gl_context) {
-    original_gl_context = SDL_GL_GetCurrentContext();
-    menu_gl_context = SDL_GL_CreateContext(window);
-    if (menu_gl_context == nullptr) {
-      print("Failed to create menu GL context\n");
-      swap_window_original(window);
-      return;
-    }
+  {
+    sdl_hook_call_guard guard{};
 
-    GLenum err = glewInit();
-    if (err != GLEW_OK) {
-      print("Failed to initialize GLEW: %s\n", glewGetErrorString(err));
-      swap_window_original(window);
-      return;
-    }
+    if (nographics::should_skip_rendering_hooks()) {
+      original(window);
+    } else {
+      if (!menu_gl_context) {
+        original_gl_context = SDL_GL_GetCurrentContext();
+        menu_gl_context = SDL_GL_CreateContext(window);
+        if (menu_gl_context == nullptr) {
+          print("Failed to create menu GL context\n");
+          original(window);
+          return;
+        }
+
+        GLenum err = glewInit();
+        if (err != GLEW_OK) {
+          print("Failed to initialize GLEW: %s\n", glewGetErrorString(err));
+          original(window);
+          return;
+        }
     
-    ImGui::CreateContext();
-    ImGui::StyleColorsDark();
-    ImGui_ImplOpenGL3_Init("#version 100");
-    ImGui_ImplSDL2_InitForOpenGL(window, nullptr);    
-    ImGuiIO& io = ImGui::GetIO();
-    io.ConfigWindowsMoveFromTitleBarOnly = true;
+        ImGui::CreateContext();
+        ImGui::StyleColorsDark();
+        ImGui_ImplOpenGL3_Init("#version 100");
+        ImGui_ImplSDL2_InitForOpenGL(window, nullptr);    
+        ImGuiIO& io = ImGui::GetIO();
+        io.ConfigWindowsMoveFromTitleBarOnly = true;
 
-    orig_style = ImGui::GetStyle();
+        orig_style = ImGui::GetStyle();
 
-    set_imgui_theme();
-  }
+        set_imgui_theme();
+      }
 
   
-  SDL_GL_MakeCurrent(window, menu_gl_context);
+      SDL_GL_MakeCurrent(window, menu_gl_context);
   
-  if (ImGui::IsKeyPressed(ImGuiKey_Insert, false) || ImGui::IsKeyPressed(ImGuiKey_F11, false)) {
-    menu_focused = !menu_focused;
-    if (surface != nullptr) {
-      surface->set_cursor_visible(menu_focused);
+      if (ImGui::IsKeyPressed(ImGuiKey_Insert, false) || ImGui::IsKeyPressed(ImGuiKey_F11, false)) {
+        menu_focused = !menu_focused;
+        if (surface != nullptr) {
+          surface->set_cursor_visible(menu_focused);
+        }
+      }
+  
+      cat_menu::ensure_fonts();
+      ImGui_ImplOpenGL3_NewFrame();
+      ImGui_ImplSDL2_NewFrame();
+      update_imgui_sdl_display_size(window);
+      ImGui::NewFrame();
+
+      draw_aimbot_fov_imgui();
+      draw_thirdperson_crosshair_imgui();
+      draw_players_imgui();
+      draw_backtrack_visualizer_imgui();
+      draw_projectile_debug_imgui();
+      hitmarker::draw_imgui();
+      navbot::controller().draw_imgui();
+
+      draw_watermark();
+
+      draw_game_indicators();
+
+      if (menu_focused == true) {
+        draw_menu();
+      }  
+
+  
+      ImGui::Render();
+      ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+      SDL_GL_MakeCurrent(window, original_gl_context);
+
+      original(window);
     }
   }
-  
-  cat_menu::ensure_fonts();
-  ImGui_ImplOpenGL3_NewFrame();
-  ImGui_ImplSDL2_NewFrame();
-  update_imgui_sdl_display_size(window);
-  ImGui::NewFrame();
 
-  draw_aimbot_fov_imgui();
-  draw_thirdperson_crosshair_imgui();
-  draw_players_imgui();
-  draw_backtrack_visualizer_imgui();
-  draw_projectile_debug_imgui();
-  hitmarker::draw_imgui();
-  navbot::controller().draw_imgui();
-
-  draw_watermark();
-
-  draw_game_indicators();
-
-  if (menu_focused == true) {
-    draw_menu();
-  }  
-
-  
-  ImGui::Render();
-  ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
-  SDL_GL_MakeCurrent(window, original_gl_context);
-
-  swap_window_original(window);
   cathook::core::service_detach_request();
 }
 
 Uint32 get_window_flags_hook(SDL_Window* window) {
+  if (sdl_hooks_uninstalling.load(std::memory_order_acquire)) {
+    return get_window_flags_original != nullptr ? get_window_flags_original(window) : 0;
+  }
+
+  sdl_hook_call_guard guard{};
+
   if (get_window_flags_original == nullptr) {
     return 0;
   }
@@ -237,6 +308,12 @@ Uint32 get_window_flags_hook(SDL_Window* window) {
 }
 
 SDL_bool get_window_WM_info_hook(SDL_Window* window, SDL_SysWMinfo* info) {
+  if (sdl_hooks_uninstalling.load(std::memory_order_acquire)) {
+    return get_window_WM_info_original != nullptr ? get_window_WM_info_original(window, info) : SDL_FALSE;
+  }
+
+  sdl_hook_call_guard guard{};
+
   if (get_window_WM_info_original == nullptr) {
     return SDL_FALSE;
   }
@@ -246,6 +323,15 @@ SDL_bool get_window_WM_info_hook(SDL_Window* window, SDL_SysWMinfo* info) {
 
 // Used for grabbing the SDL_Window handle when in Vulkan mode
 void get_window_size_hook(SDL_Window* window, int* w, int* h) {
+  if (sdl_hooks_uninstalling.load(std::memory_order_acquire)) {
+    if (get_window_size_original != nullptr) {
+      get_window_size_original(window, w, h);
+      return;
+    }
+  }
+
+  sdl_hook_call_guard guard{};
+
   if (get_window_size_original == nullptr) {
     if (w != nullptr) {
       *w = 0;

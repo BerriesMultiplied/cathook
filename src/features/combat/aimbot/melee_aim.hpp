@@ -434,6 +434,47 @@ inline bool melee_aim_trace_candidate(Player* localplayer,
   return melee_aim_trace_candidate(localplayer, weapon, target, target_origin, localplayer->get_shoot_pos(), aim_angles);
 }
 
+inline Vec3 melee_aim_lerp_vec3(const Vec3& start, const Vec3& end, float fraction) {
+  return start + ((end - start) * fraction);
+}
+
+inline bool melee_aim_ready_candidate(Player* localplayer,
+  Weapon* weapon,
+  Player* target,
+  const aimbot_candidate& candidate,
+  const Vec3& aim_angles) {
+  if (localplayer == nullptr || weapon == nullptr || target == nullptr || !candidate.melee_has_prediction) {
+    return false;
+  }
+
+  const Vec3 current_swing_start = localplayer->get_shoot_pos();
+  const Vec3 current_target_origin = target->get_origin();
+  const bool predicted_ready = melee_aim_trace_candidate(
+    localplayer,
+    weapon,
+    target,
+    candidate.melee_target_origin,
+    candidate.melee_swing_start,
+    aim_angles);
+  if (!predicted_ready) {
+    return false;
+  }
+
+  if (melee_aim_trace_candidate(localplayer, weapon, target, current_target_origin, current_swing_start, aim_angles)) {
+    return true;
+  }
+
+  const float impact_time = std::clamp(candidate.melee_impact_time, 0.0f, melee_aim_detail::k_swing_time_cap + 0.2f);
+  if (impact_time <= static_cast<float>(TICK_INTERVAL)) {
+    return false;
+  }
+
+  constexpr float ready_fraction = 0.55f;
+  const Vec3 midway_swing_start = melee_aim_lerp_vec3(current_swing_start, candidate.melee_swing_start, ready_fraction);
+  const Vec3 midway_target_origin = melee_aim_lerp_vec3(current_target_origin, candidate.melee_target_origin, ready_fraction);
+  return melee_aim_trace_candidate(localplayer, weapon, target, midway_target_origin, midway_swing_start, aim_angles);
+}
+
 inline aimbot_candidate melee_aim_find_simple_candidate(Player* localplayer,
   Weapon* weapon,
   Player* player,

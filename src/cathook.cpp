@@ -754,31 +754,41 @@ bool unload_module_runtime() {
   tickbase::reset();
 
   print("Unhooking SDL functions\n");
-  SDL_SetEventFilter(nullptr, nullptr);
+  if (sdl_hooks_installed.load(std::memory_order_acquire)) {
+    begin_sdl_hook_uninstall();
+    SDL_SetEventFilter(nullptr, nullptr);
 
-  void* lib_sdl_handle = dlopen("libSDL2-2.0.so.0", RTLD_LAZY | RTLD_NOLOAD);
-  if (lib_sdl_handle != nullptr) {
-    if (swap_window_original != nullptr && !restore_sdl_hook(lib_sdl_handle, "SDL_GL_SwapWindow", (void*)swap_window_original)) {
+    if (swap_window_original != nullptr && !restore_sdl_hook_target(swap_window_target, (void*)swap_window_original)) {
       print("Failed to restore SDL_GL_SwapWindow\n");
     }
 
-    if (poll_event_original != nullptr && !restore_sdl_hook(lib_sdl_handle, "SDL_PollEvent", (void*)poll_event_original)) {
+    if (poll_event_original != nullptr && !restore_sdl_hook_target(poll_event_target, (void*)poll_event_original)) {
       print("Failed to restore SDL_PollEvent\n");
     }
 
-    if (get_window_flags_original != nullptr && !restore_sdl_hook(lib_sdl_handle, "SDL_GetWindowFlags", (void*)get_window_flags_original)) {
+    if (get_window_flags_original != nullptr && !restore_sdl_hook_target(get_window_flags_target, (void*)get_window_flags_original)) {
       print("Failed to restore SDL_GetWindowFlags\n");
     }
 
-    if (get_window_WM_info_original != nullptr && !restore_sdl_hook(lib_sdl_handle, "SDL_GetWindowWMInfo", (void*)get_window_WM_info_original)) {
+    if (get_window_WM_info_original != nullptr && !restore_sdl_hook_target(get_window_WM_info_target, (void*)get_window_WM_info_original)) {
       print("Failed to restore SDL_GetWindowWMInfo\n");
     }
 
-    if (get_window_size_original != nullptr && !restore_sdl_hook(lib_sdl_handle, "SDL_GetWindowSize", (void*)get_window_size_original)) {
+    if (get_window_size_original != nullptr && !restore_sdl_hook_target(get_window_size_target, (void*)get_window_size_original)) {
       print("Failed to restore SDL_GetWindowSize\n");
     }
 
-    dlclose(lib_sdl_handle);
+    poll_event_original = nullptr;
+    swap_window_original = nullptr;
+    get_window_flags_original = nullptr;
+    get_window_WM_info_original = nullptr;
+    get_window_size_original = nullptr;
+    poll_event_target = nullptr;
+    swap_window_target = nullptr;
+    get_window_flags_target = nullptr;
+    get_window_WM_info_target = nullptr;
+    get_window_size_target = nullptr;
+    finish_sdl_hook_uninstall();
   }
 
   if (game_event_manager != nullptr) {
@@ -950,9 +960,7 @@ bool install_sdl_hooks()
   print("Textmode build; skipping SDL hooks\n");
   return false;
 #else
-  static bool sdl_hooks_installed = false;
-
-  if (sdl_hooks_installed) {
+  if (sdl_hooks_installed.load(std::memory_order_acquire)) {
     return true;
   }
 
@@ -979,51 +987,56 @@ bool install_sdl_hooks()
   print("SDL2 loaded at %p\n", lib_sdl_handle);
 
   bool sdl_hooks_ready = true;
-  if (!sdl_hook(lib_sdl_handle, "SDL_PollEvent", (void*)poll_event_hook, (void **)&poll_event_original)) {
+  if (!sdl_hook(lib_sdl_handle, "SDL_PollEvent", (void*)poll_event_hook, (void **)&poll_event_original, &poll_event_target)) {
     print("Failed to hook SDL_PollEvent\n");
     sdl_hooks_ready = false;
   }
 
-  if (!sdl_hook(lib_sdl_handle, "SDL_GL_SwapWindow", (void*)swap_window_hook, (void **)&swap_window_original)) {
+  if (!sdl_hook(lib_sdl_handle, "SDL_GL_SwapWindow", (void*)swap_window_hook, (void **)&swap_window_original, &swap_window_target)) {
     print("Failed to hook SDL_GL_SwapWindow\n");
     sdl_hooks_ready = false;
   }
 
-  if (!sdl_hook(lib_sdl_handle, "SDL_GetWindowFlags", (void*)get_window_flags_hook, (void **)&get_window_flags_original)) {
+  if (!sdl_hook(lib_sdl_handle, "SDL_GetWindowFlags", (void*)get_window_flags_hook, (void **)&get_window_flags_original, &get_window_flags_target)) {
     print("Failed to hook SDL_GetWindowFlags\n");
     sdl_hooks_ready = false;
   }
 
-  if (!sdl_hook(lib_sdl_handle, "SDL_GetWindowWMInfo", (void*)get_window_WM_info_hook, (void **)&get_window_WM_info_original)) {
+  if (!sdl_hook(lib_sdl_handle, "SDL_GetWindowWMInfo", (void*)get_window_WM_info_hook, (void **)&get_window_WM_info_original, &get_window_WM_info_target)) {
     print("Failed to hook SDL_GetWindowWMInfo\n");
     sdl_hooks_ready = false;
   }
 
-  if (!sdl_hook(lib_sdl_handle, "SDL_GetWindowSize", (void*)get_window_size_hook, (void **)&get_window_size_original)) {
+  if (!sdl_hook(lib_sdl_handle, "SDL_GetWindowSize", (void*)get_window_size_hook, (void **)&get_window_size_original, &get_window_size_target)) {
     print("Failed to hook SDL_GetWindowSize\n");
     sdl_hooks_ready = false;
   }
 
   if (!sdl_hooks_ready) {
     if (poll_event_original != nullptr) {
-      restore_sdl_hook(lib_sdl_handle, "SDL_PollEvent", (void*)poll_event_original);
+      restore_sdl_hook_target(poll_event_target, (void*)poll_event_original);
       poll_event_original = nullptr;
+      poll_event_target = nullptr;
     }
     if (swap_window_original != nullptr) {
-      restore_sdl_hook(lib_sdl_handle, "SDL_GL_SwapWindow", (void*)swap_window_original);
+      restore_sdl_hook_target(swap_window_target, (void*)swap_window_original);
       swap_window_original = nullptr;
+      swap_window_target = nullptr;
     }
     if (get_window_flags_original != nullptr) {
-      restore_sdl_hook(lib_sdl_handle, "SDL_GetWindowFlags", (void*)get_window_flags_original);
+      restore_sdl_hook_target(get_window_flags_target, (void*)get_window_flags_original);
       get_window_flags_original = nullptr;
+      get_window_flags_target = nullptr;
     }
     if (get_window_WM_info_original != nullptr) {
-      restore_sdl_hook(lib_sdl_handle, "SDL_GetWindowWMInfo", (void*)get_window_WM_info_original);
+      restore_sdl_hook_target(get_window_WM_info_target, (void*)get_window_WM_info_original);
       get_window_WM_info_original = nullptr;
+      get_window_WM_info_target = nullptr;
     }
     if (get_window_size_original != nullptr) {
-      restore_sdl_hook(lib_sdl_handle, "SDL_GetWindowSize", (void*)get_window_size_original);
+      restore_sdl_hook_target(get_window_size_target, (void*)get_window_size_original);
       get_window_size_original = nullptr;
+      get_window_size_target = nullptr;
     }
     print("SDL hooks disabled after incomplete install\n");
     dlclose(lib_sdl_handle);
@@ -1032,7 +1045,7 @@ bool install_sdl_hooks()
 
   SDL_SetEventFilter(event_filter, nullptr);
   //SDL_AddEventWatch(event_watch, nullptr);
-  sdl_hooks_installed = true;
+  sdl_hooks_installed.store(true, std::memory_order_release);
   print("SDL hooks installed\n");
   dlclose(lib_sdl_handle);
   return true;
