@@ -424,7 +424,15 @@ void compute_readiness(aimbot_run_context& ctx) {
 }
 
 void apply_auto_shoot(aimbot_run_context& ctx) {
-  if (config.aimbot.auto_shoot && ctx.readiness.ready()) {
+  const bool melee_hold_ready = ctx.melee &&
+    ctx.target.entity != nullptr &&
+    ctx.readiness.headshot &&
+    ctx.readiness.charge &&
+    ctx.readiness.trace &&
+    ctx.readiness.settled &&
+    ctx.readiness.primary;
+
+  if (config.aimbot.auto_shoot && (ctx.readiness.ready() || melee_hold_ready)) {
     ctx.auto_shoot = aim_auto_shoot::apply(ctx.cmd, ctx.weapon, ctx.projectile, ctx.hitscan, ctx.melee);
     set_requested_shot(ctx.auto_shoot.requested);
     aim_state::requested_shot = ctx.auto_shoot.requested;

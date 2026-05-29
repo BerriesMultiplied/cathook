@@ -533,6 +533,7 @@ inline aimbot_candidate melee_aim_find_simple_candidate(Player* localplayer,
   candidate.studio_hitbox = hitbox_point.valid ? hitbox_point.studio_hitbox : -1;
   candidate.aim_position = best.aim_position;
   candidate.aim_angles = best.aim_angles;
+  candidate.command_angles = best.aim_angles;
   candidate.fov = best.fov;
   candidate.distance = best.distance;
   candidate.health = player->get_health();
@@ -652,6 +653,7 @@ inline aimbot_candidate melee_aim_find_candidate(Player* localplayer,
   candidate.studio_hitbox = hitbox_point.valid ? hitbox_point.studio_hitbox : -1;
   candidate.aim_position = best.aim_position;
   candidate.aim_angles = best.aim_angles;
+  candidate.command_angles = best.aim_angles;
   candidate.fov = best.fov;
   candidate.distance = best.distance;
   candidate.health = player->get_health();
