@@ -791,15 +791,16 @@ bool unload_module_runtime() {
 
   menu_focused = false;
   sdl_window = nullptr;
-  detach_requested.store(false, std::memory_order_release);
-  detach_started.store(false, std::memory_order_release);
-  runtime_initialized.store(false, std::memory_order_release);
-  unload_started.store(false, std::memory_order_release);
   stop_detach_worker();
 
   cathook::core::exception_handler::uninstall();
   cathook::core::shutdown_config_store();
   cathook::core::shutdown_logger();
+
+  detach_requested.store(false, std::memory_order_release);
+  detach_started.store(false, std::memory_order_release);
+  runtime_initialized.store(false, std::memory_order_release);
+  unload_started.store(false, std::memory_order_release);
   return true;
 }
 

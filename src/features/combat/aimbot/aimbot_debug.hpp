@@ -32,6 +32,52 @@ enum class aimbot_debug_reason {
   attack_ready
 };
 
+enum class aimbot_reject_reason {
+  none,
+  invalid,
+  local,
+  dormant,
+  dead,
+  invulnerable,
+  ignored,
+  friend_state,
+  ipc_bot,
+  cloaked,
+  team,
+  type,
+  no_candidate,
+  not_visible,
+  fov,
+  projectile_hint_fov,
+  projectile_no_solution,
+  projectile_filter,
+  no_model,
+  no_studio_model,
+  no_hitbox_set,
+  no_hitbox,
+  setup_bones,
+  trace_blocked,
+  wrong_hitbox,
+  no_point
+};
+
+struct aimbot_reject_debug {
+  aimbot_reject_reason reason = aimbot_reject_reason::none;
+  int entity_index = -1;
+  int team = -1;
+  int health = 0;
+  int hitbox = -1;
+  int trace_entity_index = -1;
+  int trace_hitbox = -1;
+  float fov = FLT_MAX;
+  float fov_limit = FLT_MAX;
+  float distance = FLT_MAX;
+  bool visible = false;
+  bool preferred = false;
+  bool current = false;
+  bool backtrack = false;
+};
+
 struct aimbot_debug_state {
   bool active = false;
   bool requested_shot = false;
@@ -73,6 +119,8 @@ struct aimbot_debug_state {
   float resolver_yaw = 0.0f;
   float resolver_pitch = 0.0f;
   bool resolver_active = false;
+  aimbot_reject_debug last_reject{};
+  aimbot_reject_debug best_reject{};
   aimbot_debug_reason reason = aimbot_debug_reason::none;
 };
 
@@ -137,6 +185,65 @@ inline const char* aimbot_debug_resolver_mode_name(int mode) {
     return "fakewalk";
   default:
     break;
+  }
+
+  return "unknown";
+}
+
+inline const char* aimbot_debug_reject_reason_name(aimbot_reject_reason reason) {
+  switch (reason) {
+  case aimbot_reject_reason::none:
+    return "none";
+  case aimbot_reject_reason::invalid:
+    return "invalid";
+  case aimbot_reject_reason::local:
+    return "local";
+  case aimbot_reject_reason::dormant:
+    return "dormant";
+  case aimbot_reject_reason::dead:
+    return "dead";
+  case aimbot_reject_reason::invulnerable:
+    return "invuln";
+  case aimbot_reject_reason::ignored:
+    return "ignored";
+  case aimbot_reject_reason::friend_state:
+    return "friend";
+  case aimbot_reject_reason::ipc_bot:
+    return "ipc";
+  case aimbot_reject_reason::cloaked:
+    return "cloaked";
+  case aimbot_reject_reason::team:
+    return "team";
+  case aimbot_reject_reason::type:
+    return "type";
+  case aimbot_reject_reason::no_candidate:
+    return "no candidate";
+  case aimbot_reject_reason::not_visible:
+    return "not visible";
+  case aimbot_reject_reason::fov:
+    return "fov";
+  case aimbot_reject_reason::projectile_hint_fov:
+    return "hint fov";
+  case aimbot_reject_reason::projectile_no_solution:
+    return "no solution";
+  case aimbot_reject_reason::projectile_filter:
+    return "proj filter";
+  case aimbot_reject_reason::no_model:
+    return "no model";
+  case aimbot_reject_reason::no_studio_model:
+    return "no studio";
+  case aimbot_reject_reason::no_hitbox_set:
+    return "no hb set";
+  case aimbot_reject_reason::no_hitbox:
+    return "no hitbox";
+  case aimbot_reject_reason::setup_bones:
+    return "setup bones";
+  case aimbot_reject_reason::trace_blocked:
+    return "blocked";
+  case aimbot_reject_reason::wrong_hitbox:
+    return "wrong hb";
+  case aimbot_reject_reason::no_point:
+    return "no point";
   }
 
   return "unknown";

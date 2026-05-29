@@ -47,7 +47,9 @@ inline void consider_non_player_target(Player* localplayer,
     return;
   }
 
-  aimbot_candidate candidate = aimbot_find_non_player_candidate(localplayer, weapon, entity, original_view_angles);
+  aimbot_candidate candidate = aimbot_is_projectile_weapon(weapon) || aimbot_is_melee_weapon(weapon)
+    ? aimbot_find_non_player_candidate(localplayer, weapon, entity, original_view_angles)
+    : hitscan_aim_find_non_player_candidate(localplayer, weapon, entity, original_view_angles);
   if (candidate.entity == nullptr) {
     return;
   }
@@ -179,7 +181,7 @@ inline aimbot_candidate find_best_projectile_candidate(Player* localplayer,
     ++aim_state::scan.candidates_total;
     const auto skip_reason = aimbot_player_skip_reason_for(localplayer, player);
     if (skip_reason != aimbot_player_skip_reason::none) {
-      aim_state::record_player_skip(skip_reason);
+      aim_state::record_player_skip(skip_reason, player);
       continue;
     }
 
@@ -206,7 +208,16 @@ inline aimbot_candidate find_best_projectile_candidate(Player* localplayer,
       current ? 90.0f : 64.0f,
       speed_lead_fov * 0.75f);
     if (!current && fov > fov_limit) {
-      ++aim_state::scan.candidates_rejected;
+      aim_state::record_reject(aim_state::make_reject_debug(
+        player,
+        aimbot_reject_reason::projectile_hint_fov,
+        fov,
+        fov_limit,
+        distance,
+        -1,
+        false,
+        preferred,
+        current));
       continue;
     }
 
@@ -248,12 +259,25 @@ inline aimbot_candidate find_best_projectile_candidate(Player* localplayer,
 
     aimbot_candidate candidate = proj_aim_find_candidate(localplayer, weapon, hint.player, user_cmd, original_view_angles);
     if (candidate.player == nullptr) {
-      ++aim_state::scan.candidates_rejected;
+      aim_state::record_reject(aim_state::make_reject_debug(
+        hint.player,
+        aimbot_reject_reason::projectile_no_solution,
+        hint.fov,
+        FLT_MAX,
+        hint.distance,
+        -1,
+        false,
+        hint.preferred,
+        hint.current));
       continue;
     }
 
-    if (!candidate.visible || !aimbot_fov_within_limit(candidate.fov, candidate.preferred ? 1.35f : 1.0f)) {
-      ++aim_state::scan.candidates_rejected;
+    const float fov_limit = aimbot_fov_limit(candidate.preferred ? 1.35f : 1.0f);
+    if (!candidate.visible || candidate.fov > fov_limit) {
+      const aimbot_reject_reason reject_reason = !candidate.visible
+        ? aimbot_reject_reason::not_visible
+        : aimbot_reject_reason::fov;
+      aim_state::record_reject(aim_state::make_candidate_reject_debug(candidate, reject_reason, fov_limit));
       continue;
     }
 
@@ -281,7 +305,7 @@ inline aimbot_candidate find_best_candidate(Player* localplayer, Weapon* weapon,
       ++aim_state::scan.candidates_total;
       const auto skip_reason = aimbot_player_skip_reason_for(localplayer, player);
       if (skip_reason != aimbot_player_skip_reason::none) {
-        aim_state::record_player_skip(skip_reason);
+        aim_state::record_player_skip(skip_reason, player);
         continue;
       }
 
@@ -302,7 +326,10 @@ inline aimbot_candidate find_best_candidate(Player* localplayer, Weapon* weapon,
       }
 
       if (candidate.entity == nullptr) {
-        ++aim_state::scan.candidates_rejected;
+        const aimbot_reject_debug reject = candidate.reject_debug.reason != aimbot_reject_reason::none
+          ? candidate.reject_debug
+          : aim_state::make_reject_debug(player, aimbot_reject_reason::no_candidate);
+        aim_state::record_reject(reject);
         continue;
       }
 
@@ -310,8 +337,12 @@ inline aimbot_candidate find_best_candidate(Player* localplayer, Weapon* weapon,
         ++aim_state::scan.candidates_visible;
       }
 
-      if (!candidate.visible || !aimbot_fov_within_limit(candidate.fov, candidate.preferred ? 1.35f : 1.0f)) {
-        ++aim_state::scan.candidates_rejected;
+      const float fov_limit = aimbot_fov_limit(candidate.preferred ? 1.35f : 1.0f);
+      if (!candidate.visible || candidate.fov > fov_limit) {
+        const aimbot_reject_reason reject_reason = !candidate.visible
+          ? aimbot_reject_reason::not_visible
+          : aimbot_reject_reason::fov;
+        aim_state::record_reject(aim_state::make_candidate_reject_debug(candidate, reject_reason, fov_limit));
         continue;
       }
 
@@ -351,7 +382,7 @@ inline aimbot_candidate find_best_scope_candidate(Player* localplayer, Weapon* w
     ++aim_state::scan.candidates_total;
     const auto skip_reason = aimbot_player_skip_reason_for(localplayer, player);
     if (skip_reason != aimbot_player_skip_reason::none) {
-      aim_state::record_player_skip(skip_reason);
+      aim_state::record_player_skip(skip_reason, player);
       continue;
     }
 

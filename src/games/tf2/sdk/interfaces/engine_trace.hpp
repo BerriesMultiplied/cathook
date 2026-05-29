@@ -174,6 +174,57 @@ inline enum trace_type_t get_type(struct trace_filter* interface) {
 
 static void* trace_filter_vtable[2] = { (void*)should_hit_entity, (void*)get_type };
 
+inline bool trace_filter_same_entity(Entity* entity, void* other) {
+  if (entity == nullptr || other == nullptr) {
+    return false;
+  }
+  if (entity == other) {
+    return true;
+  }
+
+  Entity* other_entity = static_cast<Entity*>(other);
+  return entity->get_index() == other_entity->get_index();
+}
+
+inline bool hitscan_trace_should_hit_entity(struct trace_filter* interface, Entity* entity, int contents_mask) {
+  (void)contents_mask;
+  if (entity == nullptr) {
+    return false;
+  }
+  if (interface != nullptr && trace_filter_same_entity(entity, interface->skip)) {
+    return false;
+  }
+  if (interface != nullptr && trace_filter_same_entity(entity, interface->target)) {
+    return true;
+  }
+
+  const class_id cid = entity->get_class_id();
+  if (interface != nullptr &&
+      interface->skip_team >= 0 &&
+      static_cast<int>(entity->get_team()) == interface->skip_team &&
+      (cid == class_id::PLAYER || entity->is_building())) {
+    return false;
+  }
+
+  return cid != class_id::RESPAWN_ROOM_VISUALIZER &&
+    cid != class_id::AMMO_OR_HEALTH_PACK &&
+    cid != class_id::CAPTURE_FLAG &&
+    cid != class_id::OBJECTIVE_RESOURCE &&
+    cid != class_id::PLAYER_RESOURCE &&
+    cid != class_id::SNIPER_DOT &&
+    cid != class_id::ROCKET &&
+    cid != class_id::FLARE &&
+    cid != class_id::CROSSBOW_BOLT &&
+    cid != class_id::ARROW &&
+    !entity->is_wearable();
+}
+
+inline enum trace_type_t hitscan_trace_get_type(struct trace_filter*) {
+  return TRACE_EVERYTHING;
+}
+
+static void* trace_filter_hitscan_vtable[2] = { (void*)hitscan_trace_should_hit_entity, (void*)hitscan_trace_get_type };
+
 inline bool world_trace_should_hit_entity(struct trace_filter*, Entity*, int) {
   return false;
 }
@@ -416,6 +467,13 @@ public:
     filter->skip = skip;
     filter->target = nullptr;
     filter->skip_team = -1;
+  }
+
+  void init_hitscan_trace_filter(struct trace_filter* filter, Entity* skip_entity, Entity* target_entity = nullptr) {
+    filter->vtable = trace_filter_hitscan_vtable;
+    filter->skip = skip_entity;
+    filter->target = target_entity;
+    filter->skip_team = skip_entity != nullptr ? static_cast<int>(skip_entity->get_team()) : -1;
   }
 
   void init_world_trace_filter(struct trace_filter* filter) {

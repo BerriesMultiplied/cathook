@@ -88,7 +88,7 @@ public:
     }
 
     void** vtable = *(void***)this;
-    auto get_studio_model_fn = (studio_hdr * (*)(void*, const model_t*))vtable[28];
+    auto get_studio_model_fn = (studio_hdr * (*)(void*, const model_t*))vtable[29];
     return get_studio_model_fn(this, model);
   }
 };

@@ -30,6 +30,13 @@ struct hitscan_point {
   Vec3 position{};
   Vec3 angles{};
   float fov = FLT_MAX;
+  aimbot_reject_debug reject_debug{};
+};
+
+struct hitscan_hitbox_entry {
+  int hitbox = -1;
+  int studio_hitbox = -1;
+  int priority = 0;
 };
 
 struct hitscan_target {
@@ -45,6 +52,104 @@ struct hitscan_trace_result {
 };
 
 using hitscan_aim_trace_result = hitscan_trace_result;
+
+constexpr int hitscan_aim_max_bones = 128;
+constexpr int hitscan_aim_bone_mask = 0x7FF00;
+
+struct hitscan_aim_bone_cache_bypass {
+  bool previous = false;
+  bool changed = false;
+
+  hitscan_aim_bone_cache_bypass()
+  {
+    previous = config.misc.exploits.setup_bones_optimization;
+    changed = previous;
+    if (changed) {
+      config.misc.exploits.setup_bones_optimization = false;
+    }
+  }
+
+  ~hitscan_aim_bone_cache_bypass()
+  {
+    if (changed) {
+      config.misc.exploits.setup_bones_optimization = previous;
+    }
+  }
+};
+
+inline bool hitscan_aim_same_entity(Entity* left, Entity* right) {
+  if (left == nullptr || right == nullptr) {
+    return false;
+  }
+  if (left == right) {
+    return true;
+  }
+
+  return left->get_index() == right->get_index();
+}
+
+inline aimbot_reject_debug hitscan_aim_make_reject_debug(Player* target,
+  aimbot_reject_reason reason,
+  float fov = FLT_MAX,
+  float distance = FLT_MAX,
+  int hitbox = -1,
+  int trace_entity_index = -1,
+  int trace_hitbox = -1) {
+  aimbot_reject_debug debug{};
+  debug.reason = reason;
+  debug.fov = fov;
+  debug.distance = distance;
+  debug.hitbox = hitbox;
+  debug.trace_entity_index = trace_entity_index;
+  debug.trace_hitbox = trace_hitbox;
+
+  if (target != nullptr) {
+    debug.entity_index = target->get_index();
+    debug.team = static_cast<int>(target->get_team());
+    debug.health = target->get_health();
+  }
+
+  return debug;
+}
+
+inline bool hitscan_aim_reject_better(const aimbot_reject_debug& candidate, const aimbot_reject_debug& best) {
+  if (candidate.reason == aimbot_reject_reason::none) {
+    return false;
+  }
+  if (best.reason == aimbot_reject_reason::none) {
+    return true;
+  }
+
+  const bool candidate_has_fov = std::isfinite(candidate.fov) && candidate.fov < FLT_MAX;
+  const bool best_has_fov = std::isfinite(best.fov) && best.fov < FLT_MAX;
+  if (candidate_has_fov != best_has_fov) {
+    return candidate_has_fov;
+  }
+  if (candidate_has_fov && candidate.fov != best.fov) {
+    return candidate.fov < best.fov;
+  }
+
+  return false;
+}
+
+inline void hitscan_aim_keep_reject(hitscan_point* point, const aimbot_reject_debug& reject) {
+  if (point != nullptr && hitscan_aim_reject_better(reject, point->reject_debug)) {
+    point->reject_debug = reject;
+  }
+}
+
+inline bool hitscan_aim_setup_bones(Player* target, matrix_3x4* bone_to_world) {
+  if (target == nullptr || bone_to_world == nullptr) {
+    return false;
+  }
+
+  hitscan_aim_bone_cache_bypass bypass{};
+  return target->setup_bones(
+    bone_to_world,
+    hitscan_aim_max_bones,
+    hitscan_aim_bone_mask,
+    target->get_simulation_time()) != 0;
+}
 
 inline Vec3 hitscan_aim_bullet_angles(Player* localplayer, const Vec3& view_angles) {
   return localplayer != nullptr ? view_angles + localplayer->get_punch_angles() : view_angles;
@@ -95,7 +200,10 @@ inline bool hitscan_aim_world_clear(const Vec3& start_pos, const Vec3& end_pos) 
   return !trace.all_solid && !trace.start_solid && trace.fraction >= 0.999f;
 }
 
-inline hitscan_trace_result hitscan_aim_trace_line(Player* localplayer, const Vec3& start_pos, const Vec3& end_pos) {
+inline hitscan_trace_result hitscan_aim_trace_line(Player* localplayer,
+  const Vec3& start_pos,
+  const Vec3& end_pos,
+  Entity* target = nullptr) {
   hitscan_trace_result result{};
   if (engine_trace == nullptr || localplayer == nullptr) {
     return result;
@@ -105,7 +213,7 @@ inline hitscan_trace_result hitscan_aim_trace_line(Player* localplayer, const Ve
   Vec3 end = end_pos;
   ray_t ray = engine_trace->init_ray(&start, &end);
   trace_filter filter{};
-  engine_trace->init_trace_filter(&filter, localplayer);
+  engine_trace->init_hitscan_trace_filter(&filter, localplayer, target);
   trace_t trace{};
   engine_trace->trace_ray(&ray, hitscan_aim_trace_mask(), &filter, &trace);
 
@@ -131,63 +239,17 @@ inline bool hitscan_aim_trace_point(Player* localplayer,
     return false;
   }
 
-  const Vec3 end_pos = start_pos + (to_point * ((distance + 96.0f) / distance));
-  hitscan_trace_result result = hitscan_aim_trace_line(localplayer, start_pos, end_pos);
+  const Vec3 end_pos = point;
+  hitscan_trace_result result = hitscan_aim_trace_line(localplayer, start_pos, end_pos, target);
   if (result_out != nullptr) {
     *result_out = result;
   }
 
-  return result.entity == target || (result.clear && hitscan_aim_world_clear(start_pos, point));
-}
-
-inline Vec3 hitscan_aim_bounds_point(Player* target, int hitbox) {
-  if (target == nullptr) {
-    return {};
+  if (result.entity != nullptr) {
+    return hitscan_aim_same_entity(result.entity, target);
   }
 
-  const Vec3 origin = target->get_collision_origin();
-  const Vec3 mins = target->get_collideable_mins() + origin;
-  const Vec3 maxs = target->get_collideable_maxs() + origin;
-  const Vec3 center = (mins + maxs) * 0.5f;
-  const float height = std::max(maxs.z - mins.z, 1.0f);
-  float z_ratio = 0.58f;
-
-  switch (hitbox) {
-  case aim_hitbox_head:
-    z_ratio = 0.80f;
-    break;
-  case aim_hitbox_pelvis:
-    z_ratio = 0.42f;
-    break;
-  case aim_hitbox_spine_0:
-    z_ratio = 0.50f;
-    break;
-  case aim_hitbox_spine_1:
-    z_ratio = 0.58f;
-    break;
-  case aim_hitbox_spine_2:
-    z_ratio = 0.64f;
-    break;
-  case aim_hitbox_spine_3:
-    z_ratio = 0.70f;
-    break;
-  case aim_hitbox_left_thigh:
-  case aim_hitbox_left_calf:
-  case aim_hitbox_left_foot:
-  case aim_hitbox_right_thigh:
-  case aim_hitbox_right_calf:
-  case aim_hitbox_right_foot:
-    z_ratio = 0.25f;
-    break;
-  default:
-    break;
-  }
-
-  return {
-    center.x,
-    center.y,
-    mins.z + height * z_ratio
-  };
+  return result.clear;
 }
 
 inline hitscan_point hitscan_aim_make_point(Player* localplayer,
@@ -199,48 +261,6 @@ inline hitscan_point hitscan_aim_make_point(Player* localplayer,
   int bone,
   int priority,
   Vec3 position);
-
-inline hitscan_point hitscan_aim_fallback_point(Player* localplayer,
-  Weapon* weapon,
-  Player* target,
-  const Vec3& view_angles,
-  const std::array<int, 18>& hitboxes,
-  int hitbox_count) {
-  hitscan_point best{};
-  for (int order_index = 0; order_index < hitbox_count; ++order_index) {
-    const int hitbox_id = hitboxes[order_index];
-    const int studio_hitbox_id = aimbot_base_hitbox_to_studio(target, hitbox_id);
-    if (studio_hitbox_id < 0) {
-      continue;
-    }
-    Vec3 position{};
-    int bone = 0;
-    if (!target->get_hitbox_center(studio_hitbox_id, &position, &bone)) {
-      position = hitscan_aim_bounds_point(target, hitbox_id);
-      bone = hitbox_id == aim_hitbox_head ? target->get_head_bone() : aimbot_default_bone(localplayer, target, weapon);
-    }
-
-    hitscan_point point = hitscan_aim_make_point(
-      localplayer,
-      target,
-      weapon,
-      view_angles,
-      hitbox_id,
-      studio_hitbox_id,
-      bone,
-      order_index,
-      position);
-    if (!point.valid) {
-      continue;
-    }
-
-    if (!best.valid || point.priority < best.priority || (point.priority == best.priority && point.fov < best.fov)) {
-      best = point;
-    }
-  }
-
-  return best;
-}
 
 inline bool hitscan_aim_body_forced(Player* localplayer, Weapon* weapon, Player* target) {
   if (localplayer == nullptr || weapon == nullptr || target == nullptr) {
@@ -399,6 +419,10 @@ inline bool hitscan_aim_accepts_trace_hitbox(const aimbot_candidate& candidate, 
     return false;
   }
 
+  if (base_hitbox < 0) {
+    return true;
+  }
+
   if (candidate.hitbox == aim_hitbox_head) {
     return base_hitbox == aim_hitbox_head;
   }
@@ -427,8 +451,8 @@ inline bool hitscan_aim_ray_hits_model_hitbox(Player* target,
     return false;
   }
 
-  matrix_3x4 bone_to_world[128]{};
-  if (!target->setup_bones(bone_to_world, 128, 0x7FF00, target->get_simulation_time())) {
+  matrix_3x4 bone_to_world[hitscan_aim_max_bones]{};
+  if (!hitscan_aim_setup_bones(target, bone_to_world)) {
     return false;
   }
 
@@ -474,7 +498,7 @@ inline bool hitscan_aim_ray_hits_entity_bounds(Entity* target,
   return aimbot_segment_intersects_aabb(start_pos, end_pos, mins, maxs);
 }
 
-inline bool hitscan_aim_trace_fallback(const aimbot_candidate& candidate,
+inline bool hitscan_aim_trace_geometry(const aimbot_candidate& candidate,
   const Vec3& start_pos,
   const Vec3& end_pos) {
   if (candidate.entity == nullptr || !aimbot_vec3_is_finite(candidate.aim_position)) {
@@ -490,34 +514,14 @@ inline bool hitscan_aim_trace_fallback(const aimbot_candidate& candidate,
       const int studio_hitbox = candidate.studio_hitbox >= 0
         ? candidate.studio_hitbox
         : aimbot_base_hitbox_to_studio(candidate.player, candidate.hitbox);
-      return hitscan_aim_ray_hits_model_hitbox(candidate.player, studio_hitbox, start_pos, end_pos);
+      return hitscan_aim_ray_hits_model_hitbox(candidate.player, studio_hitbox, start_pos, end_pos) ||
+        (candidate.hitbox != aim_hitbox_head && hitscan_aim_ray_hits_player_bounds(candidate.player, start_pos, end_pos));
     }
 
     return hitscan_aim_ray_hits_player_bounds(candidate.player, start_pos, end_pos);
   }
 
   return hitscan_aim_ray_hits_entity_bounds(candidate.entity, start_pos, end_pos);
-}
-
-inline bool hitscan_aim_adjust_head_point(Player* localplayer, Player* target, Vec3* point) {
-  if (localplayer == nullptr || target == nullptr || point == nullptr) {
-    return false;
-  }
-
-  Vec3 adjusted = *point;
-  for (int index = 0; index < 8; ++index) {
-    hitscan_trace_result trace{};
-    if (!hitscan_aim_trace_point(localplayer, target, adjusted, &trace)) {
-      return false;
-    }
-    if (aimbot_studio_hitbox_to_base(target, trace.hitbox) == aim_hitbox_head) {
-      *point = adjusted;
-      return true;
-    }
-    adjusted.z += 1.0f;
-  }
-
-  return false;
 }
 
 inline hitscan_point hitscan_aim_make_point(Player* localplayer,
@@ -531,39 +535,79 @@ inline hitscan_point hitscan_aim_make_point(Player* localplayer,
   Vec3 position) {
   hitscan_point point{};
   if (localplayer == nullptr || target == nullptr || !aimbot_vec3_is_finite(position)) {
-    return point;
-  }
-
-  hitscan_trace_result trace{};
-  if (!hitscan_aim_trace_point(localplayer, target, position, &trace)) {
+    point.reject_debug = hitscan_aim_make_reject_debug(target, aimbot_reject_reason::invalid);
     return point;
   }
 
   const Vec3 start_pos = localplayer->get_shoot_pos();
   const Vec3 aim_angles = aimbot_calculate_angles_to_position(start_pos, position);
-  Vec3 forward{};
-  angle_vectors(aim_angles, &forward, nullptr, nullptr);
-  if (!aimbot_vec3_is_finite(forward)) {
+  const float fov = aimbot_calculate_fov(hitscan_aim_command_angles(localplayer, aim_angles), view_angles);
+  hitscan_trace_result trace{};
+  const bool trace_reaches_target = hitscan_aim_trace_point(localplayer, target, position, &trace);
+  if (hitscan_aim_same_entity(trace.entity, target)) {
+    if (trace.hitbox < 0) {
+      point.valid = true;
+      point.bone = bone;
+      point.hitbox = hitbox;
+      point.studio_hitbox = studio_hitbox;
+      point.priority = priority;
+      point.position = position;
+      point.angles = aim_angles;
+      point.fov = fov;
+      return point;
+    }
+
+    const int base_hitbox = aimbot_studio_hitbox_to_base(target, trace.hitbox);
+    if (hitbox == aim_hitbox_head && base_hitbox >= 0 && base_hitbox != aim_hitbox_head) {
+      point.reject_debug = hitscan_aim_make_reject_debug(
+        target,
+        aimbot_reject_reason::wrong_hitbox,
+        fov,
+        distance_3d(localplayer->get_origin(), target->get_origin()),
+        hitbox,
+        target->get_index(),
+        trace.hitbox);
+      return point;
+    }
+  } else if (trace.entity != nullptr) {
+    point.reject_debug = hitscan_aim_make_reject_debug(
+      target,
+      aimbot_reject_reason::trace_blocked,
+      fov,
+      distance_3d(localplayer->get_origin(), target->get_origin()),
+      hitbox,
+      trace.entity->get_index(),
+      trace.hitbox);
     return point;
   }
 
-  const float trace_distance = std::max(distance_3d(start_pos, position) + 96.0f, 256.0f);
-  const Vec3 end_pos = start_pos + (forward * trace_distance);
-  if (trace.entity == target && trace.hitbox >= 0) {
-    const int base_hitbox = aimbot_studio_hitbox_to_base(target, trace.hitbox);
-    if (base_hitbox < 0 ||
-        (hitbox == aim_hitbox_head && base_hitbox != aim_hitbox_head)) {
-      return point;
-    }
-  } else if (!hitscan_aim_ray_hits_model_hitbox(target, studio_hitbox, start_pos, end_pos)) {
+  if (!trace_reaches_target && !hitscan_aim_world_clear(start_pos, position)) {
+    point.reject_debug = hitscan_aim_make_reject_debug(
+      target,
+      aimbot_reject_reason::trace_blocked,
+      fov,
+      distance_3d(localplayer->get_origin(), target->get_origin()),
+      hitbox,
+      trace.entity != nullptr ? trace.entity->get_index() : -1,
+      trace.hitbox);
     return point;
   }
 
   if (hitbox == aim_hitbox_head &&
-      trace.entity == target &&
-      aimbot_studio_hitbox_to_base(target, trace.hitbox) != aim_hitbox_head &&
-      !hitscan_aim_adjust_head_point(localplayer, target, &position)) {
-    return point;
+      hitscan_aim_same_entity(trace.entity, target) &&
+      trace.hitbox >= 0) {
+    const int base_hitbox = aimbot_studio_hitbox_to_base(target, trace.hitbox);
+    if (base_hitbox >= 0 && base_hitbox != aim_hitbox_head) {
+      point.reject_debug = hitscan_aim_make_reject_debug(
+        target,
+        aimbot_reject_reason::wrong_hitbox,
+        fov,
+        distance_3d(localplayer->get_origin(), target->get_origin()),
+        hitbox,
+        target->get_index(),
+        trace.hitbox);
+      return point;
+    }
   }
 
   point.valid = true;
@@ -573,8 +617,51 @@ inline hitscan_point hitscan_aim_make_point(Player* localplayer,
   point.priority = priority;
   point.position = position;
   point.angles = aim_angles;
-  point.fov = aimbot_calculate_fov(hitscan_aim_command_angles(localplayer, point.angles), view_angles);
+  point.fov = fov;
   return point;
+}
+
+inline int hitscan_aim_build_studio_hitbox_entries(Player* localplayer,
+  Weapon* weapon,
+  Player* target,
+  studio_hitbox_set* hitbox_set,
+  const hitscan_settings_view& settings,
+  int priority_hitbox,
+  hitscan_hitbox_entry* entries,
+  int max_entries) {
+  if (target == nullptr || hitbox_set == nullptr || entries == nullptr || max_entries <= 0) {
+    return 0;
+  }
+
+  int count = 0;
+  for (int studio_hitbox_id = 0; studio_hitbox_id < hitbox_set->num_hitboxes && count < max_entries; ++studio_hitbox_id) {
+    studio_box* hitbox = hitbox_set->hitbox(studio_hitbox_id);
+    if (hitbox == nullptr || hitbox->bone < 0 || hitbox->bone >= 128) {
+      continue;
+    }
+
+    const int base_hitbox = aimbot_studio_hitbox_to_base(target, studio_hitbox_id);
+    if (base_hitbox < 0 || !aimbot_hitbox_matches_mask(base_hitbox, settings.hitbox_mask)) {
+      continue;
+    }
+
+    entries[count++] = {
+      .hitbox = base_hitbox,
+      .studio_hitbox = studio_hitbox_id,
+      .priority = base_hitbox == priority_hitbox
+        ? 0
+        : aimbot_hitbox_priority(localplayer, target, weapon, base_hitbox) + 1
+    };
+  }
+
+  std::sort(entries, entries + count, [](const hitscan_hitbox_entry& left, const hitscan_hitbox_entry& right) {
+    if (left.priority != right.priority) {
+      return left.priority < right.priority;
+    }
+    return left.studio_hitbox < right.studio_hitbox;
+  });
+
+  return count;
 }
 
 inline hitscan_point hitscan_aim_find_point(Player* localplayer,
@@ -583,46 +670,69 @@ inline hitscan_point hitscan_aim_find_point(Player* localplayer,
   const Vec3& view_angles) {
   hitscan_point best{};
   if (localplayer == nullptr || weapon == nullptr || target == nullptr || model_info == nullptr) {
+    best.reject_debug = hitscan_aim_make_reject_debug(target, aimbot_reject_reason::invalid);
     return best;
   }
 
   const hitscan_settings_view settings = hitscan_aim_settings();
   const int priority_hitbox = hitscan_aim_priority_hitbox(localplayer, weapon, target, settings);
-  std::array<int, 18> hitboxes{};
-  const int hitbox_count = hitscan_aim_build_hitbox_order(priority_hitbox, settings, &hitboxes);
-  if (hitbox_count <= 0) {
+  if (priority_hitbox < 0) {
+    best.reject_debug = hitscan_aim_make_reject_debug(target, aimbot_reject_reason::no_hitbox);
     return best;
   }
 
   const model_t* model = target->get_model();
-  studio_hdr* hdr = model != nullptr ? model_info->get_studio_model(model) : nullptr;
-  studio_hitbox_set* hitbox_set = hdr != nullptr ? hdr->hitbox_set(target->get_hitbox_set()) : nullptr;
-  if (hitbox_set == nullptr) {
-    return hitscan_aim_fallback_point(localplayer, weapon, target, view_angles, hitboxes, hitbox_count);
+  if (model == nullptr) {
+    best.reject_debug = hitscan_aim_make_reject_debug(target, aimbot_reject_reason::no_model);
+    return best;
   }
 
-  matrix_3x4 bone_to_world[128]{};
-  if (!target->setup_bones(bone_to_world, 128, 0x7FF00, target->get_simulation_time())) {
-    return hitscan_aim_fallback_point(localplayer, weapon, target, view_angles, hitboxes, hitbox_count);
+  studio_hdr* hdr = model_info->get_studio_model(model);
+  if (hdr == nullptr) {
+    best.reject_debug = hitscan_aim_make_reject_debug(target, aimbot_reject_reason::no_studio_model);
+    return best;
+  }
+
+  studio_hitbox_set* hitbox_set = hdr != nullptr ? hdr->hitbox_set(target->get_hitbox_set()) : nullptr;
+  if (hitbox_set == nullptr) {
+    best.reject_debug = hitscan_aim_make_reject_debug(target, aimbot_reject_reason::no_hitbox_set);
+    return best;
+  }
+
+  matrix_3x4 bone_to_world[hitscan_aim_max_bones]{};
+  if (!hitscan_aim_setup_bones(target, bone_to_world)) {
+    best.reject_debug = hitscan_aim_make_reject_debug(target, aimbot_reject_reason::setup_bones);
+    return best;
   }
 
   const Vec3 shoot_pos = localplayer->get_shoot_pos();
-  for (int order_index = 0; order_index < hitbox_count; ++order_index) {
-    const int hitbox_id = hitboxes[order_index];
-    const int studio_hitbox_id = aimbot_base_hitbox_to_studio(target, hitbox_id);
-    if (studio_hitbox_id < 0 || studio_hitbox_id >= hitbox_set->num_hitboxes) {
-      continue;
-    }
+  constexpr int max_entries = 32;
+  hitscan_hitbox_entry entries[max_entries]{};
+  const int entry_count = hitscan_aim_build_studio_hitbox_entries(
+    localplayer,
+    weapon,
+    target,
+    hitbox_set,
+    settings,
+    priority_hitbox,
+    entries,
+    max_entries);
+  if (entry_count <= 0) {
+    best.reject_debug = hitscan_aim_make_reject_debug(target, aimbot_reject_reason::no_hitbox);
+    return best;
+  }
 
-    studio_box* hitbox = hitbox_set->hitbox(studio_hitbox_id);
+  for (int entry_index = 0; entry_index < entry_count; ++entry_index) {
+    const hitscan_hitbox_entry& entry = entries[entry_index];
+    studio_box* hitbox = hitbox_set->hitbox(entry.studio_hitbox);
     if (hitbox == nullptr || hitbox->bone < 0 || hitbox->bone >= 128) {
       continue;
     }
 
     constexpr int max_local_points = 10;
     Vec3 local_points[max_local_points]{};
-    const bool use_multipoint = hitbox_id == priority_hitbox &&
-      hitbox_id != aim_hitbox_head &&
+    const bool use_multipoint = entry.hitbox == priority_hitbox &&
+      entry.hitbox != aim_hitbox_head &&
       settings.multipoint_scale > 0.0f;
     const int point_count = aimbot_build_local_hitbox_points(
       *hitbox,
@@ -639,12 +749,13 @@ inline hitscan_point hitscan_aim_find_point(Player* localplayer,
         target,
         weapon,
         view_angles,
-        hitbox_id,
-        studio_hitbox_id,
+        entry.hitbox,
+        entry.studio_hitbox,
         hitbox->bone,
-        order_index,
+        entry.priority,
         position);
       if (!point.valid) {
+        hitscan_aim_keep_reject(&best, point.reject_debug);
         continue;
       }
 
@@ -652,13 +763,143 @@ inline hitscan_point hitscan_aim_find_point(Player* localplayer,
         best = point;
       }
     }
+  }
 
-    if (best.valid && best.hitbox == priority_hitbox) {
-      break;
-    }
+  if (!best.valid && best.reject_debug.reason == aimbot_reject_reason::none) {
+    best.reject_debug = hitscan_aim_make_reject_debug(target, aimbot_reject_reason::no_point);
   }
 
   return best;
+}
+
+inline int hitscan_aim_build_entity_points(Entity* entity, Vec3* points, int max_points) {
+  int point_count = 0;
+  if (entity == nullptr || points == nullptr || max_points <= 0) {
+    return point_count;
+  }
+
+  const Vec3 origin = entity->get_collision_origin();
+  const Vec3 mins = entity->get_collideable_mins() + origin;
+  const Vec3 maxs = entity->get_collideable_maxs() + origin;
+  if (!aimbot_vec3_is_finite(mins) || !aimbot_vec3_is_finite(maxs)) {
+    return point_count;
+  }
+
+  const Vec3 center = (mins + maxs) * 0.5f;
+  aimbot_add_local_hitbox_point(points, &point_count, max_points, center);
+
+  const float scale = std::max(aimbot_effective_multipoint_scale(), aimbot_effective_bone_size_min_scale());
+  if (scale <= 0.0f) {
+    return point_count;
+  }
+
+  const float subtract = aimbot_effective_bone_size_subtract();
+  const Vec3 extent_raw = (maxs - mins) * 0.5f;
+  const Vec3 extent{
+    std::max(extent_raw.x - subtract, extent_raw.x * aimbot_effective_bone_size_min_scale()),
+    std::max(extent_raw.y - subtract, extent_raw.y * aimbot_effective_bone_size_min_scale()),
+    std::max(extent_raw.z - subtract, extent_raw.z * aimbot_effective_bone_size_min_scale())
+  };
+  const Vec3 scaled_extent = extent * scale;
+  if (std::fabs(scaled_extent.x) <= 1.0f ||
+      std::fabs(scaled_extent.y) <= 1.0f ||
+      std::fabs(scaled_extent.z) <= 1.0f) {
+    return point_count;
+  }
+
+  for (const float x_sign : { -1.0f, 1.0f }) {
+    for (const float y_sign : { -1.0f, 1.0f }) {
+      for (const float z_sign : { -1.0f, 1.0f }) {
+        aimbot_add_local_hitbox_point(
+          points,
+          &point_count,
+          max_points,
+          center + Vec3{scaled_extent.x * x_sign, scaled_extent.y * y_sign, scaled_extent.z * z_sign});
+      }
+    }
+  }
+
+  return point_count;
+}
+
+inline hitscan_point hitscan_aim_make_entity_point(Player* localplayer,
+  Entity* target,
+  const Vec3& view_angles,
+  int priority,
+  const Vec3& position) {
+  hitscan_point point{};
+  if (localplayer == nullptr || target == nullptr || !aimbot_vec3_is_finite(position)) {
+    return point;
+  }
+
+  hitscan_trace_result trace{};
+  if (!hitscan_aim_trace_point(localplayer, target, position, &trace)) {
+    return point;
+  }
+
+  const Vec3 start_pos = localplayer->get_shoot_pos();
+  if ((trace.entity != nullptr && !hitscan_aim_same_entity(trace.entity, target)) ||
+      (trace.entity == nullptr && !hitscan_aim_ray_hits_entity_bounds(target, start_pos, position))) {
+    return point;
+  }
+
+  point.valid = true;
+  point.hitbox = -1;
+  point.studio_hitbox = -1;
+  point.priority = priority;
+  point.position = position;
+  point.angles = aimbot_calculate_angles_to_position(start_pos, position);
+  point.fov = aimbot_calculate_fov(hitscan_aim_command_angles(localplayer, point.angles), view_angles);
+  return point;
+}
+
+inline aimbot_candidate hitscan_aim_find_non_player_candidate(Player* localplayer,
+  Weapon* weapon,
+  Entity* entity,
+  const Vec3& view_angles) {
+  aimbot_candidate candidate{};
+  if (localplayer == nullptr ||
+      weapon == nullptr ||
+      entity == nullptr ||
+      aimbot_is_projectile_weapon(weapon) ||
+      aimbot_is_melee_weapon(weapon) ||
+      aimbot_should_skip_non_player_target(localplayer, entity)) {
+    return candidate;
+  }
+
+  constexpr int max_points = 9;
+  Vec3 points[max_points]{};
+  const int point_count = hitscan_aim_build_entity_points(entity, points, max_points);
+  hitscan_point best{};
+  for (int point_index = 0; point_index < point_count; ++point_index) {
+    hitscan_point point = hitscan_aim_make_entity_point(
+      localplayer,
+      entity,
+      view_angles,
+      point_index,
+      points[point_index]);
+    if (!point.valid) {
+      continue;
+    }
+
+    if (!best.valid || point.priority < best.priority || (point.priority == best.priority && point.fov < best.fov)) {
+      best = point;
+    }
+  }
+
+  if (!best.valid) {
+    return candidate;
+  }
+
+  candidate.entity = entity;
+  candidate.aim_position = best.position;
+  candidate.aim_angles = best.angles;
+  candidate.fov = best.fov;
+  candidate.distance = distance_3d(localplayer->get_origin(), entity->get_origin());
+  candidate.health = aimbot_entity_health(entity);
+  candidate.command_angles = hitscan_aim_command_angles(localplayer, best.angles);
+  candidate.visible = true;
+  return candidate;
 }
 
 inline aimbot_candidate hitscan_aim_make_candidate(Player* localplayer,
@@ -668,6 +909,11 @@ inline aimbot_candidate hitscan_aim_make_candidate(Player* localplayer,
   const Vec3& view_angles) {
   aimbot_candidate candidate{};
   if (localplayer == nullptr || weapon == nullptr || player == nullptr || !point.valid) {
+    candidate.player = player;
+    candidate.reject_debug = point.reject_debug;
+    if (candidate.reject_debug.reason == aimbot_reject_reason::none) {
+      candidate.reject_debug = hitscan_aim_make_reject_debug(player, aimbot_reject_reason::no_point);
+    }
     return candidate;
   }
 
@@ -799,21 +1045,24 @@ inline bool hitscan_aim_trace_candidate(Player* localplayer,
     }
   }
 
-  const float trace_distance = std::max(distance_3d(start_pos, candidate.aim_position) + 96.0f, 256.0f);
+  const float trace_distance = distance_3d(start_pos, candidate.aim_position);
+  if (trace_distance <= 0.001f) {
+    return false;
+  }
   Vec3 end_pos = start_pos + (forward * trace_distance);
-  hitscan_trace_result trace = hitscan_aim_trace_line(localplayer, start_pos, end_pos);
+  hitscan_trace_result trace = hitscan_aim_trace_line(localplayer, start_pos, end_pos, candidate.entity);
   if (result != nullptr) {
     *result = trace;
   }
 
-  if (trace.entity == candidate.entity && hitscan_aim_accepts_trace_hitbox(candidate, trace.hitbox)) {
+  if (hitscan_aim_same_entity(trace.entity, candidate.entity) && hitscan_aim_accepts_trace_hitbox(candidate, trace.hitbox)) {
     if (result != nullptr) {
       result->hit = true;
     }
     return true;
   }
 
-  if (trace.entity != nullptr && trace.entity != candidate.entity) {
+  if (trace.entity != nullptr && !hitscan_aim_same_entity(trace.entity, candidate.entity)) {
     return false;
   }
 
@@ -826,7 +1075,7 @@ inline bool hitscan_aim_trace_candidate(Player* localplayer,
     return true;
   }
 
-  if (hitscan_aim_trace_fallback(candidate, start_pos, end_pos)) {
+  if (hitscan_aim_trace_geometry(candidate, start_pos, end_pos)) {
     if (result != nullptr) {
       result->hit = true;
       result->entity = candidate.entity;

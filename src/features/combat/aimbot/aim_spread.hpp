@@ -252,7 +252,7 @@ inline hitscan_fire_solution prepare_hitscan_fire_solution(Player* localplayer,
 
     hitscan_aim_trace_result trace_result{};
     if (!hitscan_aim_trace_candidate(localplayer, candidate, trace_angles, spread_offset, use_spread, &trace_result)) {
-      if (trace_result.entity == candidate.entity &&
+      if (hitscan_aim_same_entity(trace_result.entity, candidate.entity) &&
           candidate.hitbox >= 0 &&
           trace_result.hitbox >= 0 &&
           trace_result.hitbox != candidate.hitbox) {

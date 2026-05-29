@@ -64,6 +64,7 @@ struct aimbot_candidate {
   int pellet_count = 0;
   float spread = 0.0f;
   aimbot_debug_reason debug_reason = aimbot_debug_reason::none;
+  aimbot_reject_debug reject_debug{};
   bool visible = false;
   bool preferred = false;
   bool projectile_direct = false;

@@ -259,7 +259,7 @@ public:
     }
 
     void** vtable = *(void***)renderable;
-    auto get_model_fn = (const model_t* (*)(void*))vtable[8];
+    const model_t* (*get_model_fn)(void*) = (const model_t* (*)(void*))vtable[9];
     return get_model_fn(renderable);
   }
 

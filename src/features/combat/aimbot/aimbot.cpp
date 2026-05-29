@@ -139,6 +139,8 @@ void populate_debug(aimbot_run_context& ctx) {
   debug.skipped_invulnerable = aim_state::scan.skipped_invulnerable;
   debug.skipped_dead = aim_state::scan.skipped_dead;
   debug.skipped_type = aim_state::scan.skipped_type;
+  debug.last_reject = aim_state::scan.last_reject;
+  debug.best_reject = aim_state::scan.best_reject;
 
   if (ctx.target.entity == nullptr) {
     return;
@@ -181,7 +183,7 @@ aimbot_candidate find_best_hitscan_target(Player* localplayer,
 
     const aimbot_player_skip_reason skip_reason = aimbot_player_skip_reason_for(localplayer, player);
     if (skip_reason != aimbot_player_skip_reason::none) {
-      aim_state::record_player_skip(skip_reason);
+      aim_state::record_player_skip(skip_reason, player);
       continue;
     }
 
@@ -198,13 +200,17 @@ aimbot_candidate find_best_hitscan_target(Player* localplayer,
     }
 
     if (candidate.entity == nullptr) {
-      ++aim_state::scan.candidates_rejected;
+      const aimbot_reject_debug reject = candidate.reject_debug.reason != aimbot_reject_reason::none
+        ? candidate.reject_debug
+        : aim_state::make_reject_debug(player, aimbot_reject_reason::no_candidate);
+      aim_state::record_reject(reject);
       continue;
     }
 
     ++aim_state::scan.candidates_visible;
-    if (!aimbot_fov_within_limit(candidate.fov, candidate.preferred ? 1.35f : 1.0f)) {
-      ++aim_state::scan.candidates_rejected;
+    const float fov_limit = aimbot_fov_limit(candidate.preferred ? 1.35f : 1.0f);
+    if (candidate.fov > fov_limit) {
+      aim_state::record_reject(aim_state::make_candidate_reject_debug(candidate, aimbot_reject_reason::fov, fov_limit));
       continue;
     }
 

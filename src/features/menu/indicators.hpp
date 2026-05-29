@@ -220,8 +220,8 @@ inline auto build_sections() -> std::vector<section_spec>
     if (menu_focused || state.active) {
       sections.push_back({
         .kind = section_kind::aimbot_debug,
-        .width = 300.0f,
-        .height = 174.0f,
+        .width = 360.0f,
+        .height = 310.0f,
         .position = ImVec2(config.aimbot.debug_overlay_x, config.aimbot.debug_overlay_y)
       });
     }
@@ -346,11 +346,64 @@ inline auto bool_text(const bool value) -> const char*
   return value ? "yes" : "no";
 }
 
+inline auto format_optional_float(const float value, const char* format) -> std::string
+{
+  if (!std::isfinite(value) || value >= FLT_MAX * 0.5f) {
+    return "n/a";
+  }
+
+  return format_float(value, format);
+}
+
+inline auto format_reject_summary(const aimbot_reject_debug& reject) -> std::string
+{
+  if (reject.reason == aimbot_reject_reason::none) {
+    return "none";
+  }
+
+  std::string text = "#" + std::to_string(reject.entity_index) + " ";
+  text += aimbot_debug_reject_reason_name(reject.reason);
+  if (reject.hitbox >= 0) {
+    text += " hb " + std::to_string(reject.hitbox);
+  }
+  if (reject.team >= 0) {
+    text += " t" + std::to_string(reject.team);
+  }
+  if (reject.health > 0) {
+    text += " hp " + std::to_string(reject.health);
+  }
+  return text;
+}
+
+inline auto format_reject_detail(const aimbot_reject_debug& reject) -> std::string
+{
+  if (reject.reason == aimbot_reject_reason::none) {
+    return "none";
+  }
+
+  std::string text = "fov " + format_optional_float(reject.fov, "%.2f") + "/" + format_optional_float(reject.fov_limit, "%.2f");
+  text += " d " + format_optional_float(reject.distance, "%.0f");
+  text += " vis " + std::string(bool_text(reject.visible));
+  if (reject.trace_entity_index >= 0 || reject.trace_hitbox >= 0) {
+    text += " tr " + std::to_string(reject.trace_entity_index) + " hb " + std::to_string(reject.trace_hitbox);
+  }
+  if (reject.preferred) {
+    text += " pref";
+  }
+  if (reject.current) {
+    text += " cur";
+  }
+  if (reject.backtrack) {
+    text += " bt";
+  }
+  return text;
+}
+
 inline void draw_aimbot_debug_section(ImDrawList* draw_list, const ImVec2 position)
 {
   const aimbot_debug_state& state = aimbot_debug_get_state();
-  constexpr float width = 300.0f;
-  constexpr float height = 242.0f;
+  constexpr float width = 360.0f;
+  constexpr float height = 310.0f;
   constexpr float row_height = 17.0f;
   draw_panel_box(draw_list, position, ImVec2(width, height));
 
@@ -372,6 +425,14 @@ inline void draw_aimbot_debug_section(ImDrawList* draw_list, const ImVec2 positi
   draw_info_row(draw_list, ImVec2(position.x, row_y), width, "trace", std::to_string(state.trace_entity_index) + " hb " + std::to_string(state.trace_hitbox), value_color);
   row_y += row_height;
   draw_info_row(draw_list, ImVec2(position.x, row_y), width, "candidates", std::to_string(state.candidates_visible) + "/" + std::to_string(state.candidates_total) + " reject " + std::to_string(state.candidates_rejected), value_color);
+  row_y += row_height;
+  draw_info_row(draw_list, ImVec2(position.x, row_y), width, "last reject", format_reject_summary(state.last_reject), value_color);
+  row_y += row_height;
+  draw_info_row(draw_list, ImVec2(position.x, row_y), width, "last detail", format_reject_detail(state.last_reject), value_color);
+  row_y += row_height;
+  draw_info_row(draw_list, ImVec2(position.x, row_y), width, "best reject", format_reject_summary(state.best_reject), value_color);
+  row_y += row_height;
+  draw_info_row(draw_list, ImVec2(position.x, row_y), width, "best detail", format_reject_detail(state.best_reject), value_color);
   row_y += row_height;
   draw_info_row(draw_list, ImVec2(position.x, row_y), width, "skip ig/fr/ip/cl/tm/in/de/type", std::to_string(state.skipped_ignored) + "/" + std::to_string(state.skipped_friends) + "/" + std::to_string(state.skipped_ipc) + "/" + std::to_string(state.skipped_cloaked) + "/" + std::to_string(state.skipped_team) + "/" + std::to_string(state.skipped_invulnerable) + "/" + std::to_string(state.skipped_dead) + "/" + std::to_string(state.skipped_type), value_color);
   row_y += row_height;
