@@ -409,6 +409,7 @@ inline aimbot_candidate proj_aim_find_splash_candidate(Player* localplayer,
       }
 
       int best_hitbox = -1;
+      int best_studio_hitbox = -1;
       int best_bone = 0;
       float best_point_distance = FLT_MAX;
       if (!proj_aim_predicted_explosion_can_damage(
@@ -419,6 +420,7 @@ inline aimbot_candidate proj_aim_find_splash_candidate(Player* localplayer,
           hitbox_samples,
           splash_radius,
           &best_hitbox,
+          &best_studio_hitbox,
           &best_bone,
           &best_point_distance)) {
         if (config.aimbot.projectile_debug) {
@@ -433,6 +435,7 @@ inline aimbot_candidate proj_aim_find_splash_candidate(Player* localplayer,
       splash_candidate.preferred = aimbot::has_preference(player);
       splash_candidate.bone = best_bone;
       splash_candidate.hitbox = best_hitbox;
+      splash_candidate.studio_hitbox = best_studio_hitbox;
       splash_candidate.aim_position = explosion_origin;
       splash_candidate.aim_angles = intercept.aim_angles;
       splash_candidate.fov = intercept_fov;

@@ -58,25 +58,33 @@ inline std::vector<proj_aim_hitbox_sample> proj_aim_hitbox_samples(Player* targe
 
   samples.reserve(8);
   const Vec3 origin = target->get_origin();
-  for (int hitbox_id = aim_hitbox_head; hitbox_id <= aim_hitbox_right_foot; ++hitbox_id) {
-    if (!aimbot_hitbox_matches_mask(hitbox_id, hitbox_mask)) {
+  studio_hitbox_set* hitbox_set = nullptr;
+  matrix_3x4 bone_to_world[aimbot_max_bones]{};
+  if (!aimbot_setup_studio_hitboxes(target, &hitbox_set, bone_to_world)) {
+    return samples;
+  }
+
+  for (int studio_hitbox_id = 0; studio_hitbox_id < hitbox_set->num_hitboxes; ++studio_hitbox_id) {
+    studio_box* hitbox = hitbox_set->hitbox(studio_hitbox_id);
+    if (hitbox == nullptr || hitbox->bone < 0 || hitbox->bone >= aimbot_max_bones) {
       continue;
     }
 
-    const int studio_hitbox_id = aimbot_base_hitbox_to_studio(target, hitbox_id);
-    if (studio_hitbox_id < 0) {
+    const int hitbox_id = aimbot_studio_hitbox_to_base(target, studio_hitbox_id);
+    if (hitbox_id < 0 || !aimbot_hitbox_matches_mask(hitbox_id, hitbox_mask)) {
       continue;
     }
 
-    Vec3 point{};
-    int bone = 0;
-    if (!target->get_hitbox_center(studio_hitbox_id, &point, &bone)) {
+    const Vec3 local_center = (hitbox->bbmin + hitbox->bbmax) * 0.5f;
+    const Vec3 point = aimbot_transform_point(local_center, bone_to_world[hitbox->bone]);
+    if (!aimbot_vec3_is_finite(point)) {
       continue;
     }
 
     samples.push_back({
       .hitbox = hitbox_id,
-      .bone = bone,
+      .studio_hitbox = studio_hitbox_id,
+      .bone = hitbox->bone,
       .priority = aimbot_hitbox_priority(nullptr, target, nullptr, hitbox_id),
       .offset = point - origin
     });
@@ -92,19 +100,25 @@ inline std::vector<Vec3> proj_aim_target_points(Player* target, uint32_t hitbox_
   }
 
   points.reserve(8);
-  for (int hitbox_id = aim_hitbox_head; hitbox_id <= aim_hitbox_right_foot; ++hitbox_id) {
-    if (!aimbot_hitbox_matches_mask(hitbox_id, hitbox_mask)) {
-      continue;
-    }
+  studio_hitbox_set* hitbox_set = nullptr;
+  matrix_3x4 bone_to_world[aimbot_max_bones]{};
+  if (aimbot_setup_studio_hitboxes(target, &hitbox_set, bone_to_world)) {
+    for (int studio_hitbox_id = 0; studio_hitbox_id < hitbox_set->num_hitboxes; ++studio_hitbox_id) {
+      studio_box* hitbox = hitbox_set->hitbox(studio_hitbox_id);
+      if (hitbox == nullptr || hitbox->bone < 0 || hitbox->bone >= aimbot_max_bones) {
+        continue;
+      }
 
-    const int studio_hitbox_id = aimbot_base_hitbox_to_studio(target, hitbox_id);
-    if (studio_hitbox_id < 0) {
-      continue;
-    }
+      const int hitbox_id = aimbot_studio_hitbox_to_base(target, studio_hitbox_id);
+      if (hitbox_id < 0 || !aimbot_hitbox_matches_mask(hitbox_id, hitbox_mask)) {
+        continue;
+      }
 
-    Vec3 point{};
-    if (target->get_hitbox_center(studio_hitbox_id, &point)) {
-      points.emplace_back(point);
+      const Vec3 local_center = (hitbox->bbmin + hitbox->bbmax) * 0.5f;
+      const Vec3 point = aimbot_transform_point(local_center, bone_to_world[hitbox->bone]);
+      if (aimbot_vec3_is_finite(point)) {
+        points.emplace_back(point);
+      }
     }
   }
 
@@ -125,9 +139,10 @@ inline std::vector<proj_aim_direct_point> proj_aim_direct_points(Player* localpl
 
   const Vec3 mins = target->get_player_mins(target->is_ducking());
   const Vec3 maxs = target->get_player_maxs(target->is_ducking());
-  const auto add_point = [&](int hitbox, int bone, int priority, const Vec3& offset) {
+  const auto add_point = [&](int hitbox, int studio_hitbox, int bone, int priority, const Vec3& offset) {
     points.push_back({
       .hitbox = hitbox,
+      .studio_hitbox = studio_hitbox,
       .bone = bone,
       .priority = priority,
       .offset = offset
@@ -138,6 +153,7 @@ inline std::vector<proj_aim_direct_point> proj_aim_direct_points(Player* localpl
   for (const proj_aim_hitbox_sample& sample : proj_aim_hitbox_samples(target, hitbox_mask)) {
     add_point(
       sample.hitbox,
+      sample.studio_hitbox,
       sample.bone,
       aimbot_hitbox_priority(localplayer, target, weapon, sample.hitbox),
       sample.offset);
@@ -151,25 +167,25 @@ inline std::vector<proj_aim_direct_point> proj_aim_direct_points(Player* localpl
   const bool prefer_low_direct =
     proj_aim_supports_splash(weapon) && target->is_on_ground() && allow_legs && !proj_aim_budget().active;
   if (allow_body) {
-    add_point(aim_hitbox_spine_1, 0, body_priority, Vec3{0.0f, 0.0f, (maxs.z - mins.z) * 0.52f});
+    add_point(aim_hitbox_spine_1, -1, 0, body_priority, Vec3{0.0f, 0.0f, (maxs.z - mins.z) * 0.52f});
   }
   if (allow_pelvis) {
-    add_point(aim_hitbox_pelvis, 0, body_priority + 1, Vec3{0.0f, 0.0f, (maxs.z - mins.z) * 0.34f});
+    add_point(aim_hitbox_pelvis, -1, 0, body_priority + 1, Vec3{0.0f, 0.0f, (maxs.z - mins.z) * 0.34f});
   }
   if (target->is_on_ground() && allow_legs) {
     add_point(
       aim_hitbox_left_foot,
+      -1,
       0,
       prefer_low_direct ? body_priority - 1 : std::max(0, feet_priority - 1),
       Vec3{0.0f, 0.0f, mins.z + 6.0f});
   }
 
-  // i have issues with huntsman
   if (points.empty()) {
     const bool head_in_mask = aimbot_hitbox_matches_mask(aim_hitbox_head, hitbox_mask);
     const int fallback_hitbox = head_in_mask ? aim_hitbox_head : aim_hitbox_spine_1;
     const float z_frac = head_in_mask ? 0.88f : 0.52f;
-    add_point(fallback_hitbox, 0, 9999, Vec3{0.0f, 0.0f, (maxs.z - mins.z) * z_frac});
+    add_point(fallback_hitbox, -1, 0, 9999, Vec3{0.0f, 0.0f, (maxs.z - mins.z) * z_frac});
   }
 
   std::ranges::sort(points, [](const auto& left, const auto& right) {
@@ -212,6 +228,7 @@ inline bool proj_aim_predicted_explosion_can_damage(Player* localplayer,
   const std::vector<proj_aim_hitbox_sample>& hitbox_samples,
   float splash_radius,
   int* hitbox_out = nullptr,
+  int* studio_hitbox_out = nullptr,
   int* bone_out = nullptr,
   float* distance_out = nullptr) {
   if (localplayer == nullptr || target == nullptr || splash_radius <= 0.0f) {
@@ -219,6 +236,7 @@ inline bool proj_aim_predicted_explosion_can_damage(Player* localplayer,
   }
 
   int best_hitbox = -1;
+  int best_studio_hitbox = -1;
   int best_bone = 0;
   float best_distance = FLT_MAX;
   for (const proj_aim_hitbox_sample& sample : hitbox_samples) {
@@ -234,6 +252,7 @@ inline bool proj_aim_predicted_explosion_can_damage(Player* localplayer,
 
     if (best_hitbox == -1 || point_distance < best_distance) {
       best_hitbox = sample.hitbox;
+      best_studio_hitbox = sample.studio_hitbox;
       best_bone = sample.bone;
       best_distance = point_distance;
     }
@@ -252,6 +271,9 @@ inline bool proj_aim_predicted_explosion_can_damage(Player* localplayer,
 
   if (hitbox_out != nullptr) {
     *hitbox_out = best_hitbox;
+  }
+  if (studio_hitbox_out != nullptr) {
+    *studio_hitbox_out = best_studio_hitbox;
   }
   if (bone_out != nullptr) {
     *bone_out = best_bone;

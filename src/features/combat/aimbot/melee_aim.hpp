@@ -530,6 +530,7 @@ inline aimbot_candidate melee_aim_find_simple_candidate(Player* localplayer,
   candidate.preferred = aimbot::has_preference(player);
   candidate.bone = hitbox_point.valid ? hitbox_point.bone : aimbot_default_bone(localplayer, player, weapon);
   candidate.hitbox = hitbox_point.valid ? hitbox_point.hitbox : aim_hitbox_pelvis;
+  candidate.studio_hitbox = hitbox_point.valid ? hitbox_point.studio_hitbox : -1;
   candidate.aim_position = best.aim_position;
   candidate.aim_angles = best.aim_angles;
   candidate.fov = best.fov;
@@ -648,6 +649,7 @@ inline aimbot_candidate melee_aim_find_candidate(Player* localplayer,
   candidate.preferred = aimbot::has_preference(player);
   candidate.bone = hitbox_point.valid ? hitbox_point.bone : aimbot_default_bone(localplayer, player, weapon);
   candidate.hitbox = hitbox_point.valid ? hitbox_point.hitbox : aim_hitbox_pelvis;
+  candidate.studio_hitbox = hitbox_point.valid ? hitbox_point.studio_hitbox : -1;
   candidate.aim_position = best.aim_position;
   candidate.aim_angles = best.aim_angles;
   candidate.fov = best.fov;

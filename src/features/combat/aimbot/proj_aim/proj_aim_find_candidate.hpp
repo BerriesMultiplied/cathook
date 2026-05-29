@@ -298,6 +298,7 @@ inline aimbot_candidate proj_aim_find_simple_candidate(Player* localplayer,
     point_candidate.preferred = aimbot::has_preference(player);
     point_candidate.bone = sample.bone;
     point_candidate.hitbox = sample.hitbox;
+    point_candidate.studio_hitbox = sample.studio_hitbox;
     point_candidate.aim_position = intercept.target_origin;
     point_candidate.aim_angles = intercept.aim_angles;
     point_candidate.fov = direct_fov;
@@ -444,6 +445,7 @@ inline aimbot_candidate proj_aim_find_candidate(Player* localplayer, Weapon* wea
       point_candidate.preferred = aimbot::has_preference(player);
       point_candidate.bone = sample.bone;
       point_candidate.hitbox = sample.hitbox;
+      point_candidate.studio_hitbox = sample.studio_hitbox;
       point_candidate.aim_position = intercept.target_origin;
       point_candidate.aim_angles = intercept.aim_angles;
       point_candidate.fov = direct_fov;

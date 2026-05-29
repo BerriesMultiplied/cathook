@@ -63,6 +63,7 @@ inline bool proj_aim_supports_splash(Weapon* weapon) {
 
 struct proj_aim_hitbox_sample {
   int hitbox = -1;
+  int studio_hitbox = -1;
   int bone = 0;
   int priority = INT_MAX;
   Vec3 offset{};
@@ -85,6 +86,7 @@ struct proj_aim_weapon_profile {
 
 struct proj_aim_direct_point {
   int hitbox = -1;
+  int studio_hitbox = -1;
   int bone = 0;
   int priority = INT_MAX;
   Vec3 offset{};

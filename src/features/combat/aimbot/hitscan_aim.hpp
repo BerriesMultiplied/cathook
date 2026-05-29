@@ -53,29 +53,8 @@ struct hitscan_trace_result {
 
 using hitscan_aim_trace_result = hitscan_trace_result;
 
-constexpr int hitscan_aim_max_bones = 128;
-constexpr int hitscan_aim_bone_mask = 0x7FF00;
-
-struct hitscan_aim_bone_cache_bypass {
-  bool previous = false;
-  bool changed = false;
-
-  hitscan_aim_bone_cache_bypass()
-  {
-    previous = config.misc.exploits.setup_bones_optimization;
-    changed = previous;
-    if (changed) {
-      config.misc.exploits.setup_bones_optimization = false;
-    }
-  }
-
-  ~hitscan_aim_bone_cache_bypass()
-  {
-    if (changed) {
-      config.misc.exploits.setup_bones_optimization = previous;
-    }
-  }
-};
+constexpr int hitscan_aim_max_bones = aimbot_max_bones;
+constexpr int hitscan_aim_bone_mask = aimbot_bone_mask;
 
 inline bool hitscan_aim_same_entity(Entity* left, Entity* right) {
   if (left == nullptr || right == nullptr) {
@@ -143,12 +122,7 @@ inline bool hitscan_aim_setup_bones(Player* target, matrix_3x4* bone_to_world) {
     return false;
   }
 
-  hitscan_aim_bone_cache_bypass bypass{};
-  return target->setup_bones(
-    bone_to_world,
-    hitscan_aim_max_bones,
-    hitscan_aim_bone_mask,
-    target->get_simulation_time()) != 0;
+  return aimbot_setup_bones(target, bone_to_world);
 }
 
 inline Vec3 hitscan_aim_bullet_angles(Player* localplayer, const Vec3& view_angles) {
