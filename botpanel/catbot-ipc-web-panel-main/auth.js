@@ -1,11 +1,73 @@
 const randomstring = require('randomstring');
 const fs = require('fs');
+const net = require('net');
+
+function parse_ipv4(text)
+{
+    const parts = String(text).split('.');
+    if (parts.length !== 4)
+        return null;
+
+    const bytes = [];
+    for (const part of parts)
+    {
+        if (!/^[0-9]+$/.test(part))
+            return null;
+
+        const value = Number.parseInt(part, 10);
+        if (!Number.isInteger(value) || value < 0 || value > 255)
+            return null;
+
+        bytes.push(value);
+    }
+
+    return bytes;
+}
+
+function is_private_ipv4(text)
+{
+    const bytes = parse_ipv4(text);
+    if (!bytes)
+        return false;
+
+    if (bytes[0] === 10)
+        return true;
+
+    if (bytes[0] === 172 && bytes[1] >= 16 && bytes[1] <= 31)
+        return true;
+
+    if (bytes[0] === 192 && bytes[1] === 168)
+        return true;
+
+    return bytes[0] === 127;
+}
+
+function normalize_request_ip(ip)
+{
+    const text = String(ip || '').trim().toLowerCase();
+    if (text.startsWith('::ffff:'))
+        return text.slice(7);
+
+    return text;
+}
+
+function is_lan_ip(ip)
+{
+    const text = normalize_request_ip(ip);
+    if (is_private_ipv4(text))
+        return true;
+
+    if (text === '::1')
+        return true;
+
+    return net.isIP(text) === 6 && (text.startsWith('fc') || text.startsWith('fd') || text.startsWith('fe8') || text.startsWith('fe9') || text.startsWith('fea') || text.startsWith('feb'));
+}
 
 class SimpleAuth
 {
     constructor(app)
     {
-        this.password = process.env.CAT_WEB_PASSWORD || randomstring.generate(12);
+        this.password = String(process.env.CAT_WEB_PASSWORD || randomstring.generate(12)).trim();
         this.apikey = randomstring.generate(64);
 
         app.post('/api/auth', this.handleLogin.bind(this));
@@ -13,9 +75,9 @@ class SimpleAuth
     }
     middleware(req, res, next)
     {
-        if (!req.session.auth && (req.ip == '::1' || req.ip == '127.0.0.1' || req.ip == '::ffff:127.0.0.1'))
+        if (!req.session.auth && is_lan_ip(req.ip))
         {
-            console.log(`Auth: ${req.ip} by LOCAL`);
+            console.log(`Auth: ${req.ip} by LAN`);
             req.session.auth = 1;
         }
 

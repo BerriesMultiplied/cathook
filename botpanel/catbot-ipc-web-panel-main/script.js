@@ -49,7 +49,13 @@ var refresh_in_progress = false;
 
 function updateData() {
 	request('api/state', function(error, r, b) {
-		if (error) return;
+		if (request_failed(error, r)) {
+			if (r && r.statusCode === 403)
+				status.error('Not authorized; log in with the panel password');
+			else
+				status.error('Error loading bot state from server!');
+			return;
+		}
 		var data = parse_json_body(b);
 		if (!data || !data.bots) {
 			status.error('Error parsing bot state from server!');
@@ -456,7 +462,10 @@ function refreshComplete() {
 		refresh_in_progress = false;
 		if (request_failed(e, r)) {
 			console.log(e, b);
-			status.error('Error refreshing the list!');
+			if (r && r.statusCode === 403)
+				status.error('Not authorized; log in with the panel password');
+			else
+				status.error('Error refreshing the list!');
 			return;
 		}
 
@@ -516,11 +525,15 @@ $(function() {
             }
         }, (e, r, b) => {
             if (e || !r || r.statusCode !== 200) {
-                status.error('Login failed');
+                if (r && r.statusCode === 403)
+                    status.error('Login failed: invalid password');
+                else
+                    status.error('Login failed');
                 return;
             }
 
             status.info('Logged in');
+            updateData();
             refreshComplete();
         });
     });
