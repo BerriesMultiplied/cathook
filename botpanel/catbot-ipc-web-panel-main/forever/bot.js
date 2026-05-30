@@ -25,7 +25,7 @@ const steam_window_options_default = VISIBLE_WINDOWS
       + ' -cef-disable-breakpad -cef-disable-logging -cef-disable-js-logging -cef-disable-hevc'
       + ' -disablehighdpi -nominidumps -nobreakpad -skipstreamingdrivers';
 const steam_window_options = process.env.CAT_STEAM_WINDOW_OPTIONS || steam_window_options_default;
-const game_window_options_default = VISIBLE_WINDOWS ? '-gl -sw -w 1280 -h 720' : '-gl -silent -sw -w 1 -h 1';
+const game_window_options_default = VISIBLE_WINDOWS ? '-gl -sw -w 1280 -h 720' : '-gl -silent -sw -w 1 -h 480';
 const GAME_WINDOW_OPTIONS = process.env.CAT_GAME_WINDOW_OPTIONS || game_window_options_default;
 const GAME_MODE_OPTIONS = TEXTMODE_GAME
     ? '-nomouse -nosound'
