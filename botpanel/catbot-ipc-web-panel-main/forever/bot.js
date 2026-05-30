@@ -25,7 +25,7 @@ const steam_window_options_default = VISIBLE_WINDOWS
       + ' -cef-disable-breakpad -cef-disable-logging -cef-disable-js-logging -cef-disable-hevc'
       + ' -disablehighdpi -nominidumps -nobreakpad -skipstreamingdrivers';
 const steam_window_options = process.env.CAT_STEAM_WINDOW_OPTIONS || steam_window_options_default;
-const game_window_options_default = VISIBLE_WINDOWS ? '-gl -sw -w 1280 -h 720' : '-gl -silent -sw -w 1 -h 480';
+const game_window_options_default = VISIBLE_WINDOWS ? '-gl -sw -w 1280 -h 720' : '-gl -silent -sw -w 1 -h 1';
 const GAME_WINDOW_OPTIONS = process.env.CAT_GAME_WINDOW_OPTIONS || game_window_options_default;
 const GAME_MODE_OPTIONS = TEXTMODE_GAME
     ? '-nomouse -nosound'
@@ -39,7 +39,7 @@ const TF2_LAUNCH_MODE = (process.env.CAT_TF2_LAUNCH_MODE || 'direct').toLowerCas
 const PER_BOT_X_DISPLAY = process.env.CAT_PER_BOT_X_DISPLAY === '1' || config.per_bot_x_display === true;
 const PER_BOT_X_DISPLAY_BASE_VALUE = Number.parseInt(process.env.CAT_PER_BOT_X_DISPLAY_BASE || String(config.per_bot_x_display_base || '1000'), 10);
 const PER_BOT_X_DISPLAY_BASE = (Number.isSafeInteger(PER_BOT_X_DISPLAY_BASE_VALUE) && PER_BOT_X_DISPLAY_BASE_VALUE > 0) ? PER_BOT_X_DISPLAY_BASE_VALUE : 1000;
-const PER_BOT_X_SCREEN = process.env.CAT_PER_BOT_X_SCREEN || '1280x720x24';
+const PER_BOT_X_SCREEN = process.env.CAT_PER_BOT_X_SCREEN || process.env.CAT_X_SCREEN || '1x1x24';
 const HEADLESS_STEAM_GRAPHICS = !VISIBLE_WINDOWS && process.env.CAT_STEAM_HEADLESS_GRAPHICS !== '0';
 const HEADLESS_STEAM_GRAPHICS_FIREJAIL_ENV = HEADLESS_STEAM_GRAPHICS ? '--env=LIBGL_ALWAYS_SOFTWARE=1 --env=GALLIUM_DRIVER=llvmpipe --env=MESA_LOADER_DRIVER_OVERRIDE=llvmpipe --env=__GLX_VENDOR_LIBRARY_NAME=mesa --env=VK_ICD_FILENAMES=/dev/null --env=DISABLE_VK_LAYER_VALVE_steam_overlay_1=1 --env=DISABLE_VK_LAYER_VALVE_steam_fossilize_1=1' : '';
 const HEADLESS_STEAM_GRAPHICS_ASSIGNMENTS = HEADLESS_STEAM_GRAPHICS ? 'LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe MESA_LOADER_DRIVER_OVERRIDE=llvmpipe __GLX_VENDOR_LIBRARY_NAME=mesa VK_ICD_FILENAMES=/dev/null DISABLE_VK_LAYER_VALVE_steam_overlay_1=1 DISABLE_VK_LAYER_VALVE_steam_fossilize_1=1' : '';

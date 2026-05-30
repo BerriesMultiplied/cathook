@@ -26,6 +26,7 @@ matching xpra display first.
 - Override display: `CAT_DISPLAY=:700 ./botpanel/start`
 - Xpra-specific override: `CAT_XPRA_DISPLAY=:700 ./botpanel/start`
 - Legacy Xvfb override still accepted: `CAT_XVFB_DISPLAY=:700 ./botpanel/start`
+- Headless display size: `CAT_X_SCREEN=1x1x24 ./botpanel/start` (default `1x1x24`; use `CAT_XPRA_SCREEN`, `CAT_XVFB_SCREEN`, or `CAT_PER_BOT_X_SCREEN` for backend-specific overrides)
 - Xvfb client limit: `CAT_XVFB_MAX_CLIENTS=512 ./botpanel/start` (default `512`; accepted values are `64`, `128`, `256`, `512`)
 - Override hidden TF2 window flags: `CAT_GAME_WINDOW_OPTIONS="-gl -silent -sw -w 800 -h 600" ./botpanel/start`
 - Use an existing desktop display instead: `CAT_VISIBLE_WINDOWS=1 ./botpanel/start`

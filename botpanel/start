@@ -38,6 +38,8 @@ xpra_log="${CAT_XPRA_LOG:-/tmp/cat-catbot-xpra.log}"
 xvfb_log="${CAT_XVFB_LOG:-/tmp/cat-catbot-xvfb.log}"
 xvfb_pid_file="${CAT_XVFB_PID_FILE:-/tmp/cat-catbot-xvfb.pid}"
 xvfb_max_clients="${CAT_XVFB_MAX_CLIENTS:-512}"
+xpra_screen_size="${CAT_XPRA_SCREEN:-${CAT_X_SCREEN:-1x1x24}}"
+xvfb_screen_size="${CAT_XVFB_SCREEN:-${CAT_X_SCREEN:-1x1x24}}"
 
 run_as_root() {
     if [ "$(id -u)" -eq 0 ]; then
@@ -953,16 +955,19 @@ start_xpra() {
 
     : >"$xpra_log"
     if run_xpra_start_variant "full" \
+        --resize-display=no --xvfb="Xvfb +extension GLX +extension Composite -screen 0 $xpra_screen_size -dpi 96 -nolisten tcp -noreset -auth \$XAUTHORITY" \
         --clipboard=no --pulseaudio=no --webcam=no --notifications=no --bell=no --mdns=no --html=off --start-new-commands=no; then
         return
     fi
 
     if run_xpra_start_variant "compatible" \
+        --resize-display=no --xvfb="Xvfb +extension GLX +extension Composite -screen 0 $xpra_screen_size -dpi 96 -nolisten tcp -noreset -auth \$XAUTHORITY" \
         --clipboard=no --pulseaudio=no --notifications=no --bell=no; then
         return
     fi
 
-    if run_xpra_start_variant "minimal"; then
+    if run_xpra_start_variant "minimal" \
+        --resize-display=no --xvfb="Xvfb +extension GLX +extension Composite -screen 0 $xpra_screen_size -dpi 96 -nolisten tcp -noreset -auth \$XAUTHORITY"; then
         return 0
     fi
 
@@ -1018,11 +1023,9 @@ start_xvfb() {
         return
     fi
 
-    local screen_size="${CAT_XVFB_SCREEN:-1920x1080x24}"
-
     : >"$xvfb_log"
     echo "Starting Xvfb display $display with max clients $xvfb_max_clients..."
-    Xvfb "$display" -screen 0 "$screen_size" -maxclients "$xvfb_max_clients" -nolisten tcp -noreset -ac >"$xvfb_log" 2>&1 &
+    Xvfb "$display" -screen 0 "$xvfb_screen_size" -maxclients "$xvfb_max_clients" -nolisten tcp -noreset -ac >"$xvfb_log" 2>&1 &
     echo "$!" >"$xvfb_pid_file"
     sleep 1
 
@@ -1092,8 +1095,12 @@ print_ready() {
     echo "Visible windows: $visible_windows"
     echo "Xpra: $use_xpra"
     echo "Xvfb: $use_xvfb"
+    if [ "$use_xpra" = "1" ]; then
+        echo "Xpra screen: $xpra_screen_size"
+    fi
     if [ "$use_xvfb" = "1" ]; then
         echo "Xvfb max clients: $xvfb_max_clients"
+        echo "Xvfb screen: $xvfb_screen_size"
     fi
     echo
 }
@@ -1132,17 +1139,23 @@ configure_steam_txtmode_preload() {
     fi
 
     local soname="libcatsteamtxtmode.so"
-    if ! ldconfig -p 2>/dev/null | grep -q "$soname"; then
+    local library_path
+    library_path="$(ldconfig -p 2>/dev/null | awk -v soname="$soname" '$1 == soname && $0 ~ /x86-64/ { print $NF; exit }')"
+    if [ -z "$library_path" ]; then
+        library_path="$(ldconfig -p 2>/dev/null | awk -v soname="$soname" '$1 == soname { print $NF; exit }')"
+    fi
+    if [ -z "$library_path" ] || [ ! -f "$library_path" ]; then
         return
     fi
 
     if [ -n "${STEAM_LD_PRELOAD:-}" ]; then
         case ":$STEAM_LD_PRELOAD:" in
-            *":$soname:"*) ;;
-            *) STEAM_LD_PRELOAD="$soname:$STEAM_LD_PRELOAD" ;;
+            *":$library_path:"*) ;;
+            *":$soname:"*) STEAM_LD_PRELOAD="${STEAM_LD_PRELOAD//$soname/$library_path}" ;;
+            *) STEAM_LD_PRELOAD="$library_path:$STEAM_LD_PRELOAD" ;;
         esac
     else
-        STEAM_LD_PRELOAD="$soname"
+        STEAM_LD_PRELOAD="$library_path"
     fi
     export STEAM_LD_PRELOAD
     echo "Steam headless shim enabled: STEAM_LD_PRELOAD=$STEAM_LD_PRELOAD"
@@ -1167,6 +1180,8 @@ start_panel() {
             CAT_STEAM_HEADLESS_GRAPHICS="${CAT_STEAM_HEADLESS_GRAPHICS:-1}" \
             CAT_STEAM_WINDOW_OPTIONS="${CAT_STEAM_WINDOW_OPTIONS:-}" \
             CAT_GAME_WINDOW_OPTIONS="${CAT_GAME_WINDOW_OPTIONS:-}" \
+            CAT_X_SCREEN="${CAT_X_SCREEN:-}" \
+            CAT_PER_BOT_X_SCREEN="${CAT_PER_BOT_X_SCREEN:-}" \
             CAT_STEAMWEBHELPER_CLEANUP="${CAT_STEAMWEBHELPER_CLEANUP:-0}" \
             CAT_STEAMWEBHELPER_CLEANUP_SECONDS="${CAT_STEAMWEBHELPER_CLEANUP_SECONDS:-10}" \
             CAT_XPRA_LOG="$xpra_log" \
@@ -1190,6 +1205,8 @@ start_panel() {
         CAT_STEAM_HEADLESS_GRAPHICS="${CAT_STEAM_HEADLESS_GRAPHICS:-1}" \
         CAT_STEAM_WINDOW_OPTIONS="${CAT_STEAM_WINDOW_OPTIONS:-}" \
         CAT_GAME_WINDOW_OPTIONS="${CAT_GAME_WINDOW_OPTIONS:-}" \
+        CAT_X_SCREEN="${CAT_X_SCREEN:-}" \
+        CAT_PER_BOT_X_SCREEN="${CAT_PER_BOT_X_SCREEN:-}" \
         CAT_STEAMWEBHELPER_CLEANUP="${CAT_STEAMWEBHELPER_CLEANUP:-0}" \
         CAT_STEAMWEBHELPER_CLEANUP_SECONDS="${CAT_STEAMWEBHELPER_CLEANUP_SECONDS:-10}" \
         CAT_XPRA_LOG="$xpra_log" \
