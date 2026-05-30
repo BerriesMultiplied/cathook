@@ -120,6 +120,11 @@ bool goal_enabled(goal_type type)
   return (config.misc.automation.navbot_excluded_jobs_mask & goal_type_bit(type)) == 0;
 }
 
+bool map_is_payload(const std::string& map_name)
+{
+  return map_name.starts_with("pl_") || map_name.starts_with("plr_");
+}
+
 bool area_is_roam_candidate(const navbot_mesh& mesh, nav_area_id area_id)
 {
   auto area = mesh.find_area(area_id);
@@ -1307,7 +1312,7 @@ navbot_goal_state navbot_goals::select_goal(const navbot_mesh& mesh, Player* loc
   {
     choose_best(best, choose_payload_goal(mesh, localplayer));
   }
-  if (goal_enabled(goal_type::capture_objective))
+  if (goal_enabled(goal_type::capture_objective) && !map_is_payload(mesh.map_name()))
   {
     choose_best(best, choose_control_point_goal(mesh, localplayer));
   }
