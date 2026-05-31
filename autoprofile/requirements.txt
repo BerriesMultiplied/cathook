@@ -3,5 +3,6 @@ fastapi
 uvicorn
 requests
 beautifulsoup4
+playwright
 
 textual

@@ -579,9 +579,9 @@ def get_cookies_via_browser(username, password):
                 return None
 
     except ImportError:
-        safe_print('❌ Playwright not installed!')
-        safe_print('   Install it with: pip install playwright')
-        safe_print('   Then run: playwright install chromium')
+        safe_print(f'Playwright is not installed for this Python: {sys.executable}')
+        safe_print('Install with autoprofile/install.sh or autoprofile/install.bat, then start the UI with startweb.')
+        safe_print('Manual fix: python -m pip install playwright && python -m playwright install chromium')
         return None
     except Exception as e:
         safe_print(f'❌ Browser automation failed: {e}')
