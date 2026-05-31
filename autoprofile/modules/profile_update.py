@@ -722,12 +722,27 @@ def save_profile_info(session, summary=None, custom_url=None, nickname=None):
     if error:
         return False, error
 
+    location_data = profile_data.get('LocationData')
+    if not isinstance(location_data, dict):
+        location_data = {}
+
     fields = {
-        'type': 'profileSave',
+        'sessionID': get_session_cookie(session, 'sessionid'),
         'personaName': profile_data.get('strPersonaName', ''),
+        'real_name': profile_data.get('strRealName', ''),
         'summary': profile_data.get('strSummary', ''),
+        'country': location_data.get('locCountryCode', ''),
+        'state': location_data.get('locStateCode', ''),
+        'city': location_data.get('locCityCode', ''),
         'customURL': profile_data.get('strCustomURL', ''),
-        'real_name': profile_data.get('strRealName', '')
+        'type': 'profileSave',
+        'weblink_1_title': '',
+        'weblink_1_url': '',
+        'weblink_2_title': '',
+        'weblink_2_url': '',
+        'weblink_3_title': '',
+        'weblink_3_url': '',
+        'json': '1'
     }
     if summary is not None:
         fields['summary'] = summary
@@ -736,15 +751,11 @@ def save_profile_info(session, summary=None, custom_url=None, nickname=None):
     if nickname is not None:
         fields['personaName'] = nickname
 
-    session_id = get_session_cookie(session, 'sessionid')
-    if not session_id:
+    if not fields['sessionID']:
         return False, 'missing sessionid'
 
-    fields['sessionID'] = session_id
-    fields['sessionid'] = session_id
-
     try:
-        save_response = session.post('https://steamcommunity.com/my/edit/info', data=fields, timeout=request_timeout_seconds, allow_redirects=True)
+        save_response = session.post('https://steamcommunity.com/my/edit', data=fields, timeout=request_timeout_seconds, allow_redirects=True)
     except requests.RequestException as exc:
         return False, f'profile save failed: {exc}'
 
@@ -753,6 +764,14 @@ def save_profile_info(session, summary=None, custom_url=None, nickname=None):
 
     if 'login' in save_response.url.lower():
         return False, 'profile save redirected to login'
+
+    try:
+        save_data = save_response.json()
+    except ValueError:
+        save_data = None
+
+    if isinstance(save_data, dict) and save_data.get('success') not in (1, True, '1'):
+        return False, save_data.get('errmsg') or save_data.get('message') or 'profile save request was rejected'
 
     saved_profile_data, _, verify_error = get_profile_edit_state(session)
     if verify_error:
