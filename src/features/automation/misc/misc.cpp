@@ -1286,8 +1286,8 @@ bool automation_controller::is_warmup_active() const
     Entity* proxy = entity_list->get_game_rules_proxy();
     if (proxy != nullptr)
     {
-      static const int waiting_offset = tf2_netvars::find_offset("DT_TeamplayRoundBasedRulesProxy", { "m_bInWaitingForPlayers" });
-      static const int state_offset = tf2_netvars::find_offset("DT_TeamplayRoundBasedRulesProxy", { "m_iRoundState" });
+      static const int waiting_offset = tf2_netvars::find_offset("DT_TFGameRulesProxy", { "m_bInWaitingForPlayers" });
+      static const int state_offset = tf2_netvars::find_offset("DT_TFGameRulesProxy", { "m_iRoundState" });
       
       bool waiting = false;
       int state = 0;

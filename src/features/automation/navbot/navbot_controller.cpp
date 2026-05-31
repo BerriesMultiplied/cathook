@@ -1137,9 +1137,9 @@ bool navbot_controller::should_block_pathing(Player* localplayer) const
     Entity* proxy = entity_list->get_game_rules_proxy();
     if (proxy != nullptr)
     {
-      static const int waiting_offset = tf2_netvars::find_offset("DT_TeamplayRoundBasedRulesProxy", { "m_bInWaitingForPlayers" });
-      static const int state_offset = tf2_netvars::find_offset("DT_TeamplayRoundBasedRulesProxy", { "m_iRoundState" });
-      static const int setup_offset = tf2_netvars::find_offset("DT_TeamplayRoundBasedRulesProxy", { "m_bInSetup" });
+      static const int waiting_offset = tf2_netvars::find_offset("DT_TFGameRulesProxy", { "m_bInWaitingForPlayers" });
+      static const int state_offset = tf2_netvars::find_offset("DT_TFGameRulesProxy", { "m_iRoundState" });
+      static const int setup_offset = tf2_netvars::find_offset("DT_TFGameRulesProxy", { "m_bInSetup" });
 
       if (waiting_offset != 0)
       {
