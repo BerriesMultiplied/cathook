@@ -374,21 +374,23 @@ crit_request get_crit_request(user_cmd* cmd, Weapon* weapon) {
 
 } // namespace
 
-void on_create_move(user_cmd* cmd) {
+create_move_result on_create_move(user_cmd* cmd) {
+  create_move_result result{};
+
   auto* local = entity_list->get_localplayer();
   if (!config.crithack.enabled || local == nullptr || !local->is_alive() || local->is_dormant()) {
-    return;
+    return result;
   }
 
   auto* weapon = local->get_weapon();
   if (weapon == nullptr || !weapon_can_crit(weapon)) {
-    return;
+    return result;
   }
 
   update_info(local, weapon);
 
   if (local->is_crit_boosted() || weapon->crit_time() > global_vars->curtime) {
-    return;
+    return result;
   }
 
   // store health history for all alive players
@@ -413,18 +415,30 @@ void on_create_move(user_cmd* cmd) {
   }
 
   if (!attacking || (weapon->is_rapid_fire() && global_vars->curtime < weapon->last_rapid_fire_crit_check_time() + 1.0f)) {
-    return;
+    return result;
   }
 
   crit_request req = get_crit_request(cmd, weapon);
   if (req == crit_request::any) {
-    return;
+    result.attack_allowed = true;
+    return result;
   }
 
-  if (int command = get_crit_command(weapon, cmd->command_number, req == crit_request::crit, true, is_melee_weapon)) {
-    cmd->command_number = command;
-    cmd->random_seed = MD5_PseudoRandom(command) & std::numeric_limits<int>::max();
+  const bool wants_crit = req == crit_request::crit;
+  result.crit_requested = wants_crit;
+  result.skip_requested = req == crit_request::skip;
+
+  if (!is_crit_command(cmd->command_number, weapon, wants_crit, true, is_melee_weapon)) {
+    cmd->buttons &= ~IN_ATTACK;
+    if (is_melee_weapon && weapon->get_weapon_id() == TF_WEAPON_FISTS) {
+      cmd->buttons &= ~IN_ATTACK2;
+    }
+    result.attack_suppressed = true;
+    return result;
   }
+
+  result.attack_allowed = true;
+  return result;
 }
 
 void on_game_event(GameEvent* event) {
@@ -608,32 +622,7 @@ bool weapon_can_crit(Weapon* weapon, bool weapon_only) {
 }
 
 int predict_command_number(user_cmd* cmd) {
-  auto* local = entity_list->get_localplayer();
-  if (local == nullptr || !local->is_alive()) {
-    return cmd->command_number;
-  }
-
-  auto* weapon = local->get_weapon();
-  if (weapon == nullptr || !weapon_can_crit(weapon) || local->is_crit_boosted() || weapon->crit_time() > global_vars->curtime) {
-    return cmd->command_number;
-  }
-
-  update_info(local, weapon);
-
-  if (weapon->is_rapid_fire() && global_vars->curtime < weapon->last_rapid_fire_crit_check_time() + 1.0f) {
-    return cmd->command_number;
-  }
-
-  crit_request req = get_crit_request(cmd, weapon);
-  if (req == crit_request::any) {
-    return cmd->command_number;
-  }
-
-  if (int command = get_crit_command(weapon, cmd->command_number, req == crit_request::crit, true, weapon->is_melee())) {
-    return command;
-  }
-
-  return cmd->command_number;
+  return cmd != nullptr ? cmd->command_number : 0;
 }
 
 crit_stats_t get_stats() {

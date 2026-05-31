@@ -84,6 +84,9 @@ constexpr const char* auto_balance_pending_token = "#TF_Autobalance_TeamChangePe
 constexpr float autotaunt_step_interval = 0.12f;
 constexpr int max_chat_command_length = 220;
 constexpr float announcer_combo_window = 5.0f;
+constexpr int gr_state_init = 0;
+constexpr int gr_state_preround = 3;
+constexpr int gr_num_round_states = 11;
 
 using get_party_client_fn = void* (*)();
 using get_matchmaking_client_fn = void* (*)();
@@ -117,6 +120,16 @@ struct party_client_api
 party_client_api g_party_client_api{};
 report_player_account_fn g_report_player_account = nullptr;
 bool g_report_player_account_initialized = false;
+
+bool round_state_is_warmup(int round_state)
+{
+  return round_state >= gr_state_init && round_state < gr_state_preround;
+}
+
+bool round_state_is_valid(int round_state)
+{
+  return round_state >= gr_state_init && round_state < gr_num_round_states;
+}
 
 struct text_file_cache
 {
@@ -1290,18 +1303,29 @@ bool automation_controller::is_warmup_active() const
       static const int state_offset = tf2_netvars::find_offset("DT_TFGameRulesProxy", { "m_iRoundState" });
       
       bool waiting = false;
-      int state = 0;
+      int state = -1;
+      bool has_waiting_state = false;
+      bool has_round_state = false;
       
       if (waiting_offset != 0)
       {
         waiting = *reinterpret_cast<bool*>(reinterpret_cast<std::uintptr_t>(proxy) + waiting_offset);
+        has_waiting_state = true;
       }
       if (state_offset != 0)
       {
-        state = *reinterpret_cast<int*>(reinterpret_cast<std::uintptr_t>(proxy) + state_offset);
+        const int read_state = *reinterpret_cast<int*>(reinterpret_cast<std::uintptr_t>(proxy) + state_offset);
+        if (round_state_is_valid(read_state))
+        {
+          state = read_state;
+          has_round_state = true;
+        }
       }
       
-      return waiting || state == 1 || state == 2 || state == 6;
+      if (has_waiting_state || has_round_state)
+      {
+        return waiting || (has_round_state && round_state_is_warmup(state));
+      }
     }
   }
   return warmup_active_;

@@ -51,6 +51,10 @@ constexpr float weapon_switch_interval = 0.35f;
 constexpr float navbot_throwable_look_suppress_seconds = 0.55f;
 constexpr int team_unassigned = 0;
 constexpr int tf_team_blue_value = 3;
+constexpr int gr_state_init = 0;
+constexpr int gr_state_preround = 3;
+constexpr int gr_state_team_win = 5;
+constexpr int gr_num_round_states = 11;
 #if defined(CATHOOK_TEXTMODE) && CATHOOK_TEXTMODE
 constexpr bool textmode_build = true;
 constexpr float hazard_refresh_interval = 1.0f;
@@ -99,6 +103,21 @@ void navbot_update_throwable_look_suppress(Weapon* weapon, user_cmd* user_cmd, f
 bool navbot_throwable_look_suppresses_path_look(float current_time)
 {
   return current_time < g_navbot_throwable_look_suppress_until;
+}
+
+bool round_state_is_warmup(int round_state)
+{
+  return round_state >= gr_state_init && round_state < gr_state_preround;
+}
+
+bool round_state_is_valid(int round_state)
+{
+  return round_state >= gr_state_init && round_state < gr_num_round_states;
+}
+
+bool round_state_has_started(int round_state)
+{
+  return round_state >= gr_state_preround && round_state < gr_state_team_win;
 }
 
 enum class navbot_weapon_slot
@@ -1030,7 +1049,7 @@ bool navbot_controller::record_crumb_failure(const follower_tick_result& follow_
 
   auto same_failed_crumb = crumb_failure_.area_id.value == follow_result.failed_crumb_area.value
     && same_nav_edge(crumb_failure_.edge_id, follow_result.failed_edge);
-  if (!same_failed_crumb || current_time - crumb_failure_.last_failure_time > blocked_fail_time)
+  if (!same_failed_crumb || current_time - crumb_failure_.last_failure_time > blacklist_seconds)
   {
     crumb_failure_.area_id = follow_result.failed_crumb_area;
     crumb_failure_.edge_id = follow_result.failed_edge;
@@ -1129,8 +1148,11 @@ bool navbot_controller::should_block_pathing(Player* localplayer) const
   }
 
   bool waiting_for_players = false;
-  int round_state = 4; // Default to active round
+  int round_state = -1;
   bool in_setup = false;
+  bool has_round_state = false;
+  bool has_setup_state = false;
+  bool has_waiting_state = false;
 
   if (entity_list != nullptr)
   {
@@ -1144,31 +1166,52 @@ bool navbot_controller::should_block_pathing(Player* localplayer) const
       if (waiting_offset != 0)
       {
         waiting_for_players = *reinterpret_cast<bool*>(reinterpret_cast<std::uintptr_t>(proxy) + waiting_offset);
+        has_waiting_state = true;
       }
       if (state_offset != 0)
       {
-        round_state = *reinterpret_cast<int*>(reinterpret_cast<std::uintptr_t>(proxy) + state_offset);
+        const int read_round_state = *reinterpret_cast<int*>(reinterpret_cast<std::uintptr_t>(proxy) + state_offset);
+        if (round_state_is_valid(read_round_state))
+        {
+          round_state = read_round_state;
+          has_round_state = true;
+        }
       }
       if (setup_offset != 0)
       {
         in_setup = *reinterpret_cast<bool*>(reinterpret_cast<std::uintptr_t>(proxy) + setup_offset);
+        has_setup_state = true;
       }
     }
   }
 
-  // GR_STATE_TEAM_WIN (5) or GR_STATE_STALEMATE (7) is round end/humiliation phase
-  if (round_state == 5 || round_state == 7)
+  if (has_round_state && round_state >= gr_state_team_win)
   {
-    return true; // Always block pathing when team won/lost
+    return true;
   }
 
-  auto map_name = mesh_.map_name().empty() ? loaded_map_name_ : mesh_.map_name();
-  auto on_cp_or_pl_map = map_has_cp_or_pl_prefix(map_name);
-  auto is_pipeline = map_name == "plr_pipeline";
-  auto warmup_active = waiting_for_players || round_state == 1 || round_state == 2 || round_state == 6 || !round_started_;
+  const std::string map_name = mesh_.map_name().empty() ? loaded_map_name_ : mesh_.map_name();
+  const bool on_cp_or_pl_map = map_has_cp_or_pl_prefix(map_name);
+  const bool is_pipeline = map_name.starts_with("plr_");
+
+  bool warmup_active = false;
+  bool setup_active = false;
+  bool match_fully_started = false;
+
+  if (has_round_state || has_waiting_state)
+  {
+    warmup_active = waiting_for_players || (has_round_state && round_state_is_warmup(round_state));
+    setup_active = has_setup_state && in_setup && on_cp_or_pl_map && !is_pipeline;
+    match_fully_started = !waiting_for_players && has_round_state && round_state_has_started(round_state);
+  }
+  else
+  {
+    warmup_active = warmup_active_ || !round_started_;
+    setup_active = round_started_ && on_cp_or_pl_map && !is_pipeline && !setup_finished_;
+    match_fully_started = round_started_ && (!on_cp_or_pl_map || is_pipeline || setup_finished_);
+  }
+
   auto local_team = localplayer->get_team();
-  auto setup_active = in_setup && on_cp_or_pl_map && !is_pipeline;
-  auto match_fully_started = (round_state == 4) && !in_setup;
 
   if (local_team == tf_team::BLU && setup_active)
   {

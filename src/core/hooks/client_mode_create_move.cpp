@@ -25,6 +25,7 @@ V  o o  V  file: src/core/hooks/client_mode_create_move.cpp
 
 #include "features/combat/backtrack/backtrack.hpp"
 #include "features/combat/aimbot/aimbot.cpp"
+#include "features/combat/random_crits/crit_hack.hpp"
 #include "features/movement/bhop/bhop.cpp"
 #include "features/movement/engine_prediction/engine_prediction.cpp"
 #include "features/automation/medic_automation/medic_automation.hpp"
@@ -114,10 +115,6 @@ static bool should_run_taunt_slide(Player* localplayer) {
   return localplayer->in_cond(TF_COND_TAUNTING) && localplayer->allow_move_during_taunt();
 }
 
-namespace crit_hack {
-  void on_create_move(user_cmd* cmd);
-}
-
 static bool run_move_features(user_cmd* user_cmd) {
   aimbot::clear_frame_target();
   backtrack::on_create_move(user_cmd);
@@ -169,9 +166,12 @@ static bool run_move_features(user_cmd* user_cmd) {
 
   const bool moonwalk_psilent = !menu_movement_blocked && moonwalk_create_move(user_cmd);
 
-  crit_hack::on_create_move(user_cmd);
+  const crit_hack::create_move_result crit_result = crit_hack::on_create_move(user_cmd);
+  if (crit_result.attack_suppressed && aimbot_result.psilent_command) {
+    user_cmd->view_angles = original_view_angles;
+  }
 
-  return aimbot_result.psilent_command || moonwalk_psilent;
+  return (aimbot_result.psilent_command && !crit_result.attack_suppressed) || moonwalk_psilent;
 }
 
 // Called approx every frame.
