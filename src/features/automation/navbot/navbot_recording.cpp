@@ -5,6 +5,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <vector>
 
@@ -29,6 +30,12 @@ constexpr uintptr_t area_vector_lea_offset = 0x17;
 constexpr uintptr_t area_vector_lea_disp_offset = area_vector_lea_offset + 3;
 constexpr uintptr_t area_vector_lea_next_offset = area_vector_lea_offset + 7;
 constexpr uintptr_t area_vector_count_offset = 0x10;
+
+struct readable_memory_range
+{
+  uintptr_t begin = 0;
+  uintptr_t end = 0;
+};
 
 std::string json_escape(const std::string& value)
 {
@@ -94,6 +101,81 @@ uintptr_t read_rip_relative_target(uint8_t* instruction, uintptr_t displacement_
   int32_t displacement = 0;
   std::memcpy(&displacement, instruction + displacement_offset, sizeof(displacement));
   return reinterpret_cast<uintptr_t>(instruction + next_instruction_offset) + static_cast<intptr_t>(displacement);
+}
+
+std::vector<readable_memory_range> read_readable_memory_ranges()
+{
+  std::vector<readable_memory_range> ranges{};
+#if defined(__linux__)
+  std::ifstream maps{ "/proc/self/maps" };
+  std::string line{};
+  while (std::getline(maps, line))
+  {
+    const size_t dash = line.find('-');
+    const size_t space = line.find(' ', dash == std::string::npos ? 0 : dash + 1);
+    if (dash == std::string::npos || space == std::string::npos || space + 1 >= line.size() || line[space + 1] != 'r')
+    {
+      continue;
+    }
+
+    uintptr_t begin = 0;
+    uintptr_t end = 0;
+    const char* begin_text = line.data();
+    const char* dash_text = line.data() + dash;
+    const char* end_text = line.data() + space;
+    const std::from_chars_result begin_result = std::from_chars(begin_text, dash_text, begin, 16);
+    const std::from_chars_result end_result = std::from_chars(dash_text + 1, end_text, end, 16);
+    if (begin_result.ec == std::errc{} && end_result.ec == std::errc{} && begin < end)
+    {
+      ranges.emplace_back(readable_memory_range{ begin, end });
+    }
+  }
+#endif
+  return ranges;
+}
+
+bool readable_ranges_contain(uintptr_t address, size_t size, const std::vector<readable_memory_range>& ranges)
+{
+#if !defined(__linux__)
+  (void)address;
+  (void)size;
+  (void)ranges;
+  return true;
+#else
+  if (size == 0)
+  {
+    return true;
+  }
+
+  if (address > std::numeric_limits<uintptr_t>::max() - static_cast<uintptr_t>(size))
+  {
+    return false;
+  }
+
+  uintptr_t current = address;
+  const uintptr_t end = address + static_cast<uintptr_t>(size);
+  for (const readable_memory_range& range : ranges)
+  {
+    if (current < range.begin)
+    {
+      continue;
+    }
+
+    if (current >= range.end)
+    {
+      continue;
+    }
+
+    if (end <= range.end)
+    {
+      return true;
+    }
+
+    current = range.end;
+  }
+
+  return false;
+#endif
 }
 
 bool read_int_field(const std::string& line, const char* name, int& value)
@@ -283,6 +365,9 @@ void server_nav_recorder::update(const std::string& map_name, const server_recor
   std::vector<recorded_blocked_area> blocked_areas{};
   if (!read_snapshot(context, snapshot_json, area_count, blocked_count, blocked_areas))
   {
+    area_vector_address_ = 0;
+    status_.signature_found = false;
+    blocked_areas_.clear();
     status_.message = "snapshot read failed";
     return;
   }
@@ -351,6 +436,12 @@ bool server_nav_recorder::read_snapshot(const server_recording_context& context,
     return false;
   }
 
+  const std::vector<readable_memory_range> readable_ranges = read_readable_memory_ranges();
+  if (!readable_ranges_contain(area_vector_address_, area_vector_count_offset + sizeof(int), readable_ranges))
+  {
+    return false;
+  }
+
   auto** areas = *reinterpret_cast<uintptr_t***>(area_vector_address_);
   const int raw_area_count = *reinterpret_cast<int*>(area_vector_address_ + area_vector_count_offset);
   if (areas == nullptr || raw_area_count < 0 || static_cast<uint32_t>(raw_area_count) > max_reasonable_server_areas)
@@ -359,6 +450,13 @@ bool server_nav_recorder::read_snapshot(const server_recording_context& context,
   }
 
   area_count = static_cast<uint32_t>(raw_area_count);
+  const uintptr_t areas_address = reinterpret_cast<uintptr_t>(areas);
+  const size_t area_pointer_bytes = static_cast<size_t>(area_count) * sizeof(uintptr_t*);
+  if (!readable_ranges_contain(areas_address, area_pointer_bytes, readable_ranges))
+  {
+    return false;
+  }
+
   blocked_count = 0;
 
   std::ostringstream stream{};
@@ -372,6 +470,12 @@ bool server_nav_recorder::read_snapshot(const server_recording_context& context,
   {
     auto* area = reinterpret_cast<uint8_t*>(areas[index]);
     if (area == nullptr)
+    {
+      continue;
+    }
+
+    const uintptr_t area_address = reinterpret_cast<uintptr_t>(area);
+    if (!readable_ranges_contain(area_address, server_area_tf_attributes_offset + sizeof(uint32_t), readable_ranges))
     {
       continue;
     }
