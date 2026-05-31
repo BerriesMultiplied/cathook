@@ -15,6 +15,7 @@ V  o o  V  file: src/features/automation/nographics/nographics.cpp
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <initializer_list>
@@ -77,8 +78,15 @@ constexpr int mdl_cache_touch_all_data_index = 17;
 constexpr int mdl_cache_touch_all_data_extra_index = 45;
 constexpr const char* client_module_name = "tf/bin/linux64/client.so";
 constexpr int engine_frame_busy_wait_usleep_delta = 0x1A;
+constexpr int engine_frame_usleep_call_offset = 0x56;
 constexpr int relative_jump_size = 5;
 constexpr int fs_async_err_fileopen = -1;
+
+bool sleep_pacing_patch_enabled()
+{
+  const char* value = std::getenv("CAT_NOGRAPHICS_SLEEP_PACING");
+  return value != nullptr && std::strcmp(value, "1") == 0;
+}
 
 using find_first_fn = const char* (*)(void*, const char*, file_find_handle_t*);
 using find_next_fn = const char* (*)(void*, file_find_handle_t);
@@ -371,6 +379,7 @@ byte_patch steam_rich_presence_patch{};
 byte_patch cl_decay_lights_patch{};
 byte_patch fps_max_min_patch{};
 byte_patch engine_frame_busy_wait_patch{};
+byte_patch engine_frame_usleep_patch{};
 byte_patch mod_load_lighting_patch{};
 byte_patch mod_load_worldlights_patch{};
 byte_patch mod_load_texinfo_material_branch_patch{};
@@ -1096,7 +1105,11 @@ void initialize_engine_render_patches()
   initialize_optional_patch(video_mode_setup_startup_graphic_patch, "engine.so", sigs::video_mode_setup_startup_graphic, 0, { 0xC3 }, "video_mode_setup_startup_graphic");
   initialize_optional_patch(cl_decay_lights_patch, "engine.so", sigs::cl_decay_lights, 0, { 0xC3 }, "cl_decay_lights");
   initialize_optional_patch(fps_max_min_patch, "engine.so", sigs::engine_fps_max_min_clamp, 7, { 0x90, 0xE9 }, "engine_fps_max_min_clamp");
-  initialize_relative_jump_patch(engine_frame_busy_wait_patch, "engine.so", sigs::engine_frame_busy_wait, engine_frame_busy_wait_usleep_delta, 5, "engine_frame_busy_wait");
+  if (sleep_pacing_patch_enabled())
+  {
+    initialize_relative_jump_patch(engine_frame_busy_wait_patch, "engine.so", sigs::engine_frame_busy_wait, engine_frame_busy_wait_usleep_delta, 5, "engine_frame_busy_wait");
+  }
+  initialize_optional_patch(engine_frame_usleep_patch, "engine.so", sigs::engine_frame_busy_wait, engine_frame_usleep_call_offset, { 0x90, 0x90, 0x90, 0x90, 0x90 }, "engine_frame_usleep");
   initialize_optional_patch(mod_load_lighting_patch, "engine.so", sigs::mod_load_lighting, 0, { 0x31, 0xC0, 0xC3 }, "mod_load_lighting");
   initialize_optional_patch(mod_load_worldlights_patch, "engine.so", sigs::mod_load_worldlights, 0, { 0x31, 0xC0, 0xC3 }, "mod_load_worldlights");
   initialize_optional_patch(
@@ -1161,6 +1174,7 @@ void restore_optional_render_patches()
   cl_decay_lights_patch.restore();
   fps_max_min_patch.restore();
   engine_frame_busy_wait_patch.restore();
+  engine_frame_usleep_patch.restore();
   mod_load_lighting_patch.restore();
   mod_load_worldlights_patch.restore();
   mod_load_texinfo_material_branch_patch.restore();
@@ -1211,6 +1225,7 @@ bool apply_optional_render_patches()
   applied_any_patch = apply_optional_patch(cl_decay_lights_patch, "cl_decay_lights") || applied_any_patch;
   applied_any_patch = apply_optional_patch(fps_max_min_patch, "engine_fps_max_min_clamp") || applied_any_patch;
   applied_any_patch = apply_optional_patch(engine_frame_busy_wait_patch, "engine_frame_busy_wait") || applied_any_patch;
+  applied_any_patch = apply_optional_patch(engine_frame_usleep_patch, "engine_frame_usleep") || applied_any_patch;
   applied_any_patch = apply_optional_patch(mod_load_lighting_patch, "mod_load_lighting") || applied_any_patch;
   applied_any_patch = apply_optional_patch(mod_load_worldlights_patch, "mod_load_worldlights") || applied_any_patch;
   applied_any_patch = apply_optional_patch(mod_load_texinfo_material_branch_patch, "mod_load_texinfo_material_branch") || applied_any_patch;

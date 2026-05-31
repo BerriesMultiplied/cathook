@@ -13,6 +13,7 @@ V  o o  V  file: src/features/automation/navbot/navbot_mesh.cpp
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdarg>
 #include <cstdlib>
@@ -39,6 +40,7 @@ namespace
 constexpr uint32_t nav_magic_number = 0xFEEDFACEu;
 constexpr uint32_t nav_current_version = 16u;
 constexpr uint32_t nav_mesh_nav_blocker = 0x80000000u;
+constexpr auto navmesh_resolve_refresh_interval = std::chrono::seconds(1);
 
 constexpr uint32_t tf_nav_blocked = 0x00000001u;
 constexpr uint32_t tf_nav_spawn_room_red = 0x00000002u;
@@ -1207,7 +1209,19 @@ bool navmesh_resolves_for_current_map()
     return false;
   }
 
-  return !resolve_nav_path(map_name).empty();
+  static std::string cached_map_name{};
+  static bool cached_result = false;
+  static std::chrono::steady_clock::time_point next_lookup{};
+  const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+  if (cached_map_name == map_name && now < next_lookup)
+  {
+    return cached_result;
+  }
+
+  cached_map_name = map_name;
+  cached_result = !resolve_nav_path(map_name).empty();
+  next_lookup = now + navmesh_resolve_refresh_interval;
+  return cached_result;
 }
 
 } // namespace navbot
