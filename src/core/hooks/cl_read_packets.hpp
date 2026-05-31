@@ -16,6 +16,13 @@ V  o o  V  file: src/core/hooks/cl_read_packets.hpp
 
 extern std::int64_t (*cl_read_packets_original)(char);
 
+namespace network_fix
+{
+[[nodiscard]] bool is_active();
+[[nodiscard]] int adjusted_tick_count(int default_tick);
+[[nodiscard]] float adjusted_curtime(float default_curtime);
+}
+
 void run_network_fix_before_move(bool final_tick);
 
 #endif

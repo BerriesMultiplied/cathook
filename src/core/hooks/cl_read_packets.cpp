@@ -28,6 +28,9 @@ struct read_packet_state
   float frame_time = 0.0f;
   float current_time = 0.0f;
   int tick_count = 0;
+  int delta_tick = 0;
+  int last_command_ack = 0;
+  int old_tick_count = 0;
 
   void store()
   {
@@ -40,6 +43,9 @@ struct read_packet_state
     frame_time = global_vars->frametime;
     current_time = global_vars->curtime;
     tick_count = global_vars->tickcount;
+    delta_tick = client_state->m_nDeltaTick;
+    last_command_ack = client_state->last_command_ack;
+    old_tick_count = client_state->oldtickcount;
   }
 
   void restore() const
@@ -53,6 +59,9 @@ struct read_packet_state
     global_vars->frametime = frame_time;
     global_vars->curtime = current_time;
     global_vars->tickcount = tick_count;
+    client_state->m_nDeltaTick = delta_tick;
+    client_state->last_command_ack = last_command_ack;
+    client_state->oldtickcount = old_tick_count;
   }
 };
 
@@ -99,3 +108,23 @@ std::int64_t cl_read_packets_hook(char final_tick)
 
   return cl_read_packets_original(final_tick);
 }
+
+namespace network_fix
+{
+
+bool is_active()
+{
+  return should_run_network_fix() && g_has_read_packets_state;
+}
+
+int adjusted_tick_count(int default_tick)
+{
+  return is_active() ? g_read_packets_state.tick_count : default_tick;
+}
+
+float adjusted_curtime(float default_curtime)
+{
+  return is_active() ? g_read_packets_state.current_time : default_curtime;
+}
+
+} // namespace network_fix

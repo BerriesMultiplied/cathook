@@ -1,14 +1,3 @@
-/*
-/^-----^\   data: 2026-03-30
-V  o o  V  file: src/games/tf2/sdk/interfaces/entity_list.hpp
- |  Y  |   author: pupnoodle
-  \ Q /
-  / - \
-  |    \
-  |     \     )
-  || (___\====
-*/
-
 #ifndef PLAYER_LIST_HPP
 #define PLAYER_LIST_HPP
 
@@ -69,6 +58,7 @@ public:
     return this->player_from_index(engine->get_player_index_from_id(user_id));
   }
 
+  Entity* get_game_rules_proxy(void);
   
   int get_max_entities(void) {
     void** vtable = *(void ***)this;

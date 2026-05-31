@@ -427,4 +427,23 @@ public:
   
 };
 
+inline Entity* EntityList::get_game_rules_proxy() {
+  static int cached_index = -1;
+  if (cached_index != -1) {
+    Entity* ent = entity_from_index(cached_index);
+    if (ent != nullptr && ent->is_network_class("CTFGameRulesProxy")) {
+      return ent;
+    }
+    cached_index = -1;
+  }
+  for (unsigned int i = 1; i <= get_max_entities(); ++i) {
+    Entity* ent = entity_from_index(i);
+    if (ent != nullptr && ent->is_network_class("CTFGameRulesProxy")) {
+      cached_index = i;
+      return ent;
+    }
+  }
+  return nullptr;
+}
+
 #endif

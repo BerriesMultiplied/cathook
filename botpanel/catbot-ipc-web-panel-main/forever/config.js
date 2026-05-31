@@ -19,7 +19,7 @@ const default_config = {
     steamwebhelper_cleanup: false,
     max_concurrent_bots: 5,
     steam_boot_concurrency: 0,
-    steam_boot_delay_seconds: 8,
+    steam_boot_delay_seconds: 3,
     chunked_x_display: true,
     chunked_x_display_base: 699,
     chunked_x_display_bots_per_display: 25,

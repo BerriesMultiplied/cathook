@@ -69,9 +69,9 @@ public:
       const std::optional<int> unlink_err = force_unlink_shared_object();
       if (unlink_err.has_value() && (unlink_err.value() == EACCES || unlink_err.value() == EPERM))
       {
-        throw std::runtime_error("stale shared memory could not be removed due to insufficient permissions. "
-                                 "The file /dev/shm" + std::string{shared_memory_name} + " is likely owned by another user (e.g. root). "
-                                 "Please remove it manually by running: sudo rm -f /dev/shm" + std::string{shared_memory_name});
+        throw std::runtime_error("stale IPC file could not be removed due to insufficient permissions. "
+                                 "The file " + std::string{ipc_socket_path} + " is likely owned by another user (e.g. root). "
+                                 "Please remove it manually by running: sudo rm -f " + std::string{ipc_socket_path});
       }
     }
 
@@ -83,13 +83,13 @@ public:
         const std::optional<int> unlink_err = force_unlink_shared_object();
         if (unlink_err.has_value() && (unlink_err.value() == EACCES || unlink_err.value() == EPERM))
         {
-          throw std::runtime_error("stale shared memory could not be removed due to insufficient permissions. "
-                                   "The file /dev/shm" + std::string{shared_memory_name} + " is likely owned by another user (e.g. root). "
-                                   "Please remove it manually by running: sudo rm -f /dev/shm" + std::string{shared_memory_name});
+          throw std::runtime_error("stale IPC file could not be removed due to insufficient permissions. "
+                                   "The file " + std::string{ipc_socket_path} + " is likely owned by another user (e.g. root). "
+                                   "Please remove it manually by running: sudo rm -f " + std::string{ipc_socket_path});
         }
       }
 
-      memory.fd_ = shm_open(shared_memory_name, O_CREAT | O_EXCL | O_RDWR, 0666);
+      memory.fd_ = ::open(ipc_socket_path, O_CREAT | O_EXCL | O_RDWR, 0666);
       if (memory.fd_ >= 0)
       {
         break;
@@ -97,24 +97,24 @@ public:
 
       if (errno != EEXIST)
       {
-        throw std::runtime_error(std::string{"shm_open create failed: "} + std::strerror(errno));
+        throw std::runtime_error(std::string{"open create failed: "} + std::strerror(errno));
       }
 
       const std::optional<int> unlink_err = force_unlink_shared_object();
       if (unlink_err.has_value() && (unlink_err.value() == EACCES || unlink_err.value() == EPERM))
       {
-        throw std::runtime_error("stale shared memory could not be removed due to insufficient permissions. "
-                                 "The file /dev/shm" + std::string{shared_memory_name} + " is likely owned by another user (e.g. root). "
-                                 "Please remove it manually by running: sudo rm -f /dev/shm" + std::string{shared_memory_name});
+        throw std::runtime_error("stale IPC file could not be removed due to insufficient permissions. "
+                                 "The file " + std::string{ipc_socket_path} + " is likely owned by another user (e.g. root). "
+                                 "Please remove it manually by running: sudo rm -f " + std::string{ipc_socket_path});
       }
       memory.fd_ = -1;
     }
 
     if (memory.fd_ < 0)
     {
-      throw std::runtime_error("shm_open create failed: stale shared memory could not be removed. "
-                               "The file /dev/shm" + std::string{shared_memory_name} + " is likely owned by another user (e.g. root). "
-                               "Please remove it manually by running: sudo rm -f /dev/shm" + std::string{shared_memory_name});
+      throw std::runtime_error("open create failed: stale IPC file could not be removed. "
+                               "The file " + std::string{ipc_socket_path} + " is likely owned by another user (e.g. root). "
+                               "Please remove it manually by running: sudo rm -f " + std::string{ipc_socket_path});
     }
 
     (void)fchmod(memory.fd_, 0666);
@@ -150,10 +150,10 @@ public:
   [[nodiscard]] static auto open_client() -> shared_memory
   {
     auto memory = shared_memory{};
-    memory.fd_ = shm_open(shared_memory_name, O_RDWR, 0666);
+    memory.fd_ = ::open(ipc_socket_path, O_RDWR, 0666);
     if (memory.fd_ < 0)
     {
-      throw std::runtime_error(std::string{"shm_open open failed: "} + std::strerror(errno));
+      throw std::runtime_error(std::string{"open failed: "} + std::strerror(errno));
     }
 
     memory.map();
@@ -184,7 +184,7 @@ public:
   {
     if (owner_)
     {
-      shm_unlink(shared_memory_name);
+      ::unlink(ipc_socket_path);
       owner_ = false;
     }
   }
@@ -213,8 +213,7 @@ public:
     }
 
     struct stat named_stat {};
-    const auto named_path = std::string{"/dev/shm"} + shared_memory_name;
-    if (stat(named_path.c_str(), &named_stat) != 0)
+    if (stat(ipc_socket_path, &named_stat) != 0)
     {
       return false;
     }
@@ -226,15 +225,7 @@ private:
   [[nodiscard]] static auto force_unlink_shared_object() -> std::optional<int>
   {
     auto last_err = std::optional<int>{};
-    if (shm_unlink(shared_memory_name) != 0)
-    {
-      if (errno != ENOENT)
-      {
-        last_err = errno;
-      }
-    }
-    const auto fs_path = std::string{"/dev/shm"} + shared_memory_name;
-    if (::unlink(fs_path.c_str()) != 0)
+    if (::unlink(ipc_socket_path) != 0)
     {
       if (errno != ENOENT)
       {

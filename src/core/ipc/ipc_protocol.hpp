@@ -20,7 +20,7 @@ V  o o  V  file: src/core/ipc/ipc_protocol.hpp
 namespace cat_ipc
 {
 
-constexpr const char* shared_memory_name = "/cathook_followbot_server";
+constexpr const char* ipc_socket_path = "/opt/cathook/ipc/cathook_followbot_server";
 constexpr std::uint32_t cathook_magic_number = 0x0deadca7u;
 constexpr std::uint32_t max_peers = 255;
 constexpr std::uint32_t command_ring_size = max_peers * 2;

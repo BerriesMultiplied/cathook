@@ -1128,13 +1128,47 @@ bool navbot_controller::should_block_pathing(Player* localplayer) const
     return true;
   }
 
+  bool waiting_for_players = false;
+  int round_state = 4; // Default to active round
+  bool in_setup = false;
+
+  if (entity_list != nullptr)
+  {
+    Entity* proxy = entity_list->get_game_rules_proxy();
+    if (proxy != nullptr)
+    {
+      static const int waiting_offset = tf2_netvars::find_offset("DT_TeamplayRoundBasedRulesProxy", { "m_bInWaitingForPlayers" });
+      static const int state_offset = tf2_netvars::find_offset("DT_TeamplayRoundBasedRulesProxy", { "m_iRoundState" });
+      static const int setup_offset = tf2_netvars::find_offset("DT_TeamplayRoundBasedRulesProxy", { "m_bInSetup" });
+
+      if (waiting_offset != 0)
+      {
+        waiting_for_players = *reinterpret_cast<bool*>(reinterpret_cast<std::uintptr_t>(proxy) + waiting_offset);
+      }
+      if (state_offset != 0)
+      {
+        round_state = *reinterpret_cast<int*>(reinterpret_cast<std::uintptr_t>(proxy) + state_offset);
+      }
+      if (setup_offset != 0)
+      {
+        in_setup = *reinterpret_cast<bool*>(reinterpret_cast<std::uintptr_t>(proxy) + setup_offset);
+      }
+    }
+  }
+
+  // GR_STATE_TEAM_WIN (5) or GR_STATE_STALEMATE (7) is round end/humiliation phase
+  if (round_state == 5 || round_state == 7)
+  {
+    return true; // Always block pathing when team won/lost
+  }
+
   auto map_name = mesh_.map_name().empty() ? loaded_map_name_ : mesh_.map_name();
   auto on_cp_or_pl_map = map_has_cp_or_pl_prefix(map_name);
   auto is_pipeline = map_name == "plr_pipeline";
-  auto warmup_active = warmup_active_;
+  auto warmup_active = waiting_for_players || round_state == 1 || round_state == 2 || round_state == 6 || !round_started_;
   auto local_team = localplayer->get_team();
-  auto setup_active = round_started_ && on_cp_or_pl_map && !is_pipeline && !setup_finished_;
-  auto match_fully_started = round_started_ && (!on_cp_or_pl_map || is_pipeline || setup_finished_);
+  auto setup_active = in_setup && on_cp_or_pl_map && !is_pipeline;
+  auto match_fully_started = (round_state == 4) && !in_setup;
 
   if (local_team == tf_team::BLU && setup_active)
   {
@@ -1298,6 +1332,7 @@ void navbot_controller::on_create_move(user_cmd* user_cmd)
 
   if (config.misc.movement.moonwalk
     && config.misc.movement.moonwalk_navbot_compat
+    && !localplayer->is_scoped()
     && follower_.has_path()
     && (user_cmd->buttons & IN_JUMP) == 0
     && !follower_.is_stuck(current_time))

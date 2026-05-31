@@ -67,7 +67,8 @@ constexpr std::uintptr_t inventory_item_count_offset = 0x70;
 constexpr std::uintptr_t inventory_item_stride = 0x150;
 constexpr std::uintptr_t inventory_item_id_high_offset = 0x58;
 constexpr std::uintptr_t inventory_item_id_low_offset = 0x5C;
-constexpr std::uintptr_t inventory_item_def_offset = 0x64;
+constexpr std::uintptr_t inventory_item_def_offset = 0x44;
+constexpr std::uintptr_t inventory_item_position_offset = 0x64;
 
 constexpr int inventory_manager_get_local_inventory_index = 24;
 constexpr int inventory_manager_update_inventory_equipped_state_index = 33;
@@ -378,12 +379,7 @@ void* get_local_inventory()
 
 std::uint32_t read_item_def_id(std::uint8_t* item)
 {
-  const auto raw_def = read_unaligned<std::uint32_t>(item + inventory_item_def_offset);
-  if ((raw_def & 0x40000000u) != 0)
-  {
-    return 0;
-  }
-  return raw_def & 0xFFFFu;
+  return read_unaligned<std::uint16_t>(item + inventory_item_def_offset);
 }
 
 std::uint64_t read_item_id(std::uint8_t* item)
@@ -475,9 +471,9 @@ void debug_dump_local_inventory(const int wanted_def)
   for (int index = 0; index < item_count; ++index)
   {
     auto* item = item_array + (static_cast<std::uintptr_t>(index) * inventory_item_stride);
-    const auto raw_def = read_unaligned<std::uint32_t>(item + inventory_item_def_offset);
-    const auto def = read_item_def_id(item);
-    if ((raw_def & 0x40000000u) != 0)
+    const std::uint32_t raw_position = read_unaligned<std::uint32_t>(item + inventory_item_position_offset);
+    const std::uint32_t def = read_item_def_id(item);
+    if ((raw_position & 0x40000000u) != 0)
     {
       ++flagged_count;
     }
@@ -485,10 +481,10 @@ void debug_dump_local_inventory(const int wanted_def)
     {
       max_def = def;
     }
-    if ((static_cast<int>(def) == wanted_def || (raw_def & 0xFFFFu) == static_cast<std::uint32_t>(wanted_def)) && found_at < 0)
+    if ((static_cast<int>(def) == wanted_def || (raw_position & 0xFFFFu) == static_cast<std::uint32_t>(wanted_def)) && found_at < 0)
     {
       found_at = index;
-      found_raw = raw_def;
+      found_raw = raw_position;
     }
     defs_line += std::to_string(def);
     defs_line += ' ';

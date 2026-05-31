@@ -1281,6 +1281,29 @@ void automation_controller::on_game_event(GameEvent* event)
 
 bool automation_controller::is_warmup_active() const
 {
+  if (entity_list != nullptr)
+  {
+    Entity* proxy = entity_list->get_game_rules_proxy();
+    if (proxy != nullptr)
+    {
+      static const int waiting_offset = tf2_netvars::find_offset("DT_TeamplayRoundBasedRulesProxy", { "m_bInWaitingForPlayers" });
+      static const int state_offset = tf2_netvars::find_offset("DT_TeamplayRoundBasedRulesProxy", { "m_iRoundState" });
+      
+      bool waiting = false;
+      int state = 0;
+      
+      if (waiting_offset != 0)
+      {
+        waiting = *reinterpret_cast<bool*>(reinterpret_cast<std::uintptr_t>(proxy) + waiting_offset);
+      }
+      if (state_offset != 0)
+      {
+        state = *reinterpret_cast<int*>(reinterpret_cast<std::uintptr_t>(proxy) + state_offset);
+      }
+      
+      return waiting || state == 1 || state == 2 || state == 6;
+    }
+  }
   return warmup_active_;
 }
 
@@ -1373,7 +1396,7 @@ void automation_controller::run_auto_class_select()
     return;
   }
 
-  if (config.misc.automation.auto_class_dont_join_during_warmup && warmup_active_)
+  if (config.misc.automation.auto_class_dont_join_during_warmup && is_warmup_active())
   {
     return;
   }

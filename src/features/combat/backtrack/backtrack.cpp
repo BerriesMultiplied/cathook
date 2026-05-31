@@ -23,6 +23,8 @@
 #include "games/tf2/sdk/interfaces/global_vars.hpp"
 #include "games/tf2/sdk/interfaces/model_info.hpp"
 
+#include "core/hooks/cl_read_packets.hpp"
+
 bool write_to_table(void** vtable, int index, void* func);
 
 namespace backtrack
@@ -170,7 +172,7 @@ send_datagram_fn g_send_datagram_original = nullptr;
   timing.fake_interp = config.backtrack.fake_interp
     ? std::clamp(timing.window, local_prediction_interp_time(), timing.max_unlag)
     : local_prediction_interp_time();
-  timing.server_tick = global_vars->tickcount;
+  timing.server_tick = network_fix::adjusted_tick_count(global_vars->tickcount);
 
   if (channel != nullptr) {
     timing.outgoing_latency = std::clamp(channel->get_latency(flow_outgoing), 0.0f, timing.max_unlag);
@@ -213,7 +215,7 @@ send_datagram_fn g_send_datagram_original = nullptr;
   }
 
   if (global_vars != nullptr) {
-    const float age = global_vars->curtime - record.receive_time;
+    const float age = network_fix::adjusted_curtime(global_vars->curtime) - record.receive_time;
     if (!std::isfinite(age) || age < -tick_interval() || age > timing.max_unlag + 0.25f) {
       return false;
     }
@@ -348,7 +350,7 @@ bool add_record_hitbox(backtrack_record* record,
   record->player = player;
   record->ent_index = ent_index;
   record->sim_time = player->get_simulation_time();
-  record->receive_time = global_vars->curtime;
+  record->receive_time = network_fix::adjusted_curtime(global_vars->curtime);
   record->origin = player->get_collision_origin();
   record->mins = player->get_collideable_mins();
   record->maxs = player->get_collideable_maxs();
