@@ -43,7 +43,8 @@ enum class section_kind
   keybinds,
   spectators,
   aimbot_debug,
-  crit_hack
+  crit_hack,
+  nospread
 };
 
 struct section_spec
@@ -87,6 +88,15 @@ inline ImU32 spectator_name_color(const spectator_list::spectator_entry& spectat
   return ImGui::GetColorU32(cat_menu::k_text);
 }
 
+inline ImU32 indicator_config_color(const RGBA_float& color)
+{
+  const int r = static_cast<int>(std::clamp(color.r, 0.0f, 1.0f) * 255.0f);
+  const int g = static_cast<int>(std::clamp(color.g, 0.0f, 1.0f) * 255.0f);
+  const int b = static_cast<int>(std::clamp(color.b, 0.0f, 1.0f) * 255.0f);
+  const int a = static_cast<int>(std::clamp(color.a, 0.0f, 1.0f) * 255.0f);
+  return IM_COL32(r, g, b, a);
+}
+
 inline void draw_compact_meter(
   ImDrawList* draw_list,
   const ImVec2 position,
@@ -110,11 +120,13 @@ inline void draw_compact_meter(
   const float clamped_progress = std::clamp(progress, 0.0f, 1.0f);
   const float fill_width = size.x * clamped_progress;
   if (fill_width > 0.0f) {
-    draw_list->AddRectFilled(
+    draw_list->AddRectFilledMultiColor(
       ImVec2(box_position.x, box_position.y + text_height),
       ImVec2(box_position.x + fill_width, box_position.y + size.y),
+      IM_COL32(0, 0, 0, 255),
       bar_color,
-      0.0f);
+      bar_color,
+      IM_COL32(0, 0, 0, 255));
   }
 
   draw_list->AddText(
@@ -170,7 +182,7 @@ inline auto collect_spectator_rows(Player** target_player_out) -> std::vector<sp
 inline auto build_sections() -> std::vector<section_spec>
 {
   std::vector<section_spec> sections{};
-  sections.reserve(4);
+  sections.reserve(6);
 
   if (has_indicator(Visuals::Indicators::crit_hack) && (menu_focused || config.crithack.enabled)) {
     sections.push_back({
@@ -187,6 +199,15 @@ inline auto build_sections() -> std::vector<section_spec>
       .width = 180.0f,
       .height = 29.0f,
       .position = ImVec2(config.visuals.indicators.legacy_ticks_x, config.visuals.indicators.legacy_ticks_y)
+    });
+  }
+
+  if (has_indicator(Visuals::Indicators::nospread) && (menu_focused || config.aimbot.spread_compensation)) {
+    sections.push_back({
+      .kind = section_kind::nospread,
+      .width = 180.0f,
+      .height = 29.0f,
+      .position = ImVec2(config.visuals.indicators.nospread_x, config.visuals.indicators.nospread_y)
     });
   }
 
@@ -241,6 +262,8 @@ inline auto section_drag_position(section_kind kind) -> section_position_refs
   switch (kind) {
   case section_kind::crit_hack:
     return { .x = &config.visuals.indicators.crit_hack_x, .y = &config.visuals.indicators.crit_hack_y };
+  case section_kind::nospread:
+    return { .x = &config.visuals.indicators.nospread_x, .y = &config.visuals.indicators.nospread_y };
   case section_kind::tickbase:
     return { .x = &config.visuals.indicators.legacy_ticks_x, .y = &config.visuals.indicators.legacy_ticks_y };
   case section_kind::keybinds:
@@ -458,7 +481,7 @@ inline auto tickbase_indicator_color(const tickbase::indicator_state& state) -> 
   }
 
   if (state.shifting || state.doubletap || state.warp) {
-    return ImGui::GetColorU32(cat_menu::k_accent);
+    return indicator_config_color(config.visuals.indicators.tickbase_bar_color);
   }
 
   if (state.recharging) {
@@ -466,7 +489,7 @@ inline auto tickbase_indicator_color(const tickbase::indicator_state& state) -> 
   }
 
   if (state.available_shift_ticks > 0) {
-    return IM_COL32(100, 220, 130, 255);
+    return indicator_config_color(config.visuals.indicators.tickbase_bar_color);
   }
 
   return ImGui::GetColorU32(cat_menu::k_text_muted);
@@ -511,13 +534,22 @@ inline void draw_tickbase_section(ImDrawList* draw_list, const ImVec2 position)
 
 inline void draw_crit_hack_section(ImDrawList* draw_list, const ImVec2 position)
 {
-  auto* local = entity_list->get_localplayer();
-  if (local == nullptr || !local->is_alive() || local->is_dormant()) {
+  const ImU32 ready_color = indicator_config_color(config.visuals.indicators.crit_hack_bar_color);
+
+  if (entity_list == nullptr) {
+    draw_compact_meter(draw_list, position, 180.0f, "Crits", "WAIT", 0.0f, ImGui::GetColorU32(cat_menu::k_text_muted));
     return;
   }
 
-  auto* weapon = local->get_weapon();
+  Player* local = entity_list->get_localplayer();
+  if (local == nullptr || !local->is_alive() || local->is_dormant()) {
+    draw_compact_meter(draw_list, position, 180.0f, "Crits", "WAIT", 0.0f, ImGui::GetColorU32(cat_menu::k_text_muted));
+    return;
+  }
+
+  Weapon* weapon = local->get_weapon();
   if (weapon == nullptr || !crit_hack::weapon_can_crit(weapon, true)) {
+    draw_compact_meter(draw_list, position, 180.0f, "Crits", "NONE", 0.0f, ImGui::GetColorU32(cat_menu::k_text_muted));
     return;
   }
 
@@ -525,57 +557,57 @@ inline void draw_crit_hack_section(ImDrawList* draw_list, const ImVec2 position)
   std::string left_text = "Calculating";
   std::string right_text = "";
   float progress = 0.0f;
-  ImU32 bar_color = IM_COL32(100, 220, 130, 255); // default ready green
+  ImU32 bar_color = ready_color;
 
   if (!crit_hack::weapon_can_crit(weapon)) {
     left_text = "Cannot crit";
     right_text = "DISABLED";
-    bar_color = IM_COL32(200, 40, 40, 255); // dark red
+    bar_color = IM_COL32(200, 40, 40, 255);
     progress = 1.0f;
   } else {
     if (stats.damage > 0) {
       if (local->is_crit_boosted()) {
         left_text = "Crit Boosted";
         right_text = "READY";
-        bar_color = IM_COL32(100, 255, 255, 255); // cyan
+        bar_color = ready_color;
         progress = 1.0f;
       } else if (weapon->crit_time() > global_vars->curtime) {
-        const float flTime = weapon->crit_time() - global_vars->curtime;
+        const float crit_time_left = weapon->crit_time() - global_vars->curtime;
         left_text = "Crits: " + std::to_string(std::max(0, stats.available)) + " / " + std::to_string(stats.potential);
         right_text = "STREAMING";
-        bar_color = IM_COL32(100, 255, 255, 255);
-        progress = flTime / 2.0f;
+        bar_color = ready_color;
+        progress = crit_time_left / 2.0f;
       } else if (!stats.banned || weapon->is_melee()) {
         left_text = "Crits: " + std::to_string(std::max(0, stats.available)) + " / " + std::to_string(stats.potential);
         
         if (weapon->is_rapid_fire() && (local->get_tickbase() * 0.015f) < weapon->last_rapid_fire_crit_check_time() + 1.0f) {
-          const float flTime = weapon->last_rapid_fire_crit_check_time() + 1.0f - (local->get_tickbase() * 0.015f);
-          if (flTime > 0.0001f) {
+          const float wait_time = weapon->last_rapid_fire_crit_check_time() + 1.0f - (local->get_tickbase() * 0.015f);
+          if (wait_time > 0.0001f) {
             char wait_buf[32];
-            std::snprintf(wait_buf, sizeof(wait_buf), "WAIT %.2fs", flTime);
+            std::snprintf(wait_buf, sizeof(wait_buf), "WAIT %.2fs", wait_time);
             right_text = wait_buf;
-            bar_color = IM_COL32(255, 150, 0, 255); // orange
+            bar_color = IM_COL32(255, 150, 0, 255);
           } else {
             right_text = "STREAMING";
-            bar_color = IM_COL32(100, 255, 255, 255);
+            bar_color = ready_color;
           }
-          progress = flTime;
+          progress = wait_time;
         } else if (stats.available >= stats.potential) {
           right_text = "READY";
-          bar_color = IM_COL32(100, 220, 130, 255);
+          bar_color = ready_color;
           progress = 1.0f;
         } else {
-          float currentBucket = weapon->crit_token_bucket();
-          int damageNeeded = static_cast<int>(std::ceil(stats.cost - currentBucket));
-          right_text = "DMG: " + std::to_string(std::max(0, damageNeeded));
-          bar_color = stats.available > 0 ? IM_COL32(100, 220, 130, 255) : IM_COL32(200, 40, 40, 255);
+          const float current_bucket = weapon->crit_token_bucket();
+          const int damage_needed = static_cast<int>(std::ceil(stats.cost - current_bucket));
+          right_text = "DMG: " + std::to_string(std::max(0, damage_needed));
+          bar_color = stats.available > 0 ? ready_color : IM_COL32(200, 40, 40, 255);
           
           static Convar* cap_cvar = nullptr;
           if (cap_cvar == nullptr && convar_system != nullptr) {
             cap_cvar = convar_system->find_var("tf_weapon_criticals_bucket_cap");
           }
-          float cap = cap_cvar ? cap_cvar->get_float() : 1000.0f;
-          progress = currentBucket / cap;
+          const float cap = cap_cvar ? cap_cvar->get_float() : 1000.0f;
+          progress = current_bucket / cap;
         }
       } else {
         left_text = "DMG: " + std::to_string(static_cast<int>(std::ceil(stats.damage_till_flip)));
@@ -587,6 +619,42 @@ inline void draw_crit_hack_section(ImDrawList* draw_list, const ImVec2 position)
   }
 
   draw_compact_meter(draw_list, position, 180.0f, left_text, right_text, progress, bar_color);
+}
+
+inline void draw_nospread_section(ImDrawList* draw_list, const ImVec2 position)
+{
+  const ImU32 ready_color = indicator_config_color(config.visuals.indicators.tickbase_bar_color);
+  const ImU32 muted_color = ImGui::GetColorU32(cat_menu::k_text_muted);
+
+  if (!config.aimbot.spread_compensation) {
+    draw_compact_meter(draw_list, position, 180.0f, "Nospread", "OFF", 0.0f, muted_color);
+    return;
+  }
+
+  if (entity_list == nullptr) {
+    draw_compact_meter(draw_list, position, 180.0f, "Nospread", "WAIT", 0.0f, muted_color);
+    return;
+  }
+
+  Player* local = entity_list->get_localplayer();
+  if (local == nullptr || !local->is_alive() || local->is_dormant()) {
+    draw_compact_meter(draw_list, position, 180.0f, "Nospread", "WAIT", 0.0f, muted_color);
+    return;
+  }
+
+  Weapon* weapon = local->get_weapon();
+  if (weapon == nullptr) {
+    draw_compact_meter(draw_list, position, 180.0f, "Nospread", "WAIT", 0.0f, muted_color);
+    return;
+  }
+
+  const float spread = weapon->get_hitscan_spread();
+  if (weapon->is_melee() || spread <= 0.00001f) {
+    draw_compact_meter(draw_list, position, 180.0f, "Nospread", "NONE", 0.0f, muted_color);
+    return;
+  }
+
+  draw_compact_meter(draw_list, position, 180.0f, "Nospread", "READY", 1.0f, ready_color);
 }
 
 inline void draw_keybind_section(ImDrawList* draw_list, const ImVec2 position)
@@ -707,6 +775,9 @@ static void draw_game_indicators()
     switch (section.kind) {
     case section_kind::crit_hack:
       draw_crit_hack_section(draw_list, section.position);
+      break;
+    case section_kind::nospread:
+      draw_nospread_section(draw_list, section.position);
       break;
     case section_kind::tickbase:
       draw_tickbase_section(draw_list, section.position);

@@ -410,10 +410,11 @@ struct Visuals {
       spectators = 1u << 2,
       keybinds = 1u << 3,
       tickbase = 1u << 4,
-      crit_hack = 1u << 5
+      crit_hack = 1u << 5,
+      nospread = 1u << 6
     };
 
-    uint32_t enabled_mask = spectators | keybinds | tickbase;
+    uint32_t enabled_mask = spectators | keybinds | tickbase | crit_hack | nospread;
     float x = 24.0f;
     float y = 140.0f;
     float legacy_ticks_x = 24.0f;
@@ -422,6 +423,10 @@ struct Visuals {
     float keybinds_y = 232.0f;
     float crit_hack_x = 24.0f;
     float crit_hack_y = 320.0f;
+    float nospread_x = 24.0f;
+    float nospread_y = 356.0f;
+    RGBA_float tickbase_bar_color = {.r = 0.39215687f, .g = 0.8627451f, .b = 0.50980395f, .a = 1.0f};
+    RGBA_float crit_hack_bar_color = {.r = 0.39215687f, .g = 0.8627451f, .b = 0.50980395f, .a = 1.0f};
   } indicators;
 
   struct Removals {

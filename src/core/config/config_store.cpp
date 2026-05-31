@@ -326,6 +326,12 @@ void config_store::import_config(const Config& config)
     set_float("visuals.indicators.ticks_y", config.visuals.indicators.legacy_ticks_y);
     set_float("visuals.indicators.keybinds_x", config.visuals.indicators.keybinds_x);
     set_float("visuals.indicators.keybinds_y", config.visuals.indicators.keybinds_y);
+    set_float("visuals.indicators.crit_hack_x", config.visuals.indicators.crit_hack_x);
+    set_float("visuals.indicators.crit_hack_y", config.visuals.indicators.crit_hack_y);
+    set_float("visuals.indicators.nospread_x", config.visuals.indicators.nospread_x);
+    set_float("visuals.indicators.nospread_y", config.visuals.indicators.nospread_y);
+    set_color("visuals.indicators.tickbase_bar_color", config.visuals.indicators.tickbase_bar_color);
+    set_color("visuals.indicators.crit_hack_bar_color", config.visuals.indicators.crit_hack_bar_color);
     set_bool("visuals.spectator_list.enabled", spectator_indicator_enabled);
     set_bool("visuals.spectator_list.show_target", config.visuals.spectator_list.show_target);
     set_bool("visuals.spectator_list.show_modes", config.visuals.spectator_list.show_modes);
@@ -731,6 +737,16 @@ void config_store::export_config(Config& config) const
     config.visuals.indicators.legacy_ticks_y = get_float("visuals.indicators.ticks_y", get_float("misc.exploits.tickbase_indicator_y", config.visuals.indicators.y));
     config.visuals.indicators.keybinds_x = get_float("visuals.indicators.keybinds_x", get_float("misc.exploits.keybind_indicator_x", config.visuals.indicators.x));
     config.visuals.indicators.keybinds_y = get_float("visuals.indicators.keybinds_y", get_float("misc.exploits.keybind_indicator_y", config.visuals.indicators.y + 92.0f));
+    config.visuals.indicators.crit_hack_x = get_float("visuals.indicators.crit_hack_x", config.visuals.indicators.crit_hack_x);
+    config.visuals.indicators.crit_hack_y = get_float("visuals.indicators.crit_hack_y", config.visuals.indicators.crit_hack_y);
+    config.visuals.indicators.nospread_x = get_float("visuals.indicators.nospread_x", config.visuals.indicators.nospread_x);
+    config.visuals.indicators.nospread_y = get_float("visuals.indicators.nospread_y", config.visuals.indicators.nospread_y);
+    config.visuals.indicators.tickbase_bar_color = get_color(
+        "visuals.indicators.tickbase_bar_color",
+        config.visuals.indicators.tickbase_bar_color);
+    config.visuals.indicators.crit_hack_bar_color = get_color(
+        "visuals.indicators.crit_hack_bar_color",
+        config.visuals.indicators.crit_hack_bar_color);
     config.visuals.spectator_list.enabled = (config.visuals.indicators.enabled_mask & Visuals::Indicators::spectators) != 0;
     config.visuals.spectator_list.show_target = get_bool("visuals.spectator_list.show_target", config.visuals.spectator_list.show_target);
     config.visuals.spectator_list.show_modes = get_bool("visuals.spectator_list.show_modes", config.visuals.spectator_list.show_modes);

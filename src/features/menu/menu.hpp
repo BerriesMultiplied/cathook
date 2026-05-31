@@ -1738,11 +1738,15 @@ static void draw_visuals_world_content() {
 static void draw_visuals_ui_content() {
   const char* indicator_items[] = {
     "Tickbase",
+    "Crit hack",
+    "Nospread",
     "Spectators",
     "Keybinds"
   };
   const uint32_t indicator_bits[] = {
     Visuals::Indicators::tickbase,
+    Visuals::Indicators::crit_hack,
+    Visuals::Indicators::nospread,
     Visuals::Indicators::spectators,
     Visuals::Indicators::keybinds
   };
@@ -1751,8 +1755,10 @@ static void draw_visuals_ui_content() {
   cat_menu::flow_panel("UI", 0, 144.0f, [&]() {
     cat_menu::checkbox("Disable friend checks", &config.debug.disable_friend_checks);
   });
-  cat_menu::flow_panel("Indicators", 1, 176.0f, [&]() {
+  cat_menu::flow_panel("Indicators", 1, 228.0f, [&]() {
     cat_menu::multi_select_combo("Visible widgets", &config.visuals.indicators.enabled_mask, indicator_items, indicator_bits, IM_ARRAYSIZE(indicator_items));
+    cat_menu::color_picker("Tickbase bar", config.visuals.indicators.tickbase_bar_color.to_arr());
+    cat_menu::color_picker("Crit hack bar", config.visuals.indicators.crit_hack_bar_color.to_arr());
     cat_menu::checkbox("Show spectator target", &config.visuals.spectator_list.show_target);
     cat_menu::checkbox("Show spectator modes", &config.visuals.spectator_list.show_modes);
     cat_menu::checkbox("Highlight firstperson", &config.visuals.spectator_list.highlight_firstperson);
