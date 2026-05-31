@@ -438,7 +438,7 @@ std::optional<std::uint64_t> get_first_item_id_of_item_def(const int item_def_id
   return item_ids.front();
 }
 
-void debug_dump_local_inventory()
+void debug_dump_local_inventory(const int wanted_def)
 {
   if (!config.misc.automation.auto_item_debug)
   {
@@ -459,21 +459,51 @@ void debug_dump_local_inventory()
 
   auto* item_array = read_unaligned<std::uint8_t*>(inventory + inventory_item_array_offset);
   const int item_count = read_unaligned<int>(inventory + inventory_item_count_offset);
-  debug_log("inventory dump: inv=%p array=%p count=%d\n", inventory, item_array, item_count);
-  if (item_array == nullptr || item_count <= 0)
+  debug_log("inventory dump: inv=%p array=%p count=%d (looking for def=%d)\n",
+    inventory, item_array, item_count, wanted_def);
+  if (item_array == nullptr || item_count <= 0 || item_count > 20000)
   {
     return;
   }
 
-  const int sample = std::min(item_count, 24);
-  for (int index = 0; index < sample; ++index)
+  int found_at = -1;
+  std::uint32_t found_raw = 0;
+  std::uint32_t max_def = 0;
+  int flagged_count = 0;
+  std::string defs_line{};
+  defs_line.reserve(static_cast<std::size_t>(item_count) * 5u);
+  for (int index = 0; index < item_count; ++index)
   {
     auto* item = item_array + (static_cast<std::uintptr_t>(index) * inventory_item_stride);
-    debug_log("  [%d] def=%u id=%llu\n",
-      index,
-      read_item_def_id(item),
-      static_cast<unsigned long long>(read_item_id(item)));
+    const auto raw_def = read_unaligned<std::uint32_t>(item + inventory_item_def_offset);
+    const auto def = read_item_def_id(item);
+    if ((raw_def & 0x40000000u) != 0)
+    {
+      ++flagged_count;
+    }
+    if (def > max_def)
+    {
+      max_def = def;
+    }
+    if ((static_cast<int>(def) == wanted_def || (raw_def & 0xFFFFu) == static_cast<std::uint32_t>(wanted_def)) && found_at < 0)
+    {
+      found_at = index;
+      found_raw = raw_def;
+    }
+    defs_line += std::to_string(def);
+    defs_line += ' ';
   }
+
+  debug_log("inventory dump: max_def=%u flagged(0x40000000)=%d\n", max_def, flagged_count);
+  if (found_at >= 0)
+  {
+    debug_log("inventory dump: def=%d FOUND at index %d raw_dword=0x%08x\n", wanted_def, found_at, found_raw);
+  }
+  else
+  {
+    debug_log("inventory dump: def=%d NOT present in the %d loaded items\n", wanted_def, item_count);
+  }
+  debug_log("inventory dump defs: %s\n", defs_line.c_str());
 }
 
 bool has_item_def(const int item_def_id)
@@ -739,7 +769,7 @@ bool equip_item(const int class_id, const int slot, const int item_def_id, const
   if (!item_id)
   {
     debug_log("no owned item id for def=%d (class=%d slot=%d)\n", item_def_id, class_id, loadout_slot);
-    debug_dump_local_inventory();
+    debug_dump_local_inventory(item_def_id);
     if (get_missing)
     {
       get_item(item_def_id, allow_rent);

@@ -1593,9 +1593,10 @@ static void draw_visual_groups_content() {
 
   cat_menu::begin_flow_layout("visual_groups_layout", 3);
   cat_menu::flow_panel("Groups", 0, 380.0f, [&]() {
+    const float content_width = ImMax(1.0f, ImGui::GetContentRegionAvail().x - 10.0f);
     cat_menu::input_text("New group", &new_group_name);
     const float button_spacing = 6.0f;
-    const float two_button_width = ImMax(1.0f, (ImGui::GetContentRegionAvail().x - button_spacing) * 0.5f);
+    const float two_button_width = ImMax(1.0f, (content_width - button_spacing) * 0.5f);
     if (cat_menu::accent_button("Create", ImVec2(two_button_width, 22.0f)) &&
         config.visual_groups.groups.size() < visual_group_config::max_groups) {
       visual_group group{};
@@ -1615,7 +1616,7 @@ static void draw_visual_groups_content() {
       selected_group = static_cast<int>(config.visual_groups.groups.size()) - 1;
       config.visual_groups.active_group_mask |= group_active_bit(selected_group);
     }
-    const float three_button_width = ImMax(1.0f, (ImGui::GetContentRegionAvail().x - (button_spacing * 2.0f)) / 3.0f);
+    const float three_button_width = ImMax(1.0f, (content_width - (button_spacing * 2.0f)) / 3.0f);
     if (cat_menu::accent_button("Delete", ImVec2(three_button_width, 22.0f), true)) {
       delete_visual_group(selected_group, &selected_group);
     }
@@ -1630,12 +1631,12 @@ static void draw_visual_groups_content() {
       ++selected_group;
     }
     if (active_count > 0) {
-      ImGui::PushItemWidth(-1.0f);
+      ImGui::PushItemWidth(content_width);
       cat_menu::multi_select_combo("Active", &config.visual_groups.active_group_mask, active_names.data(), active_bits.data(), active_count);
       ImGui::PopItemWidth();
     }
     const float list_height = ImMax(1.0f, ImGui::GetContentRegionAvail().y);
-    ImGui::BeginChild("##visual_group_list", ImVec2(0.0f, list_height), true);
+    ImGui::BeginChild("##visual_group_list", ImVec2(content_width, list_height), true);
     for (int index = 0; index < static_cast<int>(config.visual_groups.groups.size()); ++index) {
       ImGui::PushID(index);
       const bool active = (config.visual_groups.active_group_mask & group_active_bit(index)) != 0;
