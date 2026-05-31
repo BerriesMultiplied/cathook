@@ -235,8 +235,13 @@ fix_botpanel_executables() {
         run_as_root chmod 0755 "$executable_path" 2>/dev/null || true
     done
 
-    run_as_root find "$script_dir" -xdev -type f \( \
+    run_as_root find "$repo_root" -xdev -type f \( \
         -name "*.sh" -o \
+        -name "build.sh" -o \
+        -name "debug.sh" -o \
+        -name "inject.sh" -o \
+        -name "install-deps" -o \
+        -name "setup.sh" -o \
         -name "start" -o \
         -name "start.legacy" -o \
         -name "stop" -o \
@@ -247,7 +252,7 @@ fix_botpanel_executables() {
         -name "install-instances" -o \
         -name "remove-legacy" -o \
         -name "uninstall" -o \
-        -path "$script_dir/catbot-ipc-web-panel-main/scripts/ns-*" \
+        -path "*/scripts/ns-*" \
     \) -exec chmod 0755 {} + 2>/dev/null || true
 }
 
