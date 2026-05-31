@@ -395,8 +395,14 @@ goal_candidate choose_control_point_goal(const navbot_mesh& mesh, Player* localp
     }
 
     auto point_count = objective->get_num_control_points();
+    const bool playing_mini_rounds = objective->is_playing_mini_rounds();
     for (int point_index = 0; point_index < point_count; ++point_index)
     {
+      if (playing_mini_rounds && !objective->is_in_mini_round(point_index))
+      {
+        continue;
+      }
+
       if (objective->is_locked(point_index))
       {
         continue;
@@ -482,7 +488,44 @@ goal_candidate choose_control_point_goal(const navbot_mesh& mesh, Player* localp
 
   if (best.score < 0.0f)
   {
-    best = choose_pickup_area_goal(mesh, localplayer, mesh.cache().control_point_areas, goal_type::capture_objective, 65.0f);
+    std::vector<nav_area_id> active_cp_areas;
+    for (auto* entity : entity_cache[class_id::OBJECTIVE_RESOURCE])
+    {
+      auto* objective = reinterpret_cast<TeamObjectiveResource*>(entity);
+      if (objective == nullptr)
+      {
+        continue;
+      }
+
+      auto point_count = objective->get_num_control_points();
+      const bool playing_mini_rounds = objective->is_playing_mini_rounds();
+      for (int point_index = 0; point_index < point_count; ++point_index)
+      {
+        if (playing_mini_rounds && !objective->is_in_mini_round(point_index))
+        {
+          continue;
+        }
+
+        // Skip fully locked / uncapturable points that neither team can capture
+        if (!objective->can_team_capture(point_index, tf_team::RED) &&
+            !objective->can_team_capture(point_index, tf_team::BLU))
+        {
+          continue;
+        }
+
+        auto origin = objective->get_origin(point_index);
+        auto area_id = mesh.find_closest_area(origin);
+        if (area_id.valid())
+        {
+          active_cp_areas.push_back(area_id);
+        }
+      }
+    }
+
+    if (!active_cp_areas.empty())
+    {
+      best = choose_pickup_area_goal(mesh, localplayer, active_cp_areas, goal_type::capture_objective, 65.0f);
+    }
   }
 
   return best;
@@ -1212,7 +1255,50 @@ goal_candidate navbot_goals::choose_roam_goal(const navbot_mesh& mesh, Player* l
     append_candidates(mesh.cache().spawn_exit_areas, false);
   }
 
-  append_candidates(mesh.cache().control_point_areas, true);
+  std::vector<nav_area_id> active_cp_areas;
+  bool has_active_cp_areas = false;
+  for (auto* entity : entity_cache[class_id::OBJECTIVE_RESOURCE])
+  {
+    auto* objective = reinterpret_cast<TeamObjectiveResource*>(entity);
+    if (objective == nullptr)
+    {
+      continue;
+    }
+
+    auto point_count = objective->get_num_control_points();
+    const bool playing_mini_rounds = objective->is_playing_mini_rounds();
+    for (int point_index = 0; point_index < point_count; ++point_index)
+    {
+      if (playing_mini_rounds && !objective->is_in_mini_round(point_index))
+      {
+        continue;
+      }
+
+      // Skip fully locked / uncapturable points that neither team can capture
+      if (!objective->can_team_capture(point_index, tf_team::RED) &&
+          !objective->can_team_capture(point_index, tf_team::BLU))
+      {
+        continue;
+      }
+
+      auto origin = objective->get_origin(point_index);
+      auto area_id = mesh.find_closest_area(origin);
+      if (area_id.valid())
+      {
+        active_cp_areas.push_back(area_id);
+        has_active_cp_areas = true;
+      }
+    }
+  }
+
+  if (has_active_cp_areas)
+  {
+    append_candidates(active_cp_areas, true);
+  }
+  else
+  {
+    append_candidates(mesh.cache().control_point_areas, true);
+  }
   append_candidates(mesh.cache().sniper_spot_areas, true);
 
   if (candidate_ids.empty())
