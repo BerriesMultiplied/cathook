@@ -85,15 +85,6 @@ async function load_config() {
   element('steamid32_output').textContent = config.outputs?.steamid32 || '';
   element('goodaccounts_output').textContent = config.outputs?.goodaccounts || '';
   
-  const shared_fields = [
-    'accounts', 'proxies', 'max_parallel_accounts', 'max_login_retries', 
-    'login_timeout_seconds', 'loop_timeout', 'loopupdateprofiles'
-  ];
-  shared_fields.forEach(f => {
-      const el = element(f);
-      if (el) el.dispatchEvent(new Event('change'));
-  });
-
   document.querySelectorAll('textarea').forEach(autoResizeTextarea);
   
   console.info('[INFO] load_config: Config applied to UI successfully.');
@@ -253,31 +244,6 @@ function setup_textareas() {
   });
 }
 
-function setup_shared_fields_sync() {
-  const shared_fields = [
-    'accounts', 'proxies', 'max_parallel_accounts', 'max_login_retries', 
-    'login_timeout_seconds', 'loop_timeout', 'loopupdateprofiles'
-  ];
-
-  shared_fields.forEach(f => {
-    const mainEl = element(f);
-    const checkerEl = element(`checker_${f}`);
-    if (mainEl && checkerEl) {
-      const sync = (source, target) => {
-        if (target.type === 'checkbox') target.checked = source.checked;
-        else target.value = source.value;
-        if (target.tagName === 'TEXTAREA') autoResizeTextarea(target);
-      };
-
-      mainEl.addEventListener('input', () => sync(mainEl, checkerEl));
-      mainEl.addEventListener('change', () => sync(mainEl, checkerEl));
-      
-      checkerEl.addEventListener('input', () => sync(checkerEl, mainEl));
-      checkerEl.addEventListener('change', () => sync(checkerEl, mainEl));
-    }
-  });
-}
-
 console.info('[INFO] Application initializing...');
 element('start_button').addEventListener('click', () => {
   console.debug('[DEBUG] Start button clicked');
@@ -316,7 +282,6 @@ element('save_button').addEventListener('click', () => {
 });
 setup_tabs();
 setup_textareas();
-setup_shared_fields_sync();
 load_config().then(() => {
   console.info('[INFO] Initial config loaded. Starting status poller...');
   return poll_status();

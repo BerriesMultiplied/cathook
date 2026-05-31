@@ -24,23 +24,23 @@ def load_text_if_exists(path):
 
 def apply_cli_overrides(settings, args):
     overrides = {}
-    if getattr(args, 'parallel', None) is not None:
+    if args.parallel is not None:
         overrides['max_parallel_accounts'] = args.parallel
-    if getattr(args, 'theme', None) is not None:
+    if args.theme is not None:
         overrides['default_profile_theme'] = args.theme
-    if getattr(args, 'nickname', None) is not None:
+    if args.nickname is not None:
         overrides['default_nickname'] = args.nickname
-    if getattr(args, 'summary', None) is not None:
+    if args.summary is not None:
         overrides['default_profile_summary'] = args.summary
-    if getattr(args, 'custom_url', None) is not None:
+    if args.custom_url is not None:
         overrides['default_custom_url'] = args.custom_url
-    if getattr(args, 'avatar', None) is not None:
+    if args.avatar is not None:
         overrides['profile_image_path'] = args.avatar
-    if getattr(args, 'rollids', None) is not None:
+    if args.rollids is not None:
         overrides['use_rollids'] = True
-    if getattr(args, 'loop', False):
+    if args.loop:
         overrides['loopupdateprofiles'] = True
-    if getattr(args, 'loop_timeout', None) is not None:
+    if args.loop_timeout is not None:
         overrides['loop_timeout'] = args.loop_timeout
 
     disabled_map = {
@@ -54,7 +54,7 @@ def apply_cli_overrides(settings, args):
         'no_steamid32': 'enable_gatherid32'
     }
     for arg_name, setting_name in disabled_map.items():
-        if getattr(args, arg_name, False):
+        if getattr(args, arg_name):
             overrides[setting_name] = False
 
     raw = settings.__dict__.copy()
@@ -99,17 +99,10 @@ def command_profile_update(args):
 def command_account_check(args):
     settings_path = Path(args.settings)
     settings = settings_from_dict(load_json_file(settings_path))
-    settings = apply_cli_overrides(settings, args)
 
     accounts_text = load_text_if_exists(Path(args.accounts))
     if accounts_text is not None:
         paths.write_text_file('accounts.txt', accounts_text)
-
-    proxies_text = load_text_if_exists(Path(getattr(args, 'proxies', str(paths.data_path('proxies.html')))))
-    if proxies_text is not None:
-        paths.write_text_file('proxies.html', proxies_text)
-        
-    paths.write_json_file('settings.json', settings.__dict__)
 
     stop_event = threading.Event()
     def write_log(line):
@@ -181,11 +174,7 @@ def build_parser():
 
     checker_parser = subparsers.add_parser('account-check')
     checker_parser.add_argument('--accounts', default=str(paths.data_path('accounts.txt')))
-    checker_parser.add_argument('--proxies', default=str(paths.data_path('proxies.html')))
     checker_parser.add_argument('--settings', default=str(paths.data_path('settings.json')))
-    checker_parser.add_argument('--parallel', type=int)
-    checker_parser.add_argument('--loop', action='store_true')
-    checker_parser.add_argument('--loop-timeout', type=int)
     checker_parser.set_defaults(func=command_account_check)
 
     web_parser = subparsers.add_parser('web')

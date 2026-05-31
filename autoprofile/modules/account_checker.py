@@ -4,7 +4,6 @@ import time
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Callable
-from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 
 from autoprofile.core import paths
 from autoprofile.modules.profile_update import login_with_timeout
@@ -55,17 +54,21 @@ def run_account_checker(settings, log_callback: Callable[[str], None], stop_even
 
     max_login_retries = getattr(settings, 'max_login_retries', 3)
     login_timeout_seconds = getattr(settings, 'login_timeout_seconds', 45)
-    max_parallel_accounts = getattr(settings, 'max_parallel_accounts', 8)
-    loopupdateprofiles = getattr(settings, 'loopupdateprofiles', False)
-    loop_timeout = getattr(settings, 'loop_timeout', 0)
 
-    def check_account(index, account_line):
+    good_accounts = []
+    bad_accounts = []
+
+    for index, account_line in enumerate(accounts):
+        if stop_event.is_set():
+            safe_print('Account Checker stopped by user.')
+            break
+
         try:
             username, password = account_line.split(':', 1)
         except ValueError:
             safe_print(f'[#{index + 1}] Invalid account line format. Skipping.')
-            return account_line, False
-
+            bad_accounts.append(account_line)
+            continue
         safe_print(f'[#{index + 1}] Checking {username}...')
 
         login_successful = False
@@ -98,6 +101,10 @@ def run_account_checker(settings, log_callback: Callable[[str], None], stop_even
                 safe_print(f'[#{index + 1}] Account is Disabled (E43). Will not retry.')
                 break
                 
+            if eresult_enum != EResult.InvalidPassword:
+
+                pass
+
             if retry < max_login_retries - 1:
                 safe_print(f'[#{index + 1}] Retrying login... (attempt {retry + 2}/{max_login_retries})')
                 if wait_or_stop(2):
@@ -115,71 +122,34 @@ def run_account_checker(settings, log_callback: Callable[[str], None], stop_even
             pass
 
         if login_successful:
+            good_accounts.append(account_line)
             safe_print(f'[#{index + 1}] ✓ Account works.')
         else:
+            bad_accounts.append(account_line)
             safe_print(f'[#{index + 1}] ⚠ Account failed check.')
 
-        return account_line, login_successful
-
-    total_checked = 0
-    total_good = 0
-    total_bad = 0
-
-    while True:
-        good_accounts = []
-        bad_accounts = []
-
-        with ThreadPoolExecutor(max_workers=max_parallel_accounts) as executor:
-            futures = {executor.submit(check_account, i, acc): i for i, acc in enumerate(accounts)}
-            while futures:
-                if stop_event.is_set():
-                    safe_print('Account Checker stopped by user.')
-                    break
-                done, _ = wait(futures, timeout=0.5, return_when=FIRST_COMPLETED)
-                for f in done:
-                    account_line, success = f.result()
-                    if success:
-                        good_accounts.append(account_line)
-                    else:
-                        bad_accounts.append(account_line)
-                    del futures[f]
-
-        total_checked = len(accounts)
-        total_good = len(good_accounts)
-        total_bad = len(bad_accounts)
-        
-        safe_print('\n=== Account Checker Summary ===')
-        safe_print(f'Total accounts checked: {total_checked}')
-        safe_print(f'Successful accounts: {total_good}')
-        safe_print(f'Failed accounts: {total_bad}')
-        
-        if good_accounts:
-            good_path = paths.data_path('goodaccounts.txt')
-            good_path.write_text('\n'.join(good_accounts) + '\n', encoding='utf-8')
-            safe_print(f'Good accounts saved to: goodaccounts.txt')
-            
-        if bad_accounts:
-            bad_path = paths.data_path('badaccounts.txt')
-            bad_path.write_text('\n'.join(bad_accounts) + '\n', encoding='utf-8')
-            safe_print(f'Bad accounts saved to: badaccounts.txt')
-
-        if stop_event.is_set():
-            break
-
-        if not loopupdateprofiles:
-            break
-
-        if loop_timeout > 0:
-            safe_print(f'Sleeping for {loop_timeout} seconds before next check...')
-            if wait_or_stop(loop_timeout):
-                break
-
     duration = time.time() - started_at
+    
+    safe_print('\n=== Account Checker Summary ===')
+    safe_print(f'Total accounts checked: {len(accounts)}')
+    safe_print(f'Successful accounts: {len(good_accounts)}')
+    safe_print(f'Failed accounts: {len(bad_accounts)}')
+    
+    if good_accounts:
+        good_path = paths.data_path('goodaccounts.txt')
+        good_path.write_text('\n'.join(good_accounts) + '\n', encoding='utf-8')
+        safe_print(f'Good accounts saved to: goodaccounts.txt')
+        
+    if bad_accounts:
+        bad_path = paths.data_path('badaccounts.txt')
+        bad_path.write_text('\n'.join(bad_accounts) + '\n', encoding='utf-8')
+        safe_print(f'Bad accounts saved to: badaccounts.txt')
+        
     safe_print(f'Job finished in {duration:.1f}s')
 
     return AccountCheckerResult(
-        total=total_checked,
-        success=total_good,
-        failed=total_bad,
+        total=len(accounts),
+        success=len(good_accounts),
+        failed=len(bad_accounts),
         duration_seconds=duration
     )

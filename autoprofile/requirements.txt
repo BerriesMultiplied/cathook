@@ -5,5 +5,3 @@ requests
 beautifulsoup4
 
 textual
-
-playwright
