@@ -216,6 +216,27 @@ EOF
     fi
 }
 
+run_workspace_permission_find() {
+    run_as_root find "$repo_root" \( \
+        -path "$repo_root/externalprojects" -o \
+        -path "$repo_root/opt" -o \
+        -path "$repo_root/botpanel/cathook-location" -o \
+        -path "$repo_root/botpanel/catbot-ipc-server" -o \
+        -path "$repo_root/botpanel/catbot-ipc-web-panel" -o \
+        -path "$repo_root/botpanel/account-generator" -o \
+        -path "$repo_root/botpanel/catbot-database" -o \
+        -path "$repo_root/botpanel/catbot" -o \
+        -path "$repo_root/botpanel/just-disable-vac" -o \
+        -path "$repo_root/botpanel/kisak" -o \
+        -path "$repo_root/botpanel/users" -o \
+        -path "$repo_root/botpanel/steams" -o \
+        -path "$repo_root/botpanel/user_instances" -o \
+        -path "$repo_root/botpanel/build" -o \
+        -path "$repo_root/botpanel/build-debug" -o \
+        -name "node_modules" \
+    \) -prune -o "$@"
+}
+
 fix_botpanel_executables() {
     local executable_path
 
@@ -235,8 +256,13 @@ fix_botpanel_executables() {
         run_as_root chmod 0755 "$executable_path" 2>/dev/null || true
     done
 
-    run_as_root find "$script_dir" -xdev -type f \( \
+    run_workspace_permission_find -type f \( \
         -name "*.sh" -o \
+        -name "build.sh" -o \
+        -name "debug.sh" -o \
+        -name "inject.sh" -o \
+        -name "install-deps" -o \
+        -name "setup.sh" -o \
         -name "start" -o \
         -name "start.legacy" -o \
         -name "stop" -o \
@@ -247,7 +273,7 @@ fix_botpanel_executables() {
         -name "install-instances" -o \
         -name "remove-legacy" -o \
         -name "uninstall" -o \
-        -path "$script_dir/catbot-ipc-web-panel-main/scripts/ns-*" \
+        -path "*/scripts/ns-*" \
     \) -exec chmod 0755 {} + 2>/dev/null || true
 }
 
