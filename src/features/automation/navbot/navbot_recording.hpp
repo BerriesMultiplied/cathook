@@ -54,6 +54,7 @@ private:
   float next_retry_time_ = 0.0f;
   float next_snapshot_time_ = 0.0f;
   uintptr_t area_vector_address_ = 0;
+  bool signature_scan_failed_ = false;
   std::unordered_set<uint32_t> unique_blocked_area_ids_{};
   std::vector<recorded_blocked_area> blocked_areas_{};
 };

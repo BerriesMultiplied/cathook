@@ -301,6 +301,7 @@ void server_nav_recorder::reset()
   next_retry_time_ = 0.0f;
   next_snapshot_time_ = 0.0f;
   area_vector_address_ = 0;
+  signature_scan_failed_ = false;
   unique_blocked_area_ids_.clear();
   blocked_areas_.clear();
 }
@@ -325,12 +326,17 @@ void server_nav_recorder::update(const std::string& map_name, const server_recor
     status_.snapshot_count = 0;
     status_.unique_blocked_area_count = 0;
     next_snapshot_time_ = 0.0f;
+    area_vector_address_ = 0;
+    signature_scan_failed_ = false;
   }
 
-  if (area_vector_address_ == 0 && current_time >= next_retry_time_)
+  if (area_vector_address_ == 0 && !signature_scan_failed_ && current_time >= next_retry_time_)
   {
     next_retry_time_ = current_time + server_retry_interval;
-    resolve_server_nav();
+    if (!resolve_server_nav() && status_.server_module_found)
+    {
+      signature_scan_failed_ = true;
+    }
   }
   else if (area_vector_address_ != 0 && current_time >= next_snapshot_time_ && !server_module_loaded())
   {
@@ -369,6 +375,7 @@ void server_nav_recorder::update(const std::string& map_name, const server_recor
   if (!read_snapshot(context, snapshot_json, area_count, blocked_count, blocked_areas))
   {
     area_vector_address_ = 0;
+    signature_scan_failed_ = true;
     status_.signature_found = false;
     blocked_areas_.clear();
     status_.message = "snapshot read failed";
