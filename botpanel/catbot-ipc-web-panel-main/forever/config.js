@@ -17,8 +17,8 @@ const default_config = {
     gdb_crash_reports: true,
     ban_tracker_enabled: false,
     steamwebhelper_cleanup: false,
-    max_concurrent_bots: 5,
-    steam_boot_concurrency: 0,
+    max_concurrent_bots: 3,
+    steam_boot_concurrency: 3,
     steam_boot_delay_seconds: 3,
     chunked_x_display: true,
     chunked_x_display_base: 699,
@@ -27,7 +27,7 @@ const default_config = {
     chunked_x_display_max_clients: 512,
     per_bot_x_display: false,
     per_bot_x_display_base: 1000,
-    auto_restart_steam_if_not_logged_within: default_nonnegative_integer(process.env.CAT_STEAM_TIMEOUT_SECONDS, 70)
+    auto_restart_steam_if_not_logged_within: default_nonnegative_integer(process.env.CAT_STEAM_TIMEOUT_SECONDS, 120)
 };
 
 function load_settings() {

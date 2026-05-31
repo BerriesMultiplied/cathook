@@ -109,7 +109,7 @@ constexpr const char* is_in_queue_for_match_group =
 constexpr const char* is_in_standby_queue =
   "0F B6 47 68 C3";
 constexpr const char* abandon_current_match =
-  "55 31 C0 48 89 E5 41 55 41 54 4C 8D 65 ? 53 48 89 FB 48 8D 3D ? ? ? ? 48 83 EC 38 E8 ? ? ? ? 4C 89 E7 BE 91 18 00 00 E8 ? ? ? ? 48 8B 45 ? 48 89 DF 83 48 10 01 C6 40 28 01 4C 8B 6D ? E8 ? ? ? ? 48 85 C0 0F 84 ? ? ? ? 48 89 DF E8 ? ? ? ? 48 8D 0D ? ? ? ? 48 8B 38 48 8B 50 10 48 39 CA";
+  "55 31 C0 48 89 E5 41 55 41 54 4C 8D 65 ? 53 48 89 FB 48 8D 3D ? ? ? ? 48 83 EC 38 E8 ? ? ? ? 4C 89 E7 BE 91 18 00 00 E8 ? ? ? ? 48 8B 45 ? 48 89 DF 83 48 10 01 C6 40 28 01 4C 8B 6D ? E8 ? ? ? ? 48 85 C0 0F 84 ? ? ? ? 48 89 DF E8 ? ? ? ? 48 8D 0D ? ? ? ? 48 89 C7 48 8B 00 48 8B 50 10 48 39 CA";
 constexpr const char* request_queue_for_match =
   "55 48 89 E5 41 57 41 56 49 89 FE 89 F7 41 55 41 54 41 89 F4 53 48 81 EC 88 00 00 00 E8 ? ? ? ? 41 83 FC FF 0F 94 C3 3C 01 75 ? 84 DB 75 ? 49 63 C4 41 80 BC 06 1E 03 00 00 00 75 ?";
 constexpr const char* request_leave_for_match =
