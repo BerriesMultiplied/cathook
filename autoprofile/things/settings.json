@@ -4,7 +4,7 @@
   "default_custom_url": "",
   "default_profile_theme": "Midnight",
   "profile_image_path": "image.jpg",
-  "max_parallel_accounts": 1,
+  "max_parallel_accounts": 10,
   "max_login_retries": 3,
   "login_timeout_seconds": 45,
   "request_timeout_seconds": 15,

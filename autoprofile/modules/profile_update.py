@@ -182,17 +182,14 @@ accounts_path = resolve_existing_path('accounts.txt')
 accounts = read_lines_file(accounts_path)
 data_dir = accounts_path.parent if accounts_path.exists() else script_dir
 
-# Load proxies from proxies.html
 proxies = []
 proxies_path = resolve_existing_path('proxies.html')
 try:
     proxy_data = proxies_path.read_text(encoding='utf-8').replace('\r\n', '\n')
     proxies = [proxy.strip() for proxy in proxy_data.split('\n') if proxy.strip()]
-    print(f'Loaded {len(proxies)} proxies from proxies.html')
 except FileNotFoundError:
-    print('proxies.html not found. Running without proxy support.')
+    pass
 
-## Change stuff below to your liking.
 profile_image_path = 'image.jpg'
 default_nickname = 'ZESTY JESUS'
 

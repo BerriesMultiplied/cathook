@@ -237,6 +237,12 @@ button:not(.nav_button):disabled {
   margin-bottom: 12px;
 }
 
+.helper_text {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
 .field span {
   font-size: 9px;
   text-transform: uppercase;

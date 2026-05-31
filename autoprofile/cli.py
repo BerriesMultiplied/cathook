@@ -24,23 +24,39 @@ def load_text_if_exists(path):
 
 def apply_cli_overrides(settings, args):
     overrides = {}
-    if args.parallel is not None:
+    if getattr(args, 'parallel', None) is not None:
         overrides['max_parallel_accounts'] = args.parallel
-    if args.theme is not None:
+    if getattr(args, 'retries', None) is not None:
+        overrides['max_login_retries'] = args.retries
+    if getattr(args, 'login_timeout', None) is not None:
+        overrides['login_timeout_seconds'] = args.login_timeout
+    if getattr(args, 'request_timeout', None) is not None:
+        overrides['request_timeout_seconds'] = args.request_timeout
+    if getattr(args, 'verify_attempts', None) is not None:
+        overrides['profile_verification_attempts'] = args.verify_attempts
+    if getattr(args, 'verify_delay', None) is not None:
+        overrides['profile_verification_retry_delay_seconds'] = args.verify_delay
+    if getattr(args, 'verify_timeout', None) is not None:
+        overrides['profile_verification_timeout_seconds'] = args.verify_timeout
+    if getattr(args, 'theme', None) is not None:
         overrides['default_profile_theme'] = args.theme
-    if args.nickname is not None:
+    if getattr(args, 'nickname', None) is not None:
         overrides['default_nickname'] = args.nickname
-    if args.summary is not None:
+    if getattr(args, 'summary', None) is not None:
         overrides['default_profile_summary'] = args.summary
-    if args.custom_url is not None:
+    if getattr(args, 'custom_url', None) is not None:
         overrides['default_custom_url'] = args.custom_url
-    if args.avatar is not None:
+    if getattr(args, 'avatar', None) is not None:
         overrides['profile_image_path'] = args.avatar
-    if args.rollids is not None:
+    if getattr(args, 'rollids', None) is not None:
         overrides['use_rollids'] = True
-    if args.loop:
+    if getattr(args, 'random_name', False):
+        overrides['random_name'] = True
+    if getattr(args, 'no_insert_chars', False):
+        overrides['insert_random_chars_enabled'] = False
+    if getattr(args, 'loop', False):
         overrides['loopupdateprofiles'] = True
-    if args.loop_timeout is not None:
+    if getattr(args, 'loop_timeout', None) is not None:
         overrides['loop_timeout'] = args.loop_timeout
 
     disabled_map = {
@@ -54,7 +70,7 @@ def apply_cli_overrides(settings, args):
         'no_steamid32': 'enable_gatherid32'
     }
     for arg_name, setting_name in disabled_map.items():
-        if getattr(args, arg_name):
+        if getattr(args, arg_name, False):
             overrides[setting_name] = False
 
     raw = settings.__dict__.copy()
@@ -99,11 +115,13 @@ def command_profile_update(args):
 def command_account_check(args):
     settings_path = Path(args.settings)
     settings = settings_from_dict(load_json_file(settings_path))
+    settings = apply_cli_overrides(settings, args)
 
     accounts_text = load_text_if_exists(Path(args.accounts))
     if accounts_text is not None:
         paths.write_text_file('accounts.txt', accounts_text)
 
+    paths.write_json_file('settings.json', settings.__dict__)
     stop_event = threading.Event()
     def write_log(line):
         encoding = sys.__stdout__.encoding or 'utf-8'
@@ -128,6 +146,7 @@ def command_web(args):
 def command_modules(_args):
     modules = [
         {'name': 'profile_update', 'title': 'Profile Update', 'status': 'READY'},
+        {'name': 'account_checker', 'title': 'Account Checker', 'status': 'READY'},
         account_creation.module_status()
     ]
     print(json.dumps({'modules': modules}, indent=2))
@@ -155,11 +174,19 @@ def build_parser():
     profile_parser.add_argument('--rollids')
     profile_parser.add_argument('--settings', default=str(paths.data_path('settings.json')))
     profile_parser.add_argument('--parallel', type=int)
+    profile_parser.add_argument('--retries', type=int)
+    profile_parser.add_argument('--login-timeout', type=int)
+    profile_parser.add_argument('--request-timeout', type=int)
+    profile_parser.add_argument('--verify-attempts', type=int)
+    profile_parser.add_argument('--verify-delay', type=int)
+    profile_parser.add_argument('--verify-timeout', type=int)
     profile_parser.add_argument('--theme')
     profile_parser.add_argument('--nickname')
     profile_parser.add_argument('--summary')
     profile_parser.add_argument('--custom-url')
     profile_parser.add_argument('--avatar')
+    profile_parser.add_argument('--random-name', action='store_true')
+    profile_parser.add_argument('--no-insert-chars', action='store_true')
     profile_parser.add_argument('--no-name', action='store_true')
     profile_parser.add_argument('--no-avatar', action='store_true')
     profile_parser.add_argument('--no-description', action='store_true')
@@ -175,6 +202,9 @@ def build_parser():
     checker_parser = subparsers.add_parser('account-check')
     checker_parser.add_argument('--accounts', default=str(paths.data_path('accounts.txt')))
     checker_parser.add_argument('--settings', default=str(paths.data_path('settings.json')))
+    checker_parser.add_argument('--parallel', type=int)
+    checker_parser.add_argument('--retries', type=int)
+    checker_parser.add_argument('--login-timeout', type=int)
     checker_parser.set_defaults(func=command_account_check)
 
     web_parser = subparsers.add_parser('web')

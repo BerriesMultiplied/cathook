@@ -39,13 +39,30 @@ class AutoprofileTUI(App):
         height: 10;
         margin-bottom: 1;
     }
+    Input {
+        height: 3;
+        margin-bottom: 1;
+    }
+    Select {
+        height: 3;
+        margin-bottom: 1;
+    }
     .number-input {
         width: 100%;
+        height: 3;
     }
     .perf-group {
         width: 1fr;
-        height: auto;
+        height: 5;
         margin-right: 1;
+    }
+    #checker_controls {
+        height: 7;
+        margin-bottom: 1;
+    }
+    #checker_log {
+        height: 1fr;
+        min-height: 12;
     }
     .actions {
         height: auto;
@@ -133,6 +150,7 @@ class AutoprofileTUI(App):
                                 yield Checkbox("Random names", id="random_name")
                                 yield Checkbox("Insert chars", id="insert_random_chars_enabled")
                                 yield Checkbox("Scrape rollids", id="use_rollids")
+                                yield Checkbox("Loop accounts", id="loopupdateprofiles")
                             
                             yield Label("Performance", classes="section-title")
                             with Horizontal():
@@ -148,6 +166,19 @@ class AutoprofileTUI(App):
                                 with Vertical(classes="perf-group"):
                                     yield Label("Request Time")
                                     yield Input(id="request_timeout_seconds", classes="number-input")
+                            with Horizontal():
+                                with Vertical(classes="perf-group"):
+                                    yield Label("Loop Timeout")
+                                    yield Input(id="loop_timeout", classes="number-input")
+                                with Vertical(classes="perf-group"):
+                                    yield Label("Verify Tries")
+                                    yield Input(id="profile_verification_attempts", classes="number-input")
+                                with Vertical(classes="perf-group"):
+                                    yield Label("Verify Delay")
+                                    yield Input(id="profile_verification_retry_delay_seconds", classes="number-input")
+                                with Vertical(classes="perf-group"):
+                                    yield Label("Verify Timeout")
+                                    yield Input(id="profile_verification_timeout_seconds", classes="number-input")
 
                     yield Label("Live Logs:")
                     yield RichLog(id="main_log", wrap=True, highlight=True, markup=True)
@@ -157,6 +188,18 @@ class AutoprofileTUI(App):
                     with Horizontal(classes="actions"):
                         yield Button("Start Check", id="btn_start_check", variant="success")
                         yield Button("Stop Check", id="btn_stop_check", variant="error", disabled=True)
+
+                    yield Label("Checker Settings", classes="section-title")
+                    with Horizontal(id="checker_controls"):
+                        with Vertical(classes="perf-group"):
+                            yield Label("Parallel")
+                            yield Input(id="checker_max_parallel_accounts", classes="number-input")
+                        with Vertical(classes="perf-group"):
+                            yield Label("Retries")
+                            yield Input(id="checker_max_login_retries", classes="number-input")
+                        with Vertical(classes="perf-group"):
+                            yield Label("Login Time")
+                            yield Input(id="checker_login_timeout_seconds", classes="number-input")
                     
                     yield Label("Checker Logs:")
                     yield RichLog(id="checker_log", wrap=True, highlight=True, markup=True)
@@ -191,11 +234,25 @@ class AutoprofileTUI(App):
         fields = [
             'default_nickname', 'default_profile_summary', 'default_custom_url',
             'profile_image_path', 'max_parallel_accounts', 'max_login_retries',
-            'login_timeout_seconds', 'request_timeout_seconds'
+            'login_timeout_seconds', 'request_timeout_seconds', 'loop_timeout',
+            'profile_verification_attempts', 'profile_verification_retry_delay_seconds',
+            'profile_verification_timeout_seconds'
         ]
         for f in fields:
             if f in self.settings:
                 self.query_one(f"#{f}", Input).value = str(self.settings[f])
+
+        checker_fields = {
+            'checker_max_parallel_accounts': 'max_parallel_accounts',
+            'checker_max_login_retries': 'max_login_retries',
+            'checker_login_timeout_seconds': 'login_timeout_seconds'
+        }
+        for checker_id, setting_id in checker_fields.items():
+            if setting_id in self.settings:
+                value = self.settings[setting_id]
+                if checker_id == 'checker_login_timeout_seconds':
+                    value = min(int(value), 20)
+                self.query_one(f"#{checker_id}", Input).value = str(value)
 
         if 'default_profile_theme' in self.settings:
             val = self.settings['default_profile_theme']
@@ -207,7 +264,8 @@ class AutoprofileTUI(App):
         switches = [
             'enable_namechange', 'enable_avatarchange', 'enable_descriptionchange',
             'enable_customurlchange', 'enable_themechange', 'enable_profile_verification',
-            'enable_nameclear', 'enable_gatherid32', 'random_name', 'insert_random_chars_enabled', 'use_rollids'
+            'enable_nameclear', 'enable_gatherid32', 'random_name', 'insert_random_chars_enabled',
+            'use_rollids', 'loopupdateprofiles'
         ]
         for s in switches:
             if s in self.settings:
@@ -231,11 +289,27 @@ class AutoprofileTUI(App):
 
         num_fields = [
             'max_parallel_accounts', 'max_login_retries',
-            'login_timeout_seconds', 'request_timeout_seconds'
+            'login_timeout_seconds', 'request_timeout_seconds', 'loop_timeout',
+            'profile_verification_attempts', 'profile_verification_retry_delay_seconds',
+            'profile_verification_timeout_seconds'
         ]
         for f in num_fields:
             try:
                 s[f] = int(self.query_one(f"#{f}", Input).value)
+            except ValueError:
+                pass
+
+        checker_fields = {
+            'checker_max_parallel_accounts': 'max_parallel_accounts',
+            'checker_max_login_retries': 'max_login_retries',
+            'checker_login_timeout_seconds': 'login_timeout_seconds'
+        }
+        for checker_id, setting_id in checker_fields.items():
+            value = self.query_one(f"#{checker_id}", Input).value
+            if not value:
+                continue
+            try:
+                s[setting_id] = int(value)
             except ValueError:
                 pass
 
@@ -244,7 +318,8 @@ class AutoprofileTUI(App):
         switches = [
             'enable_namechange', 'enable_avatarchange', 'enable_descriptionchange',
             'enable_customurlchange', 'enable_themechange', 'enable_profile_verification',
-            'enable_nameclear', 'enable_gatherid32', 'random_name', 'insert_random_chars_enabled', 'use_rollids'
+            'enable_nameclear', 'enable_gatherid32', 'random_name', 'insert_random_chars_enabled',
+            'use_rollids', 'loopupdateprofiles'
         ]
         for sw in switches:
             s[sw] = self.query_one(f"#{sw}", Checkbox).value
@@ -256,12 +331,10 @@ class AutoprofileTUI(App):
         paths.write_text_file('accounts.txt', accs.strip() + '\n' if accs.strip() else '')
         
         pxs = self.query_one("#input_proxies", TextArea).text
-        if pxs.strip():
-            paths.write_text_file('proxies.html', pxs.strip() + '\n')
+        paths.write_text_file('proxies.html', pxs.strip() + '\n' if pxs.strip() else '')
             
         rls = self.query_one("#input_rollids", TextArea).text
-        if rls.strip():
-            paths.write_text_file('rollids.txt', rls.strip() + '\n')
+        paths.write_text_file('rollids.txt', rls.strip() + '\n' if rls.strip() else '')
             
         settings = self.collect_settings()
         paths.write_json_file('settings.json', settings)

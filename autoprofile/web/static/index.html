@@ -98,6 +98,9 @@
               <label class="field">Retries <input id="max_login_retries" type="number" min="1" max="10"></label>
               <label class="field">Login timeout <input id="login_timeout_seconds" type="number" min="5" max="300"></label>
               <label class="field">Request timeout <input id="request_timeout_seconds" type="number" min="5" max="120"></label>
+              <label class="field">Verify tries <input id="profile_verification_attempts" type="number" min="1" max="5"></label>
+              <label class="field">Verify delay <input id="profile_verification_retry_delay_seconds" type="number" min="0" max="10"></label>
+              <label class="field">Verify timeout <input id="profile_verification_timeout_seconds" type="number" min="2" max="30"></label>
               <label class="field">Loop timeout <input id="loop_timeout" type="number" min="0"></label>
             </div>
           </div>
@@ -125,6 +128,21 @@
           <div class="actions">
             <button id="checker_stop_button" class="ghost danger"><i class="fa-solid fa-stop"></i> stop</button>
             <button id="checker_start_button" class="primary"><i class="fa-solid fa-play"></i> start check</button>
+          </div>
+        </div>
+
+        <div class="form_grid compact">
+          <div class="form_column">
+            <h3>Checker Settings</h3>
+            <div class="number_grid">
+              <label class="field">Parallel <input id="checker_max_parallel_accounts" type="number" min="1" max="64"></label>
+              <label class="field">Retries <input id="checker_max_login_retries" type="number" min="1" max="10"></label>
+              <label class="field">Login timeout <input id="checker_login_timeout_seconds" type="number" min="5" max="20"></label>
+            </div>
+          </div>
+          <div class="form_column">
+            <h3>Inputs</h3>
+            <p class="helper_text">Uses the Accounts box from Main. These settings autosave and sync with Main performance settings.</p>
           </div>
         </div>
         

@@ -8,6 +8,9 @@ const fields = [
   'max_login_retries',
   'login_timeout_seconds',
   'request_timeout_seconds',
+  'profile_verification_attempts',
+  'profile_verification_retry_delay_seconds',
+  'profile_verification_timeout_seconds',
   'loop_timeout'
 ];
 
@@ -25,6 +28,12 @@ const switches = [
   'use_rollids',
   'loopupdateprofiles'
 ];
+
+const setting_mirrors = {
+  checker_max_parallel_accounts: 'max_parallel_accounts',
+  checker_max_login_retries: 'max_login_retries',
+  checker_login_timeout_seconds: 'login_timeout_seconds'
+};
 
 let config_loaded = false;
 let save_timer = null;
@@ -85,6 +94,7 @@ function apply_settings(settings) {
       element(id).checked = Boolean(settings[id]);
     }
   }
+  sync_setting_mirrors_from_main();
 }
 
 function collect_payload() {
@@ -276,6 +286,31 @@ function setup_textareas() {
   });
 }
 
+function sync_setting_mirrors_from_main() {
+  for (const [mirror_id, source_id] of Object.entries(setting_mirrors)) {
+    const mirror = element(mirror_id);
+    const source = element(source_id);
+    if (mirror && source) {
+      mirror.value = mirror_id === 'checker_login_timeout_seconds' ? Math.min(Number(source.value || 20), 20) : source.value;
+    }
+  }
+}
+
+function setup_setting_mirrors() {
+  for (const [mirror_id, source_id] of Object.entries(setting_mirrors)) {
+    const mirror = element(mirror_id);
+    const source = element(source_id);
+    if (!mirror || !source) continue;
+    source.addEventListener('input', () => {
+      mirror.value = mirror_id === 'checker_login_timeout_seconds' ? Math.min(Number(source.value || 20), 20) : source.value;
+    });
+    mirror.addEventListener('input', () => {
+      source.value = mirror.value;
+      schedule_save();
+    });
+  }
+}
+
 function schedule_save() {
   if (!config_loaded) return;
   set_save_status('unsaved', 'dirty');
@@ -301,7 +336,7 @@ function setup_custom_url_guard() {
 }
 
 function setup_autosave() {
-  const ids = ['accounts', 'proxies', 'rollids', ...fields, ...switches];
+  const ids = ['accounts', 'proxies', 'rollids', ...fields, ...switches, ...Object.keys(setting_mirrors)];
   for (const id of ids) {
     const input = element(id);
     if (!input) continue;
@@ -348,6 +383,7 @@ element('save_button').addEventListener('click', () => {
 setup_tabs();
 setup_textareas();
 setup_custom_url_guard();
+setup_setting_mirrors();
 setup_autosave();
 load_config().then(() => {
   console.info('[INFO] Initial config loaded. Starting status poller...');
