@@ -70,10 +70,15 @@ public:
     }
 
     auto memory = shared_memory{};
-    memory.fd_ = shm_open(shared_memory_name, O_CREAT | O_RDWR, 0600);
+    memory.fd_ = shm_open(shared_memory_name, O_CREAT | O_RDWR, 0666);
     if (memory.fd_ < 0)
     {
       throw std::runtime_error(std::string{"shm_open create failed: "} + std::strerror(errno));
+    }
+
+    if (fchmod(memory.fd_, 0666) != 0)
+    {
+      throw std::runtime_error(std::string{"fchmod failed: "} + std::strerror(errno));
     }
 
     if (ftruncate(memory.fd_, static_cast<off_t>(sizeof(shared_state))) != 0)
@@ -107,7 +112,7 @@ public:
   [[nodiscard]] static auto open_client() -> shared_memory
   {
     auto memory = shared_memory{};
-    memory.fd_ = shm_open(shared_memory_name, O_RDWR, 0600);
+    memory.fd_ = shm_open(shared_memory_name, O_RDWR, 0666);
     if (memory.fd_ < 0)
     {
       throw std::runtime_error(std::string{"shm_open open failed: "} + std::strerror(errno));

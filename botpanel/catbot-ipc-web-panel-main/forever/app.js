@@ -1,7 +1,6 @@
 const BotManager = require('./botmanager');
 const config = require('./config');
 const Bot = require('./bot');
-const steam_id = require('../steam_id');
 
 var manager = null;
 
@@ -15,13 +14,6 @@ function parse_config_value(value) {
 	if (value === '0')
 		return false;
 	return value;
-}
-
-function bot_steam_state(bot) {
-	const steamid32 = bot.ipcState && bot.ipcState.friendid ? String(bot.ipcState.friendid) : null;
-	const steamid64 = steam_id.account_id32_to_steamid64(steamid32);
-	const profile_url = steamid64 ? `https://steamcommunity.com/profiles/${steamid64}` : null;
-	return { steamid32, steamid64, profile_url };
 }
 
 function parse_positive_integer(value) {
@@ -54,6 +46,16 @@ function has_config_option(option) {
 
 function set_config_value(option, raw_value) {
 	if (option === 'max_concurrent_bots') {
+		const value = parse_positive_integer(raw_value);
+		if (value === null)
+			return null;
+		return value;
+	}
+
+	if (option === 'chunked_x_display_base' ||
+		option === 'chunked_x_display_bots_per_display' ||
+		option === 'chunked_x_display_max_displays' ||
+		option === 'chunked_x_display_max_clients') {
 		const value = parse_positive_integer(raw_value);
 		if (value === null)
 			return null;
@@ -133,36 +135,11 @@ class app {
 		});
 
 		app.get('/api/list', function (req, res) {
-			var result = {};
-			result.quota = manager.quota;
-			result.count = manager.bots.length;
-			result.bots = {};
-			for (var i of manager.bots) {
-				result.bots[i.name] = {
-					user: i.user
-				};
-			}
-			res.send(result);
+			res.type('application/json').send(manager.get_list_json());
 		});
 
 		app.get('/api/state', function (req, res) {
-			var result = { bots: {} };
-			for (var i of manager.bots) {
-				const steam_state = bot_steam_state(i);
-				result.bots[i.name] = {
-					ipc: i.ipcState,
-					restarts: i.restarts,
-					ipcID: i.ipcID,
-					state: i.state,
-					started: i.gameStarted,
-					pid: i.game,
-					steamid32: steam_state.steamid32,
-					steamid64: steam_state.steamid64,
-					profile_url: steam_state.profile_url,
-					ban_tracker: manager.ban_tracker.status_for_bot(i)
-				};
-			}
-			res.send(result);
+			res.type('application/json').send(manager.get_state_json());
 		});
 
 		app.get('/api/bot/:bot/restart', function (req, res) {

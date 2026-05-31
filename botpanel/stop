@@ -23,6 +23,16 @@ if [ "${CAT_VISIBLE_WINDOWS:-0}" != "1" ] && [ -f "$xvfb_pid_file" ]; then
     rm -f "$xvfb_pid_file"
 fi
 
+xvfb_pool_pid_dir="${CAT_CHUNKED_X_DISPLAY_PID_DIR:-/tmp/cat-catbot-xvfb-pool}"
+if [ "${CAT_VISIBLE_WINDOWS:-0}" != "1" ] && [ -d "$xvfb_pool_pid_dir" ]; then
+    for xvfb_pool_pid_file in "$xvfb_pool_pid_dir"/*.pid; do
+        [ -e "$xvfb_pool_pid_file" ] || continue
+        xvfb_pool_pid="$(tr -d '[:space:]' <"$xvfb_pool_pid_file" 2>/dev/null || true)"
+        [ -n "$xvfb_pool_pid" ] && kill "$xvfb_pool_pid" 2>/dev/null || true
+        rm -f "$xvfb_pool_pid_file"
+    done
+fi
+
 [ -f /tmp/ncat-cathook-webpanel.pid ] && sudo rm /tmp/ncat-cathook-webpanel.pid
 [ -f /tmp/cat-ipc-server.pid ] && sudo rm /tmp/cat-ipc-server.pid
 [ -f /tmp/pulsemodule.id ] && pactl unload-module $(cat /tmp/pulsemodule.id) && rm /tmp/pulsemodule.id

@@ -20,9 +20,14 @@ const default_config = {
     max_concurrent_bots: 5,
     steam_boot_concurrency: 0,
     steam_boot_delay_seconds: 8,
+    chunked_x_display: true,
+    chunked_x_display_base: 699,
+    chunked_x_display_bots_per_display: 25,
+    chunked_x_display_max_displays: 12,
+    chunked_x_display_max_clients: 512,
     per_bot_x_display: false,
     per_bot_x_display_base: 1000,
-    auto_restart_steam_if_not_logged_within: default_nonnegative_integer(process.env.CAT_STEAM_TIMEOUT_SECONDS, 300)
+    auto_restart_steam_if_not_logged_within: default_nonnegative_integer(process.env.CAT_STEAM_TIMEOUT_SECONDS, 70)
 };
 
 function load_settings() {

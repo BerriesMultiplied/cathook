@@ -1,6 +1,5 @@
 const EventEmitter = require('events');
 const fs = require('fs');
-const path = require('path');
 
 class Process extends EventEmitter {
     constructor(pid, uid, name) {
@@ -17,6 +16,8 @@ class ProcEvents extends EventEmitter {
         this.cache = {};
         this.init = 2;
         this.interval = 0;
+        this.pending = {};
+        this.updating = false;
         this.setMaxListeners(256);
     }
     start() {
@@ -27,10 +28,11 @@ class ProcEvents extends EventEmitter {
     }
     storeProcessData(pid) {
         var self = this;
+        this.pending[pid] = true;
         fs.readFile(`/proc/${pid}/status`, function(err, data) {
+            delete self.pending[pid];
             if (err) {
                 return;
-                console.log(err);
             };
             var name = '';
             var uid = '';
@@ -47,49 +49,45 @@ class ProcEvents extends EventEmitter {
             }
         });
     }
-    checkProcess(pid) {
-        var self = this;
-        fs.stat(`/proc/${pid}`, function(err, stat) {
-            if (err) {
-		try {
-                	self.emit('death', self.cache[pid]);
-                	self.cache[pid].emit('exit');
-                	delete self.cache[pid];
-		} catch (e) {
-			console.log(e);
-		}
-            }
-        });
-    }
     update() {
         var self = this;
+        if (this.updating) {
+            return;
+        }
+        this.updating = true;
         if (this.init) {
             if (!--this.init) {
                 self.emit('init');
             }
         };
-        // Discard old processes
-        for (var key in self.cache) {
-            this.checkProcess(key);
-        }
-        // Check for new processes
-        fs.readdir('/proc', function(err, files) {
-            if (err) return;
-            files.forEach(function(file) {
-                var pid = file;
-                if (self.cache[pid]) {
+        fs.readdir('/proc', { withFileTypes: true }, function(err, entries) {
+            self.updating = false;
+            if (err) {
+                return;
+            }
+            const live = {};
+            entries.forEach(function(entry) {
+                var pid = entry.name;
+                if (!entry.isDirectory() || !/^\d+$/.test(pid)) {
                     return;
                 }
-                if (/^\d+$/.test(file)) {
-                    file = path.resolve('/proc', file);
-                    fs.stat(file, function(err, stats) {
-                        if (err) return;
-                        if (stats.isDirectory()) {
-                            self.storeProcessData(pid);
-                        }
-                    });
+                live[pid] = true;
+                if (!self.cache[pid] && !self.pending[pid]) {
+                    self.storeProcessData(pid);
                 }
             });
+            for (var key in self.cache) {
+                if (live[key]) {
+                    continue;
+                }
+                try {
+                    self.emit('death', self.cache[key]);
+                    self.cache[key].emit('exit');
+                    delete self.cache[key];
+                } catch (e) {
+                    console.log(e);
+                }
+            }
             self.emit('update');
         });
     }

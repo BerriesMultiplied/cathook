@@ -1225,7 +1225,14 @@ bool apply_optional_render_patches()
   applied_any_patch = apply_optional_patch(cl_decay_lights_patch, "cl_decay_lights") || applied_any_patch;
   applied_any_patch = apply_optional_patch(fps_max_min_patch, "engine_fps_max_min_clamp") || applied_any_patch;
   applied_any_patch = apply_optional_patch(engine_frame_busy_wait_patch, "engine_frame_busy_wait") || applied_any_patch;
-  applied_any_patch = apply_optional_patch(engine_frame_usleep_patch, "engine_frame_usleep") || applied_any_patch;
+  if (config.misc.exploits.no_engine_sleep)
+  {
+    applied_any_patch = apply_optional_patch(engine_frame_usleep_patch, "engine_frame_usleep") || applied_any_patch;
+  }
+  else
+  {
+    engine_frame_usleep_patch.restore();
+  }
   applied_any_patch = apply_optional_patch(mod_load_lighting_patch, "mod_load_lighting") || applied_any_patch;
   applied_any_patch = apply_optional_patch(mod_load_worldlights_patch, "mod_load_worldlights") || applied_any_patch;
   applied_any_patch = apply_optional_patch(mod_load_texinfo_material_branch_patch, "mod_load_texinfo_material_branch") || applied_any_patch;

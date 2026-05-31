@@ -11,6 +11,20 @@ const accounts = require('./acc.js');
 const config = require('./config');
 const steam_id = require('../steam_id');
 
+function positive_integer(value, fallback) {
+    const number = Number.parseInt(String(value || '').trim(), 10);
+    return Number.isSafeInteger(number) && number > 0 ? number : fallback;
+}
+
+function display_number_from_text(value) {
+    const match = String(value || '').match(/^:([0-9]+)$/);
+    if (!match)
+        return 0;
+
+    const number = Number.parseInt(match[1], 10);
+    return Number.isSafeInteger(number) && number > 0 ? number : 0;
+}
+
 const CATHOOK_ROOT = process.env.CATHOOK_ROOT || '/opt/cathook';
 const VISIBLE_WINDOWS = process.env.CAT_VISIBLE_WINDOWS === '1';
 const BOT_DISPLAY = process.env.DISPLAY || process.env.CAT_DEFAULT_DISPLAY || ':699';
@@ -42,6 +56,13 @@ const PER_BOT_X_DISPLAY = process.env.CAT_PER_BOT_X_DISPLAY === '1' || config.pe
 const PER_BOT_X_DISPLAY_BASE_VALUE = Number.parseInt(process.env.CAT_PER_BOT_X_DISPLAY_BASE || String(config.per_bot_x_display_base || '1000'), 10);
 const PER_BOT_X_DISPLAY_BASE = (Number.isSafeInteger(PER_BOT_X_DISPLAY_BASE_VALUE) && PER_BOT_X_DISPLAY_BASE_VALUE > 0) ? PER_BOT_X_DISPLAY_BASE_VALUE : 1000;
 const PER_BOT_X_SCREEN = process.env.CAT_PER_BOT_X_SCREEN || process.env.CAT_X_SCREEN || '1x1x24';
+const CHUNKED_X_DISPLAY_ENV = process.env.CAT_CHUNKED_X_DISPLAY;
+const CHUNKED_X_DISPLAY = !PER_BOT_X_DISPLAY && !VISIBLE_WINDOWS && (CHUNKED_X_DISPLAY_ENV === '1' || (CHUNKED_X_DISPLAY_ENV !== '0' && config.chunked_x_display !== false));
+const CHUNKED_X_DISPLAY_BASE = positive_integer(process.env.CAT_CHUNKED_X_DISPLAY_BASE || config.chunked_x_display_base, display_number_from_text(BOT_DISPLAY) || 699);
+const CHUNKED_X_DISPLAY_BOTS_PER_DISPLAY = positive_integer(process.env.CAT_CHUNKED_X_DISPLAY_BOTS_PER_DISPLAY || config.chunked_x_display_bots_per_display, 25);
+const CHUNKED_X_DISPLAY_MAX_DISPLAYS = positive_integer(process.env.CAT_CHUNKED_X_DISPLAY_MAX_DISPLAYS || config.chunked_x_display_max_displays, 12);
+const CHUNKED_X_DISPLAY_MAX_CLIENTS = positive_integer(process.env.CAT_CHUNKED_X_DISPLAY_MAX_CLIENTS || process.env.CAT_XVFB_MAX_CLIENTS || config.chunked_x_display_max_clients, 512);
+const CHUNKED_X_DISPLAY_PID_DIR = process.env.CAT_CHUNKED_X_DISPLAY_PID_DIR || '/tmp/cat-catbot-xvfb-pool';
 const HEADLESS_STEAM_GRAPHICS = !VISIBLE_WINDOWS && process.env.CAT_STEAM_HEADLESS_GRAPHICS !== '0';
 const HEADLESS_STEAM_GRAPHICS_FIREJAIL_ENV = HEADLESS_STEAM_GRAPHICS ? '--env=LIBGL_ALWAYS_SOFTWARE=1 --env=GALLIUM_DRIVER=llvmpipe --env=MESA_LOADER_DRIVER_OVERRIDE=llvmpipe --env=__GLX_VENDOR_LIBRARY_NAME=mesa --env=VK_ICD_FILENAMES=/dev/null --env=DISABLE_VK_LAYER_VALVE_steam_overlay_1=1 --env=DISABLE_VK_LAYER_VALVE_steam_fossilize_1=1' : '';
 const HEADLESS_STEAM_GRAPHICS_ASSIGNMENTS = HEADLESS_STEAM_GRAPHICS ? 'LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe MESA_LOADER_DRIVER_OVERRIDE=llvmpipe __GLX_VENDOR_LIBRARY_NAME=mesa VK_ICD_FILENAMES=/dev/null DISABLE_VK_LAYER_VALVE_steam_overlay_1=1 DISABLE_VK_LAYER_VALVE_steam_fossilize_1=1' : '';
@@ -100,7 +121,6 @@ const STEAM_LOGIN_UI_TIMEOUT = (Number.isFinite(STEAM_LOGIN_UI_TIMEOUT_SECONDS_V
 // Time to delay between bot start waves. Max concurrent starts controls wave size.
 const BOT_START_DELAY_SECONDS_VALUE = Number.parseInt(process.env.CAT_BOT_START_DELAY_SECONDS || '30', 10);
 const DELAY_START_TIME = (Number.isFinite(BOT_START_DELAY_SECONDS_VALUE) ? Math.max(0, BOT_START_DELAY_SECONDS_VALUE) : 30) * 1000;
-const STEAM_BOOT_CONCURRENCY_VALUE = Number.parseInt(process.env.CAT_STEAM_BOOT_CONCURRENCY || String(config.steam_boot_concurrency || '1'), 10);
 const STEAM_BOOT_DELAY_SECONDS_VALUE = Number.parseInt(process.env.CAT_STEAM_BOOT_DELAY_SECONDS || String(config.steam_boot_delay_seconds || '8'), 10);
 const STEAM_BOOT_DELAY = (Number.isFinite(STEAM_BOOT_DELAY_SECONDS_VALUE) ? Math.max(0, STEAM_BOOT_DELAY_SECONDS_VALUE) : 8) * 1000;
 const STEAM_STARTUP_HARD_TIMEOUT_SECONDS_VALUE = Number.parseInt(process.env.CAT_STEAM_STARTUP_HARD_TIMEOUT_SECONDS || '900', 10);
@@ -112,6 +132,9 @@ const GAME_STARTUP_FATAL_PATTERNS = [
 const STEAM_STARTUP_FATAL_PATTERNS = [
     'Error: Couldn\'t set up the Steam Runtime.',
     'LD_LIBRARY_PATH: unbound variable'
+];
+const x_client_cap_patterns = [
+    /Maximum number of clients reached/i
 ];
 const steam_auth_log_scan_tail_lines = 400;
 // Cleared on every Steam launch; must cover auth heuristics and common session logs.
@@ -193,13 +216,42 @@ function shell_quote(value) {
 
 function log_file_tail(file_path, line_count) {
     try {
-        if (!fs.existsSync(file_path))
+        const stat = fs.statSync(file_path);
+        if (!stat.isFile())
             return '';
 
-        const lines = fs.readFileSync(file_path, 'utf8').trimEnd().split(/\r?\n/);
+        const tail_size = Math.min(stat.size, 65536);
+        const fd = fs.openSync(file_path, 'r');
+        const buffer = Buffer.allocUnsafe(tail_size);
+        try {
+            fs.readSync(fd, buffer, 0, tail_size, stat.size - tail_size);
+        } finally {
+            fs.closeSync(fd);
+        }
+        const lines = buffer.toString('utf8').trimEnd().split(/\r?\n/);
         return lines.slice(-line_count).join('\n');
     } catch (error) {
         return `failed to read ${file_path}: ${error.message}`;
+    }
+}
+
+function read_file_tail(file_path, max_bytes) {
+    try {
+        const stat = fs.statSync(file_path);
+        if (!stat.isFile())
+            return '';
+
+        const tail_size = Math.min(stat.size, max_bytes);
+        const fd = fs.openSync(file_path, 'r');
+        const buffer = Buffer.allocUnsafe(tail_size);
+        try {
+            fs.readSync(fd, buffer, 0, tail_size, stat.size - tail_size);
+        } finally {
+            fs.closeSync(fd);
+        }
+        return buffer.toString('utf8');
+    } catch (error) {
+        return '';
     }
 }
 
@@ -236,6 +288,10 @@ function game_startup_log_has_fatal_error(text) {
 
 function steam_startup_log_has_fatal_error(text) {
     return STEAM_STARTUP_FATAL_PATTERNS.some((pattern) => text.includes(pattern));
+}
+
+function steam_log_has_x_client_cap_error(text) {
+    return x_client_cap_patterns.some((pattern) => pattern.test(text));
 }
 
 function steam_log_has_invalid_password(text) {
@@ -310,6 +366,123 @@ function pid_alive(pid) {
     } catch (error) {
         return error.code === 'EPERM';
     }
+}
+
+const x_display_pool = new Map();
+
+function x_display_pid_path(display_num) {
+    return path.join(CHUNKED_X_DISPLAY_PID_DIR, `X${display_num}.pid`);
+}
+
+function x_socket_path(display_num) {
+    return `/tmp/.X11-unix/X${display_num}`;
+}
+
+function wait_for_x_socket(display_num, timeout_ms) {
+    const socket_path = x_socket_path(display_num);
+    const deadline = Date.now() + timeout_ms;
+    while (Date.now() < deadline) {
+        if (fs.existsSync(socket_path))
+            return true;
+        try { child_process.execFileSync('sleep', ['0.05'], { stdio: 'ignore' }); } catch (error) { break; }
+    }
+    return fs.existsSync(socket_path);
+}
+
+function chunked_x_display_entry(display_num) {
+    let entry = x_display_pool.get(display_num);
+    if (entry)
+        return entry;
+
+    entry = {
+        display_num: display_num,
+        display: `:${display_num}`,
+        proc: null,
+        adopted: false,
+        unavailable: false,
+        users: new Set(),
+        log_stream: null
+    };
+    x_display_pool.set(display_num, entry);
+    return entry;
+}
+
+function ensure_chunked_x_display_entry(entry, bot) {
+    if (entry.unavailable)
+        return false;
+
+    if (entry.proc && pid_alive(entry.proc.pid))
+        return true;
+
+    const existing_pid = read_x_lock_pid(entry.display_num);
+    if (existing_pid && pid_alive(existing_pid)) {
+        entry.adopted = true;
+        return true;
+    }
+    if (existing_pid) {
+        try { fs.unlinkSync(`/tmp/.X${entry.display_num}-lock`); } catch (error) { }
+    }
+
+    try {
+        fs.mkdirSync('./logs', { recursive: true });
+        fs.mkdirSync(CHUNKED_X_DISPLAY_PID_DIR, { recursive: true });
+        const xvfb_log_path = `./logs/chunked-xvfb-${entry.display_num}.log`;
+        entry.log_stream = fs.createWriteStream(xvfb_log_path, { flags: 'a' });
+        entry.proc = child_process.spawn('Xvfb', [
+            entry.display,
+            '-screen', '0', PER_BOT_X_SCREEN,
+            '-maxclients', String(CHUNKED_X_DISPLAY_MAX_CLIENTS),
+            '-nolisten', 'tcp',
+            '-ac',
+            '-noreset'
+        ], {
+            uid: USER.uid,
+            env: { PATH: process.env.PATH, HOME: USER.home },
+            stdio: ['ignore', 'pipe', 'pipe'],
+            detached: false
+        });
+        fs.writeFileSync(x_display_pid_path(entry.display_num), String(entry.proc.pid) + '\n');
+        entry.proc.stdout.pipe(entry.log_stream);
+        entry.proc.stderr.pipe(entry.log_stream);
+        entry.proc.on('error', (error) => {
+            bot.log(`[ERROR] Xvfb ${entry.display} error: ${error.message}`);
+        });
+        entry.proc.on('exit', (code, signal) => {
+            bot.log(`Xvfb ${entry.display} exited code=${code} signal=${signal}`);
+            entry.proc = null;
+            entry.adopted = false;
+            if (entry.log_stream) {
+                try { entry.log_stream.end(); } catch (error) { }
+                entry.log_stream = null;
+            }
+            try { fs.unlinkSync(x_display_pid_path(entry.display_num)); } catch (error) { }
+        });
+    } catch (error) {
+        bot.log(`[ERROR] Failed to spawn Xvfb on ${entry.display}: ${error.message}`);
+        entry.proc = null;
+        return false;
+    }
+
+    if (!wait_for_x_socket(entry.display_num, 3000))
+        bot.log(`[WARN] X socket ${x_socket_path(entry.display_num)} did not appear within 3s; Steam may fail to connect.`);
+
+    bot.log(`Spawned chunked Xvfb on ${entry.display} pid=${entry.proc.pid} bots_per_display=${CHUNKED_X_DISPLAY_BOTS_PER_DISPLAY}`);
+    return true;
+}
+
+function stop_chunked_x_display_entry(entry) {
+    if (!entry || !entry.proc)
+        return;
+
+    const pid = entry.proc.pid;
+    try { entry.proc.kill('SIGTERM'); } catch (error) { }
+    setTimeout(() => {
+        try { process.kill(pid, 0); } catch (error) { return; }
+        try { process.kill(pid, 'SIGKILL'); } catch (error) { }
+    }, 2000);
+    entry.proc = null;
+    entry.adopted = false;
+    try { fs.unlinkSync(x_display_pid_path(entry.display_num)); } catch (error) { }
 }
 
 
@@ -432,14 +605,31 @@ function read_proc_stat(pid) {
 
         const comm = stat.slice(stat.indexOf('(') + 1, end_comm);
         const fields = stat.slice(end_comm + 2).trim().split(/\s+/);
-        return {
+        const info = {
             pid: pid,
             comm: comm,
             ppid: Number.parseInt(fields[1], 10),
-            starttime: Number.parseInt(fields[19], 10) || 0,
-            cmdline: read_proc_cmdline(pid),
-            nspids: read_proc_nspids(pid)
+            starttime: Number.parseInt(fields[19], 10) || 0
         };
+        let cmdline = null;
+        let nspids = null;
+        Object.defineProperty(info, 'cmdline', {
+            enumerable: true,
+            get: function() {
+                if (cmdline === null)
+                    cmdline = read_proc_cmdline(pid);
+                return cmdline;
+            }
+        });
+        Object.defineProperty(info, 'nspids', {
+            enumerable: true,
+            get: function() {
+                if (nspids === null)
+                    nspids = read_proc_nspids(pid);
+                return nspids;
+            }
+        });
+        return info;
     } catch (error) {
         return null;
     }
@@ -454,10 +644,11 @@ function max_concurrent_bots() {
 }
 
 function max_steam_boots() {
-    if (!Number.isSafeInteger(STEAM_BOOT_CONCURRENCY_VALUE) || STEAM_BOOT_CONCURRENCY_VALUE < 1)
+    const value = Number.parseInt(process.env.CAT_STEAM_BOOT_CONCURRENCY || String(config.steam_boot_concurrency || '1'), 10);
+    if (!Number.isSafeInteger(value) || value < 1)
         return 1;
 
-    return STEAM_BOOT_CONCURRENCY_VALUE;
+    return value;
 }
 
 function start_delay_allows_launch(time) {
@@ -483,7 +674,7 @@ function steam_boot_delay_allows_launch(time) {
 function steam_login_timeout_seconds() {
     const value = Number.parseInt(config.auto_restart_steam_if_not_logged_within, 10);
     if (!Number.isSafeInteger(value) || value < 0)
-        return 300;
+        return 70;
 
     return value;
 }
@@ -538,6 +729,10 @@ function read_process_table() {
     return processes;
 }
 
+function process_table_or_current(processes) {
+    return processes || read_process_table();
+}
+
 function process_command_executable(info) {
     if (!info)
         return '';
@@ -556,14 +751,30 @@ function process_has_pid(info, pid) {
     return Boolean(info && pid > 0 && (info.pid === pid || (info.nspids || []).includes(pid)));
 }
 
+function add_process_pids_to_map(process_map, info, value) {
+    if (!info)
+        return;
+
+    process_map.set(info.pid, value);
+    for (const pid of info.nspids || [])
+        process_map.set(pid, value);
+}
+
 function collect_descendant_pids(root_pid, processes) {
+    return collect_descendant_pids_from_children(root_pid, build_process_children_by_parent(processes));
+}
+
+function build_process_children_by_parent(processes) {
     const children_by_parent = new Map();
     for (const info of processes.values()) {
         if (!children_by_parent.has(info.ppid))
             children_by_parent.set(info.ppid, []);
         children_by_parent.get(info.ppid).push(info.pid);
     }
+    return children_by_parent;
+}
 
+function collect_descendant_pids_from_children(root_pid, children_by_parent) {
     const descendants = [];
     const stack = [root_pid];
     while (stack.length) {
@@ -616,8 +827,8 @@ function is_steamwebhelper_process(info) {
     return info.comm === 'steamwebhelper' || executable.includes('steamwebhelper') || command.includes('/steamwebhelper');
 }
 
-function find_main_steamwebhelper(steam_launcher_pid) {
-    const processes = read_process_table();
+function find_main_steamwebhelper(steam_launcher_pid, processes) {
+    processes = process_table_or_current(processes);
     const steam_tree = new Set(collect_descendant_pids(steam_launcher_pid, processes));
     steam_tree.add(steam_launcher_pid);
 
@@ -930,6 +1141,7 @@ class Bot extends EventEmitter {
         this.procXvfb = null;
         this.botDisplay = null;
         this.botXvfbAdopted = false;
+        this.chunked_x_display_entry = null;
 
         // Start timestamp
         this.startTime = null;
@@ -955,6 +1167,10 @@ class Bot extends EventEmitter {
         this.lastGameKillReason = '';
         this.terminal_auth_state = 0;
         this.clear_steam_webhelper_cache_before_start = false;
+        this.steam_log_paths_cache = [];
+        this.steam_log_paths_cache_time = 0;
+        this.existing_steam_log_paths_cache = [];
+        this.existing_steam_log_paths_cache_time = 0;
 
         this.logSteam = null;
         this.logGame = null;
@@ -1008,6 +1224,7 @@ class Bot extends EventEmitter {
         this.time_steam_client_initialized_game_launch = 0;
         this.time_gameCheck = 0;
         this.time_ipcState = 0;
+        this.time_steam_log_scan = 0;
         this.time_steamStatusLog = 0;
         this.time_steam_boot_status_log = 0;
         this.shouldResetSteam = false;
@@ -1291,7 +1508,7 @@ class Bot extends EventEmitter {
         for (const log_path of log_paths) {
             let text = '';
             try {
-                text = fs.readFileSync(log_path, 'utf8');
+                text = read_file_tail(log_path, 262144);
             } catch (error) {
                 continue;
             }
@@ -1349,7 +1566,7 @@ class Bot extends EventEmitter {
 
         for (const log_path of this.existingSteamLogPaths()) {
             try {
-                const log_text = fs.readFileSync(log_path, 'utf8');
+                const log_text = read_file_tail(log_path, 262144);
                 if ((login_state_ready && login_state_ready.test(log_text)) ||
                     ready_patterns.some((pattern) => pattern.test(log_text))) {
                     return true;
@@ -1424,8 +1641,71 @@ class Bot extends EventEmitter {
         return true;
     }
 
+    using_chunked_x_display() {
+        return !!this.chunked_x_display_entry && !!this.botDisplay;
+    }
+
+    release_chunked_x_display() {
+        const entry = this.chunked_x_display_entry;
+        if (!entry)
+            return;
+
+        entry.users.delete(this.name);
+        if (this.botDisplay === entry.display)
+            this.botDisplay = null;
+        this.chunked_x_display_entry = null;
+        this.botXvfbAdopted = false;
+        if (entry.users.size === 0 && entry.proc)
+            stop_chunked_x_display_entry(entry);
+    }
+
+    ensure_chunked_x_display() {
+        if (this.chunked_x_display_entry && this.botDisplay && !this.chunked_x_display_entry.unavailable)
+            return true;
+        if (this.chunked_x_display_entry && this.chunked_x_display_entry.unavailable)
+            this.release_chunked_x_display();
+        if (!CHUNKED_X_DISPLAY)
+            return false;
+        if (!xvfb_available()) {
+            this.log('[WARN] chunked_x_display is enabled but Xvfb is not installed; falling back to shared display.');
+            return false;
+        }
+
+        const preferred_index = Math.floor(this.botid / CHUNKED_X_DISPLAY_BOTS_PER_DISPLAY);
+        for (let offset = 0; offset < CHUNKED_X_DISPLAY_MAX_DISPLAYS; ++offset) {
+            const display_index = (preferred_index + offset) % CHUNKED_X_DISPLAY_MAX_DISPLAYS;
+            const display_num = CHUNKED_X_DISPLAY_BASE + display_index;
+            const entry = chunked_x_display_entry(display_num);
+            if (entry.unavailable || entry.users.size >= CHUNKED_X_DISPLAY_BOTS_PER_DISPLAY)
+                continue;
+            if (!ensure_chunked_x_display_entry(entry, this))
+                continue;
+
+            entry.users.add(this.name);
+            this.chunked_x_display_entry = entry;
+            this.botDisplay = entry.display;
+            this.botXvfbAdopted = true;
+            this.log(`Using chunked X display ${entry.display} users=${entry.users.size}/${CHUNKED_X_DISPLAY_BOTS_PER_DISPLAY}`);
+            return true;
+        }
+
+        this.log(`[ERROR] No chunked X display slot available for ${this.name}; max_displays=${CHUNKED_X_DISPLAY_MAX_DISPLAYS} bots_per_display=${CHUNKED_X_DISPLAY_BOTS_PER_DISPLAY}.`);
+        return false;
+    }
+
     using_per_bot_x_display() {
-        return !!this.procXvfb || this.botXvfbAdopted;
+        return !!this.procXvfb || (this.botXvfbAdopted && !this.chunked_x_display_entry);
+    }
+
+    using_bot_x_display() {
+        return this.using_chunked_x_display() || this.using_per_bot_x_display();
+    }
+
+    ensure_bot_x_display() {
+        if (this.ensure_chunked_x_display())
+            return true;
+
+        return this.ensure_per_bot_x_display();
     }
 
     ensure_per_bot_x_display() {
@@ -1506,6 +1786,7 @@ class Bot extends EventEmitter {
     }
 
     killXvfb() {
+        this.release_chunked_x_display();
         if (this.procXvfb) {
             const pid = this.procXvfb.pid;
             try { this.procXvfb.kill('SIGTERM'); } catch (error) { }
@@ -1579,6 +1860,10 @@ class Bot extends EventEmitter {
     }
 
     steamLogPaths() {
+        const now = Date.now();
+        if (this.steam_log_paths_cache_time && now - this.steam_log_paths_cache_time < 5000)
+            return this.steam_log_paths_cache;
+
         var log_paths = ['./logs/' + this.name + '.steam.log'];
 
         for (var steam_root of this.steamInstallCandidates()) {
@@ -1600,7 +1885,9 @@ class Bot extends EventEmitter {
             } catch (error) { }
         }
 
-        return unique_paths(log_paths);
+        this.steam_log_paths_cache = unique_paths(log_paths);
+        this.steam_log_paths_cache_time = now;
+        return this.steam_log_paths_cache;
     }
 
     steam_log_paths_for_session_clear() {
@@ -1616,16 +1903,24 @@ class Bot extends EventEmitter {
     }
 
     existingSteamLogPaths() {
-        return this.steamLogPaths().filter((log_path) => {
+        const now = Date.now();
+        if (this.existing_steam_log_paths_cache_time && now - this.existing_steam_log_paths_cache_time < 5000)
+            return this.existing_steam_log_paths_cache;
+
+        this.existing_steam_log_paths_cache = this.steamLogPaths().filter((log_path) => {
             try {
                 return fs.existsSync(log_path) && fs.statSync(log_path).isFile();
             } catch (error) {
                 return false;
             }
         });
+        this.existing_steam_log_paths_cache_time = now;
+        return this.existing_steam_log_paths_cache;
     }
 
     clearSteamStartupLogs() {
+        this.steam_log_paths_cache_time = 0;
+        this.existing_steam_log_paths_cache_time = 0;
         for (const steam_root of this.steamInstallCandidates()) {
             try {
                 fs.mkdirSync(path.join(steam_root, 'logs'), { recursive: true });
@@ -1721,8 +2016,20 @@ class Bot extends EventEmitter {
     steamFatalStartupLogPath() {
         for (var log_path of this.existingSteamLogPaths()) {
             try {
-                const log_text = fs.readFileSync(log_path, 'utf8');
+                const log_text = read_file_tail(log_path, 262144);
                 if (steam_startup_log_has_fatal_error(log_text))
+                    return log_path;
+            } catch (error) { }
+        }
+
+        return null;
+    }
+
+    steam_x_client_cap_log_path() {
+        for (var log_path of this.existingSteamLogPaths()) {
+            try {
+                const log_text = read_file_tail(log_path, 262144);
+                if (steam_log_has_x_client_cap_error(log_text))
                     return log_path;
             } catch (error) { }
         }
@@ -1804,13 +2111,31 @@ class Bot extends EventEmitter {
         this.force_kill_runtime_processes(1000);
     }
 
+    restart_after_x_client_cap(log_path) {
+        const entry = this.chunked_x_display_entry;
+        if (!entry)
+            return false;
+
+        entry.unavailable = true;
+        const display = entry.display;
+        this.log(`[ERROR] X display ${display} hit Maximum number of clients reached; moving this bot to another chunked X display. log=${log_path}`);
+        this.log_single_steam_tail('Steam X client cap log tail', log_path);
+        this.release_chunked_x_display();
+        this.shouldRestart = true;
+        this.time_steamWorking = 0;
+        this.killGame();
+        this.killSteam();
+        this.force_kill_runtime_processes(1000);
+        return true;
+    }
+
     steam_webhelper_stall_log_path() {
         for (var log_path of this.existingSteamLogPaths()) {
             if (!['steamui_html.txt', 'webhelper.txt'].includes(path.basename(log_path)))
                 continue;
 
             try {
-                const log_text = fs.readFileSync(log_path, 'utf8');
+                const log_text = read_file_tail(log_path, 262144);
                 if (steam_webhelper_browser_stalled(log_text))
                     return log_path;
             } catch (error) { }
@@ -1997,9 +2322,9 @@ class Bot extends EventEmitter {
             'Refresh complete'
         ];
 
-        for (var logPath of this.steamLogPaths()) {
+        for (var logPath of this.existingSteamLogPaths()) {
             try {
-                const log_text = fs.existsSync(logPath) ? fs.readFileSync(logPath, 'utf8') : '';
+                const log_text = read_file_tail(logPath, 262144);
                 if (steam_client_initialized_from_log(log_text)) {
                     this.mark_steam_client_initialized(path.basename(logPath) === 'error.log' ? path.dirname(logPath) : null, log_text);
                     return true;
@@ -2018,7 +2343,7 @@ class Bot extends EventEmitter {
         var self = this;
         if (self.procFirejailSteam) {
             self.log('[ERROR] Steam is already running!');
-            return;
+            return false;
         }
 
         if (!fs.existsSync(self.home)) {
@@ -2032,11 +2357,16 @@ class Bot extends EventEmitter {
             self.clear_steam_webhelper_cache_before_start = false;
         }
         self.clearSteamStartupLogs();
-        self.ensure_per_bot_x_display();
-        const using_per_bot_x = self.using_per_bot_x_display();
-        const display_value = (using_per_bot_x && self.botDisplay) ? self.botDisplay : BOT_DISPLAY;
-        const xauthority_path = using_per_bot_x ? '' : self.ensure_xauthority();
-        if (using_per_bot_x)
+        if (!self.ensure_bot_x_display() && CHUNKED_X_DISPLAY) {
+            self.log('[ERROR] Chunked X display is enabled but no display slot could be prepared; Steam launch skipped.');
+            self.shouldRestart = true;
+            self.time_steamWorking = 0;
+            return false;
+        }
+        const using_bot_x = self.using_bot_x_display();
+        const display_value = (using_bot_x && self.botDisplay) ? self.botDisplay : BOT_DISPLAY;
+        const xauthority_path = using_bot_x ? '' : self.ensure_xauthority();
+        if (using_bot_x)
             self.xauthorityPath = '';
 
         var steambin = this.steamLaunchCommand();
@@ -2171,6 +2501,7 @@ class Bot extends EventEmitter {
         self.log(`Launched ${steambin} (${self.procFirejailSteam.pid})`);
         self.log(`Steam log capture: ./logs/${self.name}.steam.log plus ${self.steamInstallCandidates().map((steam_path) => path.join(steam_path, 'logs')).join(', ')}`);
         self.emit('start-steam', self.procFirejailSteam.pid);
+        return true;
     }
 
     spawnGame() {
@@ -2291,6 +2622,7 @@ class Bot extends EventEmitter {
         const account_disabled_e43_log_path = this.steam_account_disabled_e43_log_path();
         const login_error_5_log_path = this.steam_login_error_5_log_path();
         const invalid_password_log_path = this.steam_invalid_password_log_path();
+        const x_client_cap_log_path = this.steam_x_client_cap_log_path();
         if (!this.isSteamWorking && account_disabled_e43_log_path) {
             this.mark_terminal_auth_error(STATE.ACCOUNT_DISABLED_E43, 'ACCOUNT DISABLED E43', account_disabled_e43_log_path);
         }
@@ -2299,6 +2631,13 @@ class Bot extends EventEmitter {
         }
         else if (!this.isSteamWorking && invalid_password_log_path) {
             this.mark_terminal_auth_error(STATE.INVALID_PASSWORD_E5, 'INVALID PASSWORD E5', invalid_password_log_path);
+        }
+        else if (!this.isSteamWorking && x_client_cap_log_path) {
+            if (!this.restart_after_x_client_cap(x_client_cap_log_path)) {
+                this.log(`[ERROR] X display ${this.botDisplay || BOT_DISPLAY} hit Maximum number of clients reached but no chunked display slot is assigned. log=${x_client_cap_log_path}`);
+                this.shouldRestart = true;
+                this.time_steamWorking = 0;
+            }
         }
         else if (!this.isSteamWorking && code !== 0 && steam_startup_log_has_fatal_error(steam_log_tail)) {
             this.log('[ERROR] Steam exited during startup with a fatal runtime setup error; stopping this bot instead of relaunching in a loop.');
@@ -2326,6 +2665,7 @@ class Bot extends EventEmitter {
         this.time_steamLoggedIn = 0;
         this.time_steam_client_initialized_game_launch = 0;
         this.time_steamwebhelper_cleanup = 0;
+        this.time_steam_log_scan = 0;
         this.steamwebhelper_cleanup_done = false;
         this.steamwebhelper_frozen_pid = -1;
 
@@ -2360,6 +2700,7 @@ class Bot extends EventEmitter {
         this.time_gameCheck = 0;
         this.time_ipcState = 0;
         this.time_steamwebhelper_cleanup = 0;
+        this.time_steam_log_scan = 0;
         this.steamwebhelper_cleanup_done = false;
         if (this.shouldRun && this.procFirejailSteam)
             this.state = STATE.STARTING;
@@ -2431,6 +2772,7 @@ class Bot extends EventEmitter {
         this.time_ipc_identity_missing = 0;
         this.time_ipc_peer_missing = 0;
         this.time_steamwebhelper_cleanup = 0;
+        this.time_steam_log_scan = 0;
         this.time_steamStatusLog = 0;
         this.time_steam_boot_status_log = 0;
         this.shouldRestart = false;
@@ -2723,8 +3065,8 @@ class Bot extends EventEmitter {
         } catch (error) { }
     }
 
-    gameCheck() {
-        const game_process = this.findGameProcess();
+    gameCheck(processes, children_by_parent) {
+        const game_process = this.findGameProcess(processes, children_by_parent);
         if (!game_process) {
             if (this.ipcState && this.ipcState.pid) {
                 this.gamePid = this.ipcState.pid;
@@ -2747,13 +3089,14 @@ class Bot extends EventEmitter {
         return true;
     }
 
-    findGameProcess() {
+    findGameProcess(processes, children_by_parent) {
         if (!this.procFirejailGame)
             return null;
 
-        const processes = read_process_table();
+        processes = process_table_or_current(processes);
+        children_by_parent = children_by_parent || build_process_children_by_parent(processes);
         const game_binary = this.gameBinary();
-        const descendant_pids = collect_descendant_pids(this.procFirejailGame.pid, processes);
+        const descendant_pids = collect_descendant_pids_from_children(this.procFirejailGame.pid, children_by_parent);
         const candidates = descendant_pids
             .map((pid) => processes.get(pid))
             .filter((info) => is_game_process(info, game_binary));
@@ -2762,20 +3105,21 @@ class Bot extends EventEmitter {
         return candidates[0] || null;
     }
 
-    owns_process_pid(pid) {
-        return Boolean(this.find_owned_process_by_pid(pid));
+    owns_process_pid(pid, processes, children_by_parent) {
+        return Boolean(this.find_owned_process_by_pid(pid, processes, children_by_parent));
     }
 
-    find_owned_process_by_pid(pid) {
+    find_owned_process_by_pid(pid, processes, children_by_parent) {
         if (!this.procFirejailGame || !pid || pid <= 0)
             return null;
 
-        const processes = read_process_table();
+        processes = process_table_or_current(processes);
+        children_by_parent = children_by_parent || build_process_children_by_parent(processes);
         const root_process = processes.get(this.procFirejailGame.pid);
         if (process_has_pid(root_process, pid))
             return root_process;
 
-        for (const descendant_pid of collect_descendant_pids(this.procFirejailGame.pid, processes)) {
+        for (const descendant_pid of collect_descendant_pids_from_children(this.procFirejailGame.pid, children_by_parent)) {
             const info = processes.get(descendant_pid);
             if (process_has_pid(info, pid))
                 return info;
@@ -2784,7 +3128,18 @@ class Bot extends EventEmitter {
         return null;
     }
 
-    ipc_peer_match_score(id, data) {
+    index_owned_processes(processes, children_by_parent, process_map) {
+        if (!this.procFirejailGame)
+            return;
+
+        processes = process_table_or_current(processes);
+        children_by_parent = children_by_parent || build_process_children_by_parent(processes);
+        add_process_pids_to_map(process_map, processes.get(this.procFirejailGame.pid), this);
+        for (const descendant_pid of collect_descendant_pids_from_children(this.procFirejailGame.pid, children_by_parent))
+            add_process_pids_to_map(process_map, processes.get(descendant_pid), this);
+    }
+
+    ipc_peer_match_score(id, data, processes, owned_process_bot, children_by_parent) {
         if (!data)
             return 0;
 
@@ -2797,8 +3152,12 @@ class Bot extends EventEmitter {
         if (this.ipcState)
             return 0;
 
-        if (data.pid && this.owns_process_pid(data.pid))
+        if (owned_process_bot !== undefined) {
+            if (owned_process_bot === this)
+                return 100;
+        } else if (data.pid && this.owns_process_pid(data.pid, processes, children_by_parent)) {
             return 100;
+        }
 
         if (this.startTime && data.starttime && this.startTime == data.starttime)
             return 80;
@@ -2809,12 +3168,12 @@ class Bot extends EventEmitter {
         return 0;
     }
 
-    accept_ipc_peer(id, data) {
+    accept_ipc_peer(id, data, processes, children_by_parent) {
         if (!data)
             return;
 
         this.time_ipc_peer_missing = 0;
-        const peer_process = this.find_owned_process_by_pid(data.pid);
+        const peer_process = this.find_owned_process_by_pid(data.pid, processes, children_by_parent);
         if (peer_process) {
             this.gamePid = peer_process.pid;
             if (!this.startTime)
@@ -2846,62 +3205,70 @@ class Bot extends EventEmitter {
     }
 
     // Apply current state
-    update() {
+    update(processes, children_by_parent) {
         var time = Date.now();
         if (this.shouldRun && !this.shouldRestart) {
             if (this.procFirejailSteam) {
                 if (!this.isSteamWorking) {
                     this.refresh_steam_login_timeout(time);
-                    this.pollSteamReady();
-                    if (this.isSteamWorking)
-                        return;
+                    const scan_steam_logs = !this.time_steam_log_scan || time > this.time_steam_log_scan;
+                    if (scan_steam_logs) {
+                        this.time_steam_log_scan = time + 2000;
+                        this.pollSteamReady();
+                        if (this.isSteamWorking)
+                            return;
 
-                    const account_disabled_e43_log_path = this.steam_account_disabled_e43_log_path();
-                    if (account_disabled_e43_log_path) {
-                        this.mark_terminal_auth_error(STATE.ACCOUNT_DISABLED_E43, 'ACCOUNT DISABLED E43', account_disabled_e43_log_path);
-                        return;
-                    }
+                        const account_disabled_e43_log_path = this.steam_account_disabled_e43_log_path();
+                        if (account_disabled_e43_log_path) {
+                            this.mark_terminal_auth_error(STATE.ACCOUNT_DISABLED_E43, 'ACCOUNT DISABLED E43', account_disabled_e43_log_path);
+                            return;
+                        }
 
-                    const login_error_5_log_path = this.steam_login_error_5_log_path();
-                    if (login_error_5_log_path) {
-                        this.restart_after_login_error_5(login_error_5_log_path);
-                        return;
-                    }
+                        const login_error_5_log_path = this.steam_login_error_5_log_path();
+                        if (login_error_5_log_path) {
+                            this.restart_after_login_error_5(login_error_5_log_path);
+                            return;
+                        }
 
-                    const invalid_password_log_path = this.steam_invalid_password_log_path();
-                    if (invalid_password_log_path) {
-                        this.mark_terminal_auth_error(STATE.INVALID_PASSWORD_E5, 'INVALID PASSWORD E5', invalid_password_log_path);
-                        return;
-                    }
+                        const invalid_password_log_path = this.steam_invalid_password_log_path();
+                        if (invalid_password_log_path) {
+                            this.mark_terminal_auth_error(STATE.INVALID_PASSWORD_E5, 'INVALID PASSWORD E5', invalid_password_log_path);
+                            return;
+                        }
 
-                    const fatal_steam_log_path = this.steamFatalStartupLogPath();
-                    if (fatal_steam_log_path) {
-                        this.log(`[ERROR] Steam startup fatal error detected in ${fatal_steam_log_path}; stopping this bot instead of waiting with ${steam_login_timeout_description()}.`);
-                        this.logSteamTails('Steam fatal startup log tail', 12);
-                        this.shouldRun = false;
-                        this.shouldRestart = false;
-                        this.killSteam();
-                        return;
-                    }
+                        const x_client_cap_log_path = this.steam_x_client_cap_log_path();
+                        if (x_client_cap_log_path && this.restart_after_x_client_cap(x_client_cap_log_path))
+                            return;
 
-                    const stalled_webhelper_log_path = this.steam_webhelper_stall_log_path();
-                    if (stalled_webhelper_log_path) {
-                        this.log(`[ERROR] Steam webhelper browser startup stalled in ${stalled_webhelper_log_path}; restarting Steam with a fresh webhelper cache.`);
-                        this.log_single_steam_tail('Steam webhelper stall log tail', stalled_webhelper_log_path);
-                        this.clear_steam_webhelper_cache_before_start = true;
-                        this.shouldRestart = true;
-                        this.time_steamWorking = 0;
-                        return;
-                    }
+                        const fatal_steam_log_path = this.steamFatalStartupLogPath();
+                        if (fatal_steam_log_path) {
+                            this.log(`[ERROR] Steam startup fatal error detected in ${fatal_steam_log_path}; stopping this bot instead of waiting with ${steam_login_timeout_description()}.`);
+                            this.logSteamTails('Steam fatal startup log tail', 12);
+                            this.shouldRun = false;
+                            this.shouldRestart = false;
+                            this.killSteam();
+                            return;
+                        }
 
-                    const stalled_login_ui_log_path = this.steam_login_ui_stall_log_path(time);
-                    if (stalled_login_ui_log_path) {
-                        this.log(`[ERROR] Steam login UI did not appear within ${STEAM_LOGIN_UI_TIMEOUT / 1000} seconds; restarting Steam with a fresh webhelper cache. last_log=${stalled_login_ui_log_path}`);
-                        this.log_single_steam_tail('Steam login UI stall log tail', stalled_login_ui_log_path);
-                        this.clear_steam_webhelper_cache_before_start = true;
-                        this.shouldRestart = true;
-                        this.time_steamWorking = 0;
-                        return;
+                        const stalled_webhelper_log_path = this.steam_webhelper_stall_log_path();
+                        if (stalled_webhelper_log_path) {
+                            this.log(`[ERROR] Steam webhelper browser startup stalled in ${stalled_webhelper_log_path}; restarting Steam with a fresh webhelper cache.`);
+                            this.log_single_steam_tail('Steam webhelper stall log tail', stalled_webhelper_log_path);
+                            this.clear_steam_webhelper_cache_before_start = true;
+                            this.shouldRestart = true;
+                            this.time_steamWorking = 0;
+                            return;
+                        }
+
+                        const stalled_login_ui_log_path = this.steam_login_ui_stall_log_path(time);
+                        if (stalled_login_ui_log_path) {
+                            this.log(`[ERROR] Steam login UI did not appear within ${STEAM_LOGIN_UI_TIMEOUT / 1000} seconds; restarting Steam with a fresh webhelper cache. last_log=${stalled_login_ui_log_path}`);
+                            this.log_single_steam_tail('Steam login UI stall log tail', stalled_login_ui_log_path);
+                            this.clear_steam_webhelper_cache_before_start = true;
+                            this.shouldRestart = true;
+                            this.time_steamWorking = 0;
+                            return;
+                        }
                     }
 
                     if (!this.time_steamStatusLog || time > this.time_steamStatusLog) {
@@ -2910,7 +3277,7 @@ class Bot extends EventEmitter {
                             : 'login_timeout=disabled';
                         this.log(`Waiting for Steam login/readiness, ${timeout_status}`);
                         const logs = this.existingSteamLogPaths();
-                        this.log(logs.length ? `Visible Steam logs: ${logs.join(', ')}` : 'Visible Steam logs: none yet');
+                        this.log(logs.length ? `Visible Steam logs: count=${logs.length} sample=${logs.slice(0, 6).join(', ')}` : 'Visible Steam logs: none yet');
                         this.time_steamStatusLog = time + 10000;
                     }
 
@@ -2938,7 +3305,10 @@ class Bot extends EventEmitter {
                 }
                 else {
                     if (!this.procFirejailGame) {
-                        this.pollSteamReady();
+                        if (!this.steamClientInitialized && (!this.time_steam_log_scan || time > this.time_steam_log_scan)) {
+                            this.time_steam_log_scan = time + 2000;
+                            this.pollSteamReady();
+                        }
                         if (!this.steamClientInitialized) {
                             if (!this.time_steamStatusLog || time > this.time_steamStatusLog) {
                                 this.log('Steam ready; waiting for client initialization log marker before launching game.');
@@ -2966,7 +3336,7 @@ class Bot extends EventEmitter {
                     else {
                         if (this.time_gameCheck) {
                             if (time > this.time_gameCheck) {
-                                if (!this.gameCheck()) {
+                                if (!this.gameCheck(processes, children_by_parent)) {
                                     this.shouldRestart = true;
                                     this.time_gameCheck = Number.MAX_SAFE_INTEGER;
                                 }
@@ -3019,6 +3389,8 @@ class Bot extends EventEmitter {
                         this.account = accounts.get(this.botid, this.account_generation);
                         if (!this.account) {
                             this.state = STATE.NO_ACCOUNT;
+                            this.shouldRun = false;
+                            this.shouldRestart = false;
                             return;
                         }
                         if (this.state == STATE.NO_ACCOUNT)
@@ -3033,15 +3405,23 @@ class Bot extends EventEmitter {
                         module.exports.lastSteamBootTime = time;
                         this.state = STATE.STARTING;
                         this.reset();
-                        this.spawnSteam();
-                        module.exports.currentlyStartingGames++;
-                        module.exports.currentlyBootingSteam++;
-                        this.time_steam_login_timeout_started = time;
-                        this.refresh_steam_login_timeout(time);
-                        this.time_steamAssumeReady = TIMEOUT_STEAM_ASSUME_READY ? time + TIMEOUT_STEAM_ASSUME_READY : 0;
-                    } else if (this.account && start_slots_available && (!this.time_steam_boot_status_log || time > this.time_steam_boot_status_log)) {
-                        this.log(`Waiting for Steam boot slot, active_boots=${module.exports.currentlyBootingSteam}/${max_steam_boots()}`);
-                        this.time_steam_boot_status_log = time + 10000;
+                        if (this.spawnSteam()) {
+                            module.exports.currentlyStartingGames++;
+                            module.exports.currentlyBootingSteam++;
+                            this.time_steam_login_timeout_started = time;
+                            this.refresh_steam_login_timeout(time);
+                            this.time_steamAssumeReady = TIMEOUT_STEAM_ASSUME_READY ? time + TIMEOUT_STEAM_ASSUME_READY : 0;
+                        }
+                    } else if (this.account && (!this.time_steam_boot_status_log || time > this.time_steam_boot_status_log)) {
+                        if (!start_slots_available)
+                            this.log(`Waiting for game start slot, active_starts=${module.exports.currentlyStartingGames}/${max_concurrent_bots()}`);
+                        else if (!steam_boot_slots_available)
+                            this.log(`Waiting for Steam boot slot, active_boots=${module.exports.currentlyBootingSteam}/${max_steam_boots()}`);
+                        else if (!start_delay_elapsed)
+                            this.log('Waiting for game start delay');
+                        else if (!steam_boot_delay_elapsed)
+                            this.log('Waiting for Steam boot delay');
+                        this.time_steam_boot_status_log = time + 60000;
                     }
                 }
             }
@@ -3087,6 +3467,8 @@ module.exports.currentlyStartingGames = 0;
 module.exports.currentlyBootingSteam = 0;
 module.exports.lastStartTime = 0;
 module.exports.lastSteamBootTime = 0;
+module.exports.read_process_table = read_process_table;
+module.exports.build_process_children_by_parent = build_process_children_by_parent;
 module.exports.states = STATE;
 Object.defineProperty(module.exports, 'MAX_CONCURRENT_BOTS', {
     get: function() { return max_concurrent_bots(); },

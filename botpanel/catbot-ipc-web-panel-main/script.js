@@ -46,9 +46,15 @@ const status = {
 
 var last_count = 0;
 var refresh_in_progress = false;
+var state_request_in_progress = false;
 
 function updateData() {
+	if (state_request_in_progress)
+		return;
+
+	state_request_in_progress = true;
 	request('api/state', function(error, r, b) {
+		state_request_in_progress = false;
 		if (request_failed(error, r)) {
 			if (r && r.statusCode === 403)
 				status.error('Not authorized; log in with the panel password');

@@ -11,6 +11,7 @@ user_instances_dir="$setup_root/user_instances"
 install_root="${CATHOOK_ROOT:-/opt/cathook}"
 requested_visible_windows="${CAT_VISIBLE_WINDOWS:-0}"
 requested_display_backend="${CAT_DISPLAY_BACKEND:-}"
+requested_chunked_x_display="${CAT_CHUNKED_X_DISPLAY:-1}"
 default_headless_display="${CAT_DEFAULT_DISPLAY:-:699}"
 for system_path_entry in /usr/local/sbin /usr/sbin /sbin; do
     case ":$PATH:" in
@@ -376,6 +377,8 @@ select_display_backend() {
 
     if [ -n "$requested_display_backend" ]; then
         selected_backend="$requested_display_backend"
+    elif [ "$requested_chunked_x_display" != "0" ] && [ "$has_xvfb" = "1" ]; then
+        selected_backend="xvfb"
     elif [ "$has_xpra" = "1" ] && [ "$has_xvfb" = "1" ]; then
         selected_backend="$(prompt_display_backend)"
     elif [ "$has_xpra" = "1" ]; then
@@ -1065,6 +1068,7 @@ start_ipc_server() {
         cat /tmp/cat-ipc-server.log >&2 || true
         exit 1
     fi
+    chmod 0666 /dev/shm/cathook_followbot_server 2>/dev/null || true
 }
 
 start_detached_panel() {
@@ -1101,6 +1105,12 @@ print_ready() {
     if [ "$use_xvfb" = "1" ]; then
         echo "Xvfb max clients: $xvfb_max_clients"
         echo "Xvfb screen: $xvfb_screen_size"
+    fi
+    if [ "$visible_windows" != "1" ]; then
+        echo "Chunked bot X displays: ${CAT_CHUNKED_X_DISPLAY:-1}"
+        echo "Chunked bot X base: ${CAT_CHUNKED_X_DISPLAY_BASE:-${display#:}}"
+        echo "Chunked bot X bots per display: ${CAT_CHUNKED_X_DISPLAY_BOTS_PER_DISPLAY:-25}"
+        echo "Chunked bot X max displays: ${CAT_CHUNKED_X_DISPLAY_MAX_DISPLAYS:-12}"
     fi
     echo
 }
@@ -1182,6 +1192,13 @@ start_panel() {
             CAT_GAME_WINDOW_OPTIONS="${CAT_GAME_WINDOW_OPTIONS:-}" \
             CAT_X_SCREEN="${CAT_X_SCREEN:-}" \
             CAT_PER_BOT_X_SCREEN="${CAT_PER_BOT_X_SCREEN:-}" \
+            CAT_XVFB_MAX_CLIENTS="$xvfb_max_clients" \
+            CAT_CHUNKED_X_DISPLAY="${CAT_CHUNKED_X_DISPLAY:-}" \
+            CAT_CHUNKED_X_DISPLAY_BASE="${CAT_CHUNKED_X_DISPLAY_BASE:-}" \
+            CAT_CHUNKED_X_DISPLAY_BOTS_PER_DISPLAY="${CAT_CHUNKED_X_DISPLAY_BOTS_PER_DISPLAY:-}" \
+            CAT_CHUNKED_X_DISPLAY_MAX_DISPLAYS="${CAT_CHUNKED_X_DISPLAY_MAX_DISPLAYS:-}" \
+            CAT_CHUNKED_X_DISPLAY_MAX_CLIENTS="${CAT_CHUNKED_X_DISPLAY_MAX_CLIENTS:-$xvfb_max_clients}" \
+            CAT_CHUNKED_X_DISPLAY_PID_DIR="${CAT_CHUNKED_X_DISPLAY_PID_DIR:-}" \
             CAT_STEAMWEBHELPER_CLEANUP="${CAT_STEAMWEBHELPER_CLEANUP:-0}" \
             CAT_STEAMWEBHELPER_CLEANUP_SECONDS="${CAT_STEAMWEBHELPER_CLEANUP_SECONDS:-10}" \
             CAT_XPRA_LOG="$xpra_log" \
@@ -1207,6 +1224,13 @@ start_panel() {
         CAT_GAME_WINDOW_OPTIONS="${CAT_GAME_WINDOW_OPTIONS:-}" \
         CAT_X_SCREEN="${CAT_X_SCREEN:-}" \
         CAT_PER_BOT_X_SCREEN="${CAT_PER_BOT_X_SCREEN:-}" \
+        CAT_XVFB_MAX_CLIENTS="$xvfb_max_clients" \
+        CAT_CHUNKED_X_DISPLAY="${CAT_CHUNKED_X_DISPLAY:-}" \
+        CAT_CHUNKED_X_DISPLAY_BASE="${CAT_CHUNKED_X_DISPLAY_BASE:-}" \
+        CAT_CHUNKED_X_DISPLAY_BOTS_PER_DISPLAY="${CAT_CHUNKED_X_DISPLAY_BOTS_PER_DISPLAY:-}" \
+        CAT_CHUNKED_X_DISPLAY_MAX_DISPLAYS="${CAT_CHUNKED_X_DISPLAY_MAX_DISPLAYS:-}" \
+        CAT_CHUNKED_X_DISPLAY_MAX_CLIENTS="${CAT_CHUNKED_X_DISPLAY_MAX_CLIENTS:-$xvfb_max_clients}" \
+        CAT_CHUNKED_X_DISPLAY_PID_DIR="${CAT_CHUNKED_X_DISPLAY_PID_DIR:-}" \
         CAT_STEAMWEBHELPER_CLEANUP="${CAT_STEAMWEBHELPER_CLEANUP:-0}" \
         CAT_STEAMWEBHELPER_CLEANUP_SECONDS="${CAT_STEAMWEBHELPER_CLEANUP_SECONDS:-10}" \
         CAT_XPRA_LOG="$xpra_log" \
