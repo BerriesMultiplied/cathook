@@ -54,3 +54,19 @@ nohup.out
 
 # Local runtime/config artifacts
 /opt/
+
+# Autoprofile runtimes
+.venv/
+__pycache__/
+*.pyc
+autoprofile/__pycache__/
+autoprofile/modules/__pycache__/
+autoprofile/web/__pycache__/
+autoprofile/accounts.txt
+autoprofile/goodaccounts.txt
+autoprofile/badaccounts.txt
+autoprofile/rollids.txt
+autoprofile/cookies.json
+autoprofile/img/*.jpg
+autoprofile/img/*.png
+test_avatar.py

@@ -1,0 +1,7 @@
+steam[client]
+fastapi
+uvicorn
+requests
+beautifulsoup4
+
+textual

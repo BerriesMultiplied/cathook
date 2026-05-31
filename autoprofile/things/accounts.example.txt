@@ -1,0 +1,2 @@
+# Put your Steam accounts here. One per line.
+# Format: username:password
