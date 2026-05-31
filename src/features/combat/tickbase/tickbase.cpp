@@ -205,15 +205,18 @@ auto available_shift_ticks(bool warp) -> int
     return 0;
   }
 
+  const int choked_commands = std::clamp(client_state->chokedcommands, 0, max_new_commands);
   const int available_ticks = std::min(
-    std::max(0, g_state.processing_ticks - client_state->chokedcommands),
+    std::max(0, g_state.processing_ticks - choked_commands),
     max_processing_ticks());
 
   const int requested_ticks = warp
     ? config.misc.exploits.warp_ticks
     : config.misc.exploits.doubletap_ticks;
 
-  return std::clamp(std::min(available_ticks, requested_ticks), 0, max_processing_ticks());
+  const int executable_ticks = std::max(0, max_new_commands - choked_commands);
+  const int shifted_ticks = std::min(std::min(available_ticks, requested_ticks), executable_ticks);
+  return std::clamp(shifted_ticks, 0, max_processing_ticks());
 }
 
 auto is_button_ready(button& bind) -> bool
@@ -587,7 +590,9 @@ auto run_rebuilt_move(float accumulated_extra_samples, bool final_tick, bool for
     g_state.recharging = false;
 
     const int next_command = latest_command_number();
+    const shift_mode previous_mode = g_state.mode;
     client->create_move(next_command, interval_per_tick() - accumulated_extra_samples, true);
+    const bool started_shift = previous_mode == shift_mode::none && g_state.mode != shift_mode::none;
 
     if (!packet_gate_open) {
       g_state.send_packet = false;
@@ -595,6 +600,11 @@ auto run_rebuilt_move(float accumulated_extra_samples, bool final_tick, bool for
 
     if (force_send) {
       g_state.send_packet = final_tick;
+    }
+
+    if (started_shift) {
+      spend_shift_tick();
+      g_state.send_packet = g_state.processing_ticks <= g_state.shift_goal;
     }
 
     if (client_state->chokedcommands >= max_choked_commands) {
