@@ -127,6 +127,31 @@
             <button id="checker_start_button" class="primary"><i class="fa-solid fa-play"></i> start check</button>
           </div>
         </div>
+        <div class="form_grid compact">
+          <label class="field form_column">
+            <span>Accounts</span>
+            <textarea id="checker_accounts" spellcheck="false" placeholder="username:password"></textarea>
+          </label>
+        </div>
+
+        <div class="form_grid compact">
+          <div class="form_column">
+            <h3>Performance & Settings</h3>
+            <div class="number_grid">
+              <label class="field">Parallel <input id="checker_max_parallel_accounts" type="number" min="1" max="64"></label>
+              <label class="field">Retries <input id="checker_max_login_retries" type="number" min="1" max="10"></label>
+              <label class="field">Login timeout <input id="checker_login_timeout_seconds" type="number" min="5" max="300"></label>
+              <label class="field">Loop timeout <input id="checker_loop_timeout" type="number" min="0"></label>
+            </div>
+            <div style="margin-top: 10px;">
+              <label><input id="checker_loopupdateprofiles" type="checkbox"> Loop accounts</label>
+            </div>
+          </div>
+          <label class="field form_column">
+            <span>Proxies</span>
+            <textarea id="checker_proxies" spellcheck="false" placeholder="host:port or host:port:user:pass"></textarea>
+          </label>
+        </div>
         
         <div class="log_header">
           <h3>Checker Logs</h3>
