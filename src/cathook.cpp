@@ -1373,7 +1373,7 @@ bool initialize_game_runtime() {
 
   team_menu_show_panel_original = (void (*)(void*, bool))sigscan_module("client.so", sigs::team_menu_show_panel);
 
-  text_window_show_panel_original = (void (*)(void*))sigscan_module("client.so", sigs::text_window_show_panel);
+  text_window_show_panel_original = (void (*)(void*, bool))sigscan_module("client.so", sigs::text_window_show_panel);
 
   cl_move_original = (tickbase::cl_move_fn)sigscan_module("engine.so", sigs::cl_move);
   error_assert(cl_move_original == nullptr, "Failed to find CL_Move");
