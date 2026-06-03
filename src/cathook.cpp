@@ -352,6 +352,15 @@ constexpr long attach_ready_delay_max_seconds = 300;
 
 constexpr std::string_view steamclient_module = "steamclient.so";
 
+constexpr bool detach_worker_runtime_enabled()
+{
+#if defined(CATHOOK_TEXTMODE) && CATHOOK_TEXTMODE
+  return true;
+#else
+  return false;
+#endif
+}
+
 constexpr std::array<const char*, 24> game_events = {
   "client_beginconnect",
   "client_connected",
@@ -580,7 +589,8 @@ void detach_worker_main()
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
 
-  if (!detach_worker_stop.load(std::memory_order_acquire)
+  if (detach_worker_runtime_enabled()
+      && !detach_worker_stop.load(std::memory_order_acquire)
       && !process_exiting.load(std::memory_order_acquire)) {
     service_detach_request();
   }
@@ -592,6 +602,12 @@ void detach_worker_main()
 void start_detach_worker()
 {
   if (process_exiting.load(std::memory_order_acquire)) {
+    return;
+  }
+
+  if (!detach_worker_runtime_enabled()) {
+    detach_worker_complete.store(true, std::memory_order_release);
+    detach_worker_started.store(false, std::memory_order_release);
     return;
   }
 
