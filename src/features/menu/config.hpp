@@ -625,6 +625,12 @@ struct Misc {
       og = 1
     };
 
+    enum class navbot_block_during {
+      off = 0,
+      warmup = 1,
+      warmup_and_setup = 2
+    };
+
     bool auto_class_select = false;
     enum tf_class class_selected = tf_class::SNIPER;
     bool auto_class_dont_join_during_warmup = false;
@@ -701,8 +707,7 @@ struct Misc {
     std::uint64_t region_selector_allowed_mask = (1ull << 47) - 1ull;
     bool navbot_enabled = false;
     bool navbot_draw_path = true;
-    bool navbot_dont_path_during_warmup = false;
-    bool navbot_dont_path_unless_match_started = false;
+    navbot_block_during navbot_block_during_enum = navbot_block_during::off;
     bool navbot_warmup_only_blu_cp_pl = false;
     bool navbot_look_at_path = false;
     navbot_look_at_path_mode navbot_look_mode = navbot_look_at_path_mode::smooth;

@@ -43,6 +43,12 @@ constexpr float stuck_fail_time = 1.25f;
 constexpr float blocked_fail_time = 4.0f;
 constexpr float passed_crumb_fade_time = 1.35f;
 
+struct path_clearance
+{
+  float width = player_width;
+  float half_width = half_player_width;
+};
+
 struct nav_area_id
 {
   uint32_t value = 0;
@@ -126,6 +132,7 @@ struct path_request
   uint32_t hazard_generation = 0;
   int captured_point_index = -1;
   std::vector<recorded_blocked_area> recorded_blocked_areas{};
+  path_clearance clearance{};
   float destination_reach_distance = crumb_reach_distance;
   bool setup_finished = false;
   bool require_exact_goal_area = false;

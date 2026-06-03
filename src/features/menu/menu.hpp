@@ -1842,6 +1842,11 @@ static void draw_navbot_content() {
     "Smooth",
     "OG"
   };
+  const char* navbot_block_during_items[] = {
+    "Off",
+    "Warmup",
+    "Warmup + setup"
+  };
   const char* navbot_job_items[] = {
     "Health",
     "Ammo",
@@ -1881,8 +1886,7 @@ static void draw_navbot_content() {
   cat_menu::flow_panel("NavBot", 0, 520.0f, [&]() {
     cat_menu::checkbox("Navbot", &config.misc.automation.navbot_enabled);
     cat_menu::checkbox("Draw path", &config.misc.automation.navbot_draw_path);
-    cat_menu::checkbox("Don't path during warmup", &config.misc.automation.navbot_dont_path_during_warmup);
-    cat_menu::checkbox("Don't path unless match started", &config.misc.automation.navbot_dont_path_unless_match_started);
+    cat_menu::combo("Don't path during", (int*)&config.misc.automation.navbot_block_during_enum, navbot_block_during_items, IM_ARRAYSIZE(navbot_block_during_items));
     cat_menu::checkbox("Warmup only on BLU cp_/pl_", &config.misc.automation.navbot_warmup_only_blu_cp_pl);
     cat_menu::checkbox("Look at path", &config.misc.automation.navbot_look_at_path);
     cat_menu::combo("Look mode", (int*)&config.misc.automation.navbot_look_mode, navbot_look_mode_items, IM_ARRAYSIZE(navbot_look_mode_items));

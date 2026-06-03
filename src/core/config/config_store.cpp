@@ -464,8 +464,7 @@ void config_store::import_config(const Config& config)
         std::to_string(config.misc.automation.region_selector_allowed_mask));
     set_bool("misc.automation.navbot_enabled", config.misc.automation.navbot_enabled);
     set_bool("misc.automation.navbot_draw_path", config.misc.automation.navbot_draw_path);
-    set_bool("misc.automation.navbot_dont_path_during_warmup", config.misc.automation.navbot_dont_path_during_warmup);
-    set_bool("misc.automation.navbot_dont_path_unless_match_started", config.misc.automation.navbot_dont_path_unless_match_started);
+    set_int("misc.automation.navbot_block_during_enum", static_cast<int>(config.misc.automation.navbot_block_during_enum));
     set_bool("misc.automation.navbot_warmup_only_blu_cp_pl", config.misc.automation.navbot_warmup_only_blu_cp_pl);
     set_bool("misc.automation.navbot_look_at_path", config.misc.automation.navbot_look_at_path);
     set_int("misc.automation.navbot_look_mode", static_cast<int>(config.misc.automation.navbot_look_mode));
@@ -1071,12 +1070,10 @@ void config_store::export_config(Config& config) const
         config.misc.automation.region_selector_allowed_mask) & automation::region_selector::all_region_bits;
     config.misc.automation.navbot_enabled = get_bool("misc.automation.navbot_enabled", config.misc.automation.navbot_enabled);
     config.misc.automation.navbot_draw_path = get_bool("misc.automation.navbot_draw_path", config.misc.automation.navbot_draw_path);
-    config.misc.automation.navbot_dont_path_during_warmup = get_bool(
-        "misc.automation.navbot_dont_path_during_warmup",
-        config.misc.automation.navbot_dont_path_during_warmup);
-    config.misc.automation.navbot_dont_path_unless_match_started = get_bool(
-        "misc.automation.navbot_dont_path_unless_match_started",
-        config.misc.automation.navbot_dont_path_unless_match_started);
+    config.misc.automation.navbot_block_during_enum = static_cast<Misc::Automation::navbot_block_during>(std::clamp(
+        get_int("misc.automation.navbot_block_during_enum", static_cast<int>(config.misc.automation.navbot_block_during_enum)),
+        0,
+        2));
     config.misc.automation.navbot_warmup_only_blu_cp_pl = get_bool(
         "misc.automation.navbot_warmup_only_blu_cp_pl",
         config.misc.automation.navbot_warmup_only_blu_cp_pl);

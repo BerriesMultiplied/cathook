@@ -50,10 +50,8 @@ constexpr const char* class_menu_show_panel =
   "55 48 89 E5 41 55 41 54 49 89 FC 53 89 F3 40 0F B6 F6 48 83 EC ? E8 ? ? ? ? 84 DB 48 8D 1D";
 constexpr const char* team_menu_show_panel =
   "55 48 89 E5 41 56 41 55 41 54 49 89 FC 53 48 83 EC ? 40 84 F6 0F 85";
-constexpr const char* map_info_menu_show_panel =
-  "55 48 8D 15 ? ? ? ? 48 89 E5 41 54 49 89 FC 53 48 8B 07 89 F3";
 constexpr const char* text_window_show_panel =
-  "55 48 8D 15 ? ? ? ? 48 89 E5 41 54 41 89 F4 53 48 8B 07";
+  "48 8D 05 ? ? ? ? 4C 8B 20 4D 85 E4 74 2F 49 8B 04 24 48 8D 0D ? ? ? ? 48 8B 90 80 00 00 00 48 8B 07 48 8B 00 48 39 C8 75 1A";
 constexpr const char* key_values_constructor =
   "55 66 0F EF C0 48 89 E5 53 48 89 FB 48 89 F7 48 83 EC ? BE ? ? ? ? C7 03 FF FF FF FF";
 constexpr const char* key_values_set_int =

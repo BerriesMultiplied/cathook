@@ -171,27 +171,45 @@ portal_info compute_portal(const nav_area_data& from_area, const nav_area_data& 
   return portal;
 }
 
+path_clearance normalized_path_clearance(path_clearance clearance)
+{
+  if (!std::isfinite(clearance.width) || clearance.width <= 1.0f)
+  {
+    clearance.width = player_width;
+  }
+  if (!std::isfinite(clearance.half_width) || clearance.half_width <= 1.0f)
+  {
+    clearance.half_width = clearance.width * 0.5f;
+  }
+
+  clearance.width = std::max(clearance.width, player_width);
+  clearance.half_width = std::max(clearance.half_width, clearance.width * 0.5f);
+  return clearance;
+}
+
 } // namespace
 
-bool nav_area_has_clearance(const nav_area_data& area)
+bool nav_area_has_clearance(const nav_area_data& area, const path_clearance& clearance)
 {
-  const auto required_width = player_width + (player_clearance_margin * 2.0f);
+  const path_clearance normalized_clearance = normalized_path_clearance(clearance);
+  const float required_width = normalized_clearance.width + (player_clearance_margin * 2.0f);
   return (area.maxs.x - area.mins.x) >= required_width
       && (area.maxs.y - area.mins.y) >= required_width;
 }
 
-bool nav_transition_has_clearance(const nav_area_data& from_area, const nav_area_data& to_area)
+bool nav_transition_has_clearance(const nav_area_data& from_area, const nav_area_data& to_area, const path_clearance& clearance)
 {
-  if (!nav_area_has_clearance(from_area) || !nav_area_has_clearance(to_area))
+  if (!nav_area_has_clearance(from_area, clearance) || !nav_area_has_clearance(to_area, clearance))
   {
     return false;
   }
 
-  const auto overlap_x = std::min(from_area.maxs.x, to_area.maxs.x) - std::max(from_area.mins.x, to_area.mins.x);
-  const auto overlap_y = std::min(from_area.maxs.y, to_area.maxs.y) - std::max(from_area.mins.y, to_area.mins.y);
-  const auto center_delta_x = std::fabs(to_area.center.x - from_area.center.x);
-  const auto center_delta_y = std::fabs(to_area.center.y - from_area.center.y);
-  const auto required_width = player_width + (player_clearance_margin * 2.0f);
+  const path_clearance normalized_clearance = normalized_path_clearance(clearance);
+  const float overlap_x = std::min(from_area.maxs.x, to_area.maxs.x) - std::max(from_area.mins.x, to_area.mins.x);
+  const float overlap_y = std::min(from_area.maxs.y, to_area.maxs.y) - std::max(from_area.mins.y, to_area.mins.y);
+  const float center_delta_x = std::fabs(to_area.center.x - from_area.center.x);
+  const float center_delta_y = std::fabs(to_area.center.y - from_area.center.y);
+  const float required_width = normalized_clearance.width + (player_clearance_margin * 2.0f);
 
   if (center_delta_x > center_delta_y)
   {
@@ -303,9 +321,10 @@ bool recorded_area_is_blocked_for_request(nav_area_id area_id, const path_reques
   return match->red || match->blue;
 }
 
-Vec3 clamp_point_to_player_clearance(const nav_area_data& area, const Vec3& point)
+Vec3 clamp_point_to_player_clearance(const nav_area_data& area, const Vec3& point, const path_clearance& clearance)
 {
-  const auto inset = half_player_width + player_clearance_margin;
+  const path_clearance normalized_clearance = normalized_path_clearance(clearance);
+  const float inset = normalized_clearance.half_width + player_clearance_margin;
   auto clamped = point;
 
   if ((area.maxs.x - area.mins.x) > inset * 2.0f)
@@ -329,7 +348,7 @@ Vec3 clamp_point_to_player_clearance(const nav_area_data& area, const Vec3& poin
   return clamped;
 }
 
-transition_points build_transition_points(const navbot_mesh& mesh, nav_area_id current_area, nav_area_id next_area)
+transition_points build_transition_points(const navbot_mesh& mesh, nav_area_id current_area, nav_area_id next_area, const path_clearance& clearance)
 {
   auto current = mesh.find_area(current_area);
   auto next = mesh.find_area(next_area);
@@ -373,14 +392,14 @@ transition_points build_transition_points(const navbot_mesh& mesh, nav_area_id c
   }
 
   return transition_points{
-    clamp_point_to_player_clearance(*current, area_center),
-    center_point,
-    center_next,
-    clamp_point_to_player_clearance(*next, next_center)
+    clamp_point_to_player_clearance(*current, area_center, clearance),
+    clamp_point_to_player_clearance(*current, center_point, clearance),
+    clamp_point_to_player_clearance(*next, center_next, clearance),
+    clamp_point_to_player_clearance(*next, next_center, clearance)
   };
 }
 
-Vec3 apply_dropdown_adjustment(const Vec3& current_pos, const Vec3& next_pos)
+Vec3 apply_dropdown_adjustment(const Vec3& current_pos, const Vec3& next_pos, const path_clearance& clearance)
 {
   auto to_target = Vec3{
     next_pos.x - current_pos.x,
@@ -393,14 +412,15 @@ Vec3 apply_dropdown_adjustment(const Vec3& current_pos, const Vec3& next_pos)
   }
 
   auto flat_direction = normalize_2d(to_target);
+  const path_clearance normalized_clearance = normalized_path_clearance(clearance);
   return Vec3{
-    current_pos.x + flat_direction.x * player_width * 2.0f,
-    current_pos.y + flat_direction.y * player_width * 2.0f,
+    current_pos.x + flat_direction.x * normalized_clearance.width * 2.0f,
+    current_pos.y + flat_direction.y * normalized_clearance.width * 2.0f,
     current_pos.z
   };
 }
 
-std::vector<crumb> build_crumbs_from_area_path(const navbot_mesh& mesh, const std::vector<nav_area_id>& area_path, const Vec3& destination)
+std::vector<crumb> build_crumbs_from_area_path(const navbot_mesh& mesh, const std::vector<nav_area_id>& area_path, const Vec3& destination, const path_clearance& clearance)
 {
   std::vector<crumb> crumbs{};
   crumbs.reserve(area_path.size() * 2 + 1);
@@ -417,8 +437,8 @@ std::vector<crumb> build_crumbs_from_area_path(const navbot_mesh& mesh, const st
     if (area_index + 1 < area_path.size())
     {
       auto next_area = area_path[area_index + 1];
-      auto points = build_transition_points(mesh, current_area, next_area);
-      points.center = apply_dropdown_adjustment(points.center, points.next);
+      auto points = build_transition_points(mesh, current_area, next_area, clearance);
+      points.center = apply_dropdown_adjustment(points.center, points.next, clearance);
 
       crumbs.push_back(crumb{current_area, points.current, crumb_kind::area_center});
       crumbs.push_back(crumb{current_area, points.center, crumb_kind::transition_center});
@@ -444,6 +464,7 @@ path_result solve_path_request(const navbot_mesh& mesh, const navbot_hazards& ha
   result.hazard_generation = request.hazard_generation;
   result.goal = request.goal;
   result.destination_reach_distance = request.destination_reach_distance;
+  const path_clearance clearance = normalized_path_clearance(request.clearance);
 
   if (token.is_canceled())
   {
@@ -555,8 +576,13 @@ path_result solve_path_request(const navbot_mesh& mesh, const navbot_hazards& ha
         continue;
       }
 
-      auto points = build_transition_points(mesh, area.id, next_id);
-      points.center = apply_dropdown_adjustment(points.center, points.next);
+      if (!nav_transition_has_clearance(area, cache.areas[next_index], clearance))
+      {
+        continue;
+      }
+
+      auto points = build_transition_points(mesh, area.id, next_id, clearance);
+      points.center = apply_dropdown_adjustment(points.center, points.next, clearance);
 
       auto height_diff = points.center_next.z - points.center.z;
       if (height_diff > player_jump_height)
@@ -597,13 +623,13 @@ path_result solve_path_request(const navbot_mesh& mesh, const navbot_hazards& ha
 
     result.area_path = reconstruct_area_path(cache, nodes, start_index, best_index);
     auto fallback_destination = mesh.get_nearest_point(cache.areas[best_index].id, request.goal_world);
-    result.crumbs = build_crumbs_from_area_path(mesh, result.area_path, fallback_destination);
+    result.crumbs = build_crumbs_from_area_path(mesh, result.area_path, fallback_destination, clearance);
     result.status = path_status::success;
   }
   else
   {
     result.area_path = reconstruct_area_path(cache, nodes, start_index, goal_index);
-    result.crumbs = build_crumbs_from_area_path(mesh, result.area_path, request.goal_world);
+    result.crumbs = build_crumbs_from_area_path(mesh, result.area_path, request.goal_world, clearance);
     result.status = path_status::success;
   }
 

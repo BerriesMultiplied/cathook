@@ -64,6 +64,40 @@ constexpr float hazard_refresh_interval = 0.25f;
 #endif
 static float g_navbot_throwable_look_suppress_until = -1.0e9f;
 
+path_clearance path_clearance_for_player(Player* localplayer)
+{
+  path_clearance clearance{};
+  if (localplayer == nullptr)
+  {
+    return clearance;
+  }
+
+  const bool ducking = localplayer->is_ducking();
+  const Vec3 mins = localplayer->get_player_mins(ducking);
+  const Vec3 maxs = localplayer->get_player_maxs(ducking);
+  const float width_x = maxs.x - mins.x;
+  const float width_y = maxs.y - mins.y;
+  const float sampled_width = std::max(width_x, width_y);
+  if (std::isfinite(sampled_width) && sampled_width > 1.0f)
+  {
+    clearance.width = std::max(sampled_width, player_width);
+  }
+
+  const float half_width_x = std::max(std::fabs(mins.x), std::fabs(maxs.x));
+  const float half_width_y = std::max(std::fabs(mins.y), std::fabs(maxs.y));
+  const float sampled_half_width = std::max(half_width_x, half_width_y);
+  if (std::isfinite(sampled_half_width) && sampled_half_width > 1.0f)
+  {
+    clearance.half_width = std::max(sampled_half_width, clearance.width * 0.5f);
+  }
+  else
+  {
+    clearance.half_width = clearance.width * 0.5f;
+  }
+
+  return clearance;
+}
+
 bool navbot_weapon_is_arc_throwable(Weapon* weapon)
 {
   if (weapon == nullptr)
@@ -1218,22 +1252,28 @@ bool navbot_controller::should_block_pathing(Player* localplayer) const
     return true;
   }
 
-  if (config.misc.automation.navbot_dont_path_unless_match_started && !match_fully_started)
-  {
-    return true;
-  }
+  const auto block_during = config.misc.automation.navbot_block_during_enum;
 
-  if (!config.misc.automation.navbot_dont_path_during_warmup || !warmup_active)
+  if (warmup_active)
   {
+    if (block_during == Misc::Automation::navbot_block_during::warmup ||
+        block_during == Misc::Automation::navbot_block_during::warmup_and_setup)
+    {
+      if (!config.misc.automation.navbot_warmup_only_blu_cp_pl)
+      {
+        return true;
+      }
+      return local_team == tf_team::BLU && on_cp_or_pl_map;
+    }
     return false;
   }
 
-  if (!config.misc.automation.navbot_warmup_only_blu_cp_pl)
+  if (setup_active && block_during == Misc::Automation::navbot_block_during::warmup_and_setup)
   {
     return true;
   }
 
-  return local_team == tf_team::BLU && on_cp_or_pl_map;
+  return false;
 }
 
 void navbot_controller::on_create_move(user_cmd* user_cmd)
@@ -1744,6 +1784,7 @@ void navbot_controller::request_path_if_needed()
   request.hazard_generation = hazards_.generation();
   request.captured_point_index = current_captured_point_index();
   request.recorded_blocked_areas = server_recorder_.blocked_areas();
+  request.clearance = path_clearance_for_player(localplayer);
   request.destination_reach_distance = destination_reach_distance_for_goal(active_goal_.goal.type);
   request.setup_finished = setup_finished_;
   request.require_exact_goal_area = active_goal_.goal.type == goal_type::push_payload;
