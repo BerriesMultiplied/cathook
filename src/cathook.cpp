@@ -1472,14 +1472,6 @@ bool initialize_game_runtime() {
     error_assert(rv != 0, "Failed to prepare Host_IsSecureServerAllowed hook\n");
   }
 
-  if (region_selector_request_queue_for_match_original != nullptr) {
-    rv = funchook_prepare(
-      funchook,
-      (void**)&region_selector_request_queue_for_match_original,
-      (void*)region_selector_request_queue_for_match_hook);
-    error_assert(rv != 0, "Failed to prepare CTFPartyClient::RequestQueueForMatch hook\n");
-  }
-
   if (tf_gc_client_system_so_event_original != nullptr) {
     rv = funchook_prepare(
       funchook,
