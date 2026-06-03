@@ -102,7 +102,6 @@ bool reload_casual_criteria();
 bool request_casual_queue();
 bool cancel_casual_queue();
 bool abandon_current_match();
-void shutdown();
 
 } // namespace automation
 

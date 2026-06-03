@@ -12,6 +12,8 @@ V  o o  V  file: src/games/tf2/sdk/interfaces/game_event_manager.hpp
 #ifndef GAME_EVENT_MANAGER_HPP
 #define GAME_EVENT_MANAGER_HPP
 
+class IGameEventListener;
+
 class GameEvent
 {
 public:
@@ -28,14 +30,6 @@ public:
   virtual void set_int(const char* keyName, int value) = 0;
   virtual void set_float(const char* keyName, float value) = 0;
   virtual void set_string(const char* keyName, const char* value) = 0;
-};
-
-class IGameEventListener
-{
-public:
-  virtual ~IGameEventListener() = default;
-  virtual void fire_game_event(GameEvent* event) = 0;
-  virtual int get_event_debug_id() = 0;
 };
 
 class BaseInterface {
