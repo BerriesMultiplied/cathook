@@ -1361,28 +1361,22 @@ bool navbot_controller::should_block_pathing(Player* localplayer) const
     return true;
   }
 
-  const auto block_during = config.misc.automation.navbot_block_during_enum;
-
-  if (warmup_active)
-  {
-    if (block_during == Misc::Automation::navbot_block_during::warmup ||
-        block_during == Misc::Automation::navbot_block_during::warmup_and_setup)
-    {
-      if (!config.misc.automation.navbot_warmup_only_blu_cp_pl)
-      {
-        return true;
-      }
-      return local_team == tf_team::BLU && on_cp_or_pl_map;
-    }
-    return false;
-  }
-
-  if (setup_active && block_during == Misc::Automation::navbot_block_during::warmup_and_setup)
+  if (config.misc.automation.navbot_dont_path_unless_match_started && !match_fully_started)
   {
     return true;
   }
 
-  return false;
+  if (!config.misc.automation.navbot_dont_path_during_warmup || !warmup_active)
+  {
+    return false;
+  }
+
+  if (!config.misc.automation.navbot_warmup_only_blu_cp_pl)
+  {
+    return true;
+  }
+
+  return local_team == tf_team::BLU && on_cp_or_pl_map;
 }
 
 void navbot_controller::on_create_move(user_cmd* user_cmd)
@@ -1893,7 +1887,6 @@ void navbot_controller::request_path_if_needed()
   request.hazard_generation = hazards_.generation();
   request.captured_point_index = current_captured_point_index();
   request.recorded_blocked_areas = server_recorder_.blocked_areas();
-  request.clearance = path_clearance_for_player(localplayer);
   request.destination_reach_distance = destination_reach_distance_for_goal(active_goal_.goal.type);
   request.setup_finished = setup_finished_;
   request.require_exact_goal_area = active_goal_.goal.type == goal_type::push_payload;
