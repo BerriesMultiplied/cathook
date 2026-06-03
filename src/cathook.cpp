@@ -361,24 +361,6 @@ constexpr bool detach_worker_runtime_enabled()
 #endif
 }
 
-class game_event_listener final : public IGameEventListener
-{
-public:
-  void fire_game_event(GameEvent*) override
-  {
-  }
-
-  int get_event_debug_id() override
-  {
-    return event_debug_id;
-  }
-
-private:
-  static constexpr int event_debug_id = 42;
-};
-
-game_event_listener event_listener{};
-
 constexpr std::array<const char*, 24> game_events = {
   "client_beginconnect",
   "client_connected",
@@ -714,10 +696,6 @@ bool unload_module_runtime() {
   cathook::core::players::shutdown();
 
   print("Unhooking VMT functions\n");
-  if (game_event_manager != nullptr) {
-    game_event_manager->remove_listener(&event_listener);
-  }
-
   backtrack::restore_net_channel_hook();
 
   if (client_mode_vtable != nullptr && client_mode_create_move_original != nullptr && !write_to_table(client_mode_vtable, 22, (void*)client_mode_create_move_original)) {
@@ -1239,15 +1217,6 @@ bool initialize_game_runtime() {
  
   game_event_manager = (GameEventManager*)get_interface("./bin/linux64/engine.so", "GAMEEVENTSMANAGER002");
   error_assert(game_event_manager == nullptr, "GAMEEVENTSMANAGER002 is missing");
-  {
-    for (const char* event : cathook::core::game_events) {
-      game_event_manager->add_listener(&cathook::core::event_listener, event, false);
-      
-      if (!game_event_manager->find_listener(&cathook::core::event_listener, event)) {
-	print("Failed to add event listener: %s\n", event);
-      }
-    }
-  }
   
   steam_client = nullptr;
   steam_friends = nullptr;
