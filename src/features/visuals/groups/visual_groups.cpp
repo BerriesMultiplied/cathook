@@ -714,10 +714,11 @@ visual_group_match group_for_entity(Entity* entity, bool models)
     return {};
   }
 
-  return {
-    .snapshot = std::move(snapshot),
-    .group = &snapshot->groups[found->second]
-  };
+  const visual_group* group = &snapshot->groups[found->second];
+  visual_group_match match{};
+  match.snapshot = std::move(snapshot);
+  match.group = group;
+  return match;
 }
 
 bool groups_active()
