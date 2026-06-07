@@ -67,6 +67,13 @@ struct read_packet_state
 
 read_packet_state g_read_packets_state{};
 bool g_has_read_packets_state = false;
+constexpr int signon_state_full = 6;
+
+#if defined(CATHOOK_TEXTMODE) && CATHOOK_TEXTMODE
+constexpr bool textmode_build = true;
+#else
+constexpr bool textmode_build = false;
+#endif
 
 #if defined(CATHOOK_TEXTMODE) && CATHOOK_TEXTMODE
 constexpr bool textmode_build = true;
@@ -86,6 +93,7 @@ bool should_run_network_fix()
          client_state != nullptr &&
          global_vars != nullptr &&
          engine->is_in_game() &&
+         client_state->m_nSignonState == signon_state_full &&
          client_state->m_NetChannel != nullptr &&
          !client_state->m_NetChannel->is_loopback();
 }
