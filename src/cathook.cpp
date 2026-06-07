@@ -158,6 +158,22 @@ bool initialize_game_runtime();
 
 using material_var_cleanup_fn = std::int64_t (*)(void*);
 material_var_cleanup_fn material_var_cleanup_original = nullptr;
+using material_queued_call_drain_fn = std::int64_t (*)(void*, char);
+material_queued_call_drain_fn material_queued_call_drain_original = nullptr;
+
+void material_queued_call_noop(void*)
+{
+}
+
+void* material_queued_call_noop_vtable[] = {
+  nullptr,
+  reinterpret_cast<void*>(material_queued_call_noop),
+  nullptr,
+  nullptr,
+  reinterpret_cast<void*>(material_queued_call_noop),
+};
+
+void* material_queued_call_noop_object = material_queued_call_noop_vtable;
 
 std::int64_t material_var_cleanup_hook(void* material)
 {
@@ -181,6 +197,31 @@ std::int64_t material_var_cleanup_hook(void* material)
   }
 
   return material_var_cleanup_original(material);
+}
+
+std::int64_t material_queued_call_drain_hook(void* queue, char release)
+{
+  if (queue == nullptr || material_queued_call_drain_original == nullptr) {
+    return 0;
+  }
+
+  constexpr std::ptrdiff_t queued_call_head_offset = 0x2c0;
+  constexpr std::ptrdiff_t queued_call_next_offset = 0x0;
+  constexpr std::ptrdiff_t queued_call_object_offset = 0x8;
+  constexpr int max_queued_call_scan_count = 65536;
+
+  std::uint8_t* queue_bytes = reinterpret_cast<std::uint8_t*>(queue);
+  void* node = *reinterpret_cast<void**>(queue_bytes + queued_call_head_offset);
+  for (int index = 0; node != nullptr && index < max_queued_call_scan_count; ++index) {
+    std::uint8_t* node_bytes = reinterpret_cast<std::uint8_t*>(node);
+    void*** queued_call = reinterpret_cast<void***>(node_bytes + queued_call_object_offset);
+    if (*queued_call == nullptr || **queued_call == nullptr) {
+      *queued_call = reinterpret_cast<void**>(&material_queued_call_noop_object);
+    }
+    node = *reinterpret_cast<void**>(node_bytes + queued_call_next_offset);
+  }
+
+  return material_queued_call_drain_original(queue, release);
 }
 
 namespace
@@ -1499,6 +1540,12 @@ bool initialize_game_runtime() {
     print("Failed to find material var cleanup crashfix hook; material cleanup crashfix disabled\n");
   }
 
+  material_queued_call_drain_original =
+    reinterpret_cast<material_queued_call_drain_fn>(sigscan_module("materialsystem.so", sigs::material_queued_call_drain));
+  if (material_queued_call_drain_original == nullptr) {
+    print("Failed to find material queued call crashfix hook; queued material cleanup crashfix disabled\n");
+  }
+
   initialize_cl_move_globals(host_should_run);
   
   int rv;
@@ -1596,6 +1643,14 @@ bool initialize_game_runtime() {
     if (rv != 0) {
       material_var_cleanup_original = nullptr;
       print("Failed to prepare material var cleanup crashfix hook\n");
+    }
+  }
+
+  if (material_queued_call_drain_original != nullptr) {
+    rv = funchook_prepare(funchook, (void**)&material_queued_call_drain_original, (void*)material_queued_call_drain_hook);
+    if (rv != 0) {
+      material_queued_call_drain_original = nullptr;
+      print("Failed to prepare material queued call crashfix hook\n");
     }
   }
 
