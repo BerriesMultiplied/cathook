@@ -189,9 +189,7 @@ void frame_stage_notify_hook(void* me, ClientFrameStage current_stage) {
         case class_id::FLARE:
         case class_id::ARROW:
         case class_id::CROSSBOW_BOLT:
-          if (entity->get_class_id() == class_id::PILL_OR_STICKY) {
-            entity_cache[class_id::PILL_OR_STICKY].push_back(entity);
-          }
+          entity_cache[entity->get_class_id()].push_back(entity);
           local_prediction_record_entity(entity); break;
 
 	  

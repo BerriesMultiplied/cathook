@@ -256,45 +256,18 @@ static void run_chams_pass(void* me, void* state, ModelRenderInfo* pinfo, VMatri
   }
 
   if (ignore_z && material_z != nullptr) {
-    render_context->set_stencil_enable(true);
-    render_context->clear_buffers(false, false, false);
-    render_context->set_stencil_compare_mode(STENCILCOMPARISONFUNCTION_ALWAYS);
-    render_context->set_stencil_pass_mode(STENCILOPERATION_REPLACE);
-    render_context->set_stencil_fail_mode(STENCILOPERATION_KEEP);
-    render_context->set_stencil_zfail_mode(STENCILOPERATION_KEEP);
-    render_context->set_stencil_reference_count(1);
-    render_context->set_stencil_write_mask(0xFF);
-    render_context->set_stencil_test_mask(0x0);
+    render_context->set_depth_range(0, 0.2);
+    set_material_information(material_z, color_z, wireframe_z, true);
+    draw_model_execute_original(me, state, pinfo, bone_to_world);
+    render_context->set_depth_range(0, 1);
   }
 
   if (material != nullptr) {
-    set_material_information(material, color, wireframe, false, OVERRIDE_DEPTH_WRITE);
-    draw_model_execute_original(me, state, pinfo, bone_to_world);
     set_material_information(material, color, wireframe, false, OVERRIDE_NORMAL);
     draw_model_execute_original(me, state, pinfo, bone_to_world);
   } else if (render_original_when_material_missing) {
     draw_model_execute_original(me, state, pinfo, bone_to_world);
   }
-
-  if (!ignore_z || material_z == nullptr) {
-    return;
-  }
-
-  render_context->clear_buffers(false, false, false);
-  render_context->set_stencil_compare_mode(STENCILCOMPARISONFUNCTION_EQUAL);
-  render_context->set_stencil_pass_mode(STENCILOPERATION_KEEP);
-  render_context->set_stencil_fail_mode(STENCILOPERATION_KEEP);
-  render_context->set_stencil_zfail_mode(STENCILOPERATION_KEEP);
-  render_context->set_stencil_reference_count(0);
-  render_context->set_stencil_write_mask(0x0);
-  render_context->set_stencil_test_mask(0xFF);
-  render_context->set_depth_range(0, 0.2);
-
-  set_material_information(material_z, color_z, wireframe_z, true);
-  draw_model_execute_original(me, state, pinfo, bone_to_world);
-
-  render_context->set_stencil_enable(false);
-  render_context->set_depth_range(0, 1);
 }
 
 static void apply_chams_settings(void* me, void* state, ModelRenderInfo* pinfo, VMatrix* bone_to_world, const chams_settings& settings, bool render_original_when_material_missing = true) {

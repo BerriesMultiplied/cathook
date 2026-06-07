@@ -114,22 +114,22 @@ inline Vec3 projectile_hint_position(Player* localplayer, Weapon* weapon, Player
   }
 
   const uint32_t hitbox_mask = proj_aim_effective_hitbox_mask(localplayer, weapon, player);
-  const std::vector<proj_aim_hitbox_sample> hitbox_samples = proj_aim_hitbox_samples(player, hitbox_mask);
-  if (!hitbox_samples.empty()) {
-    const proj_aim_hitbox_sample* best_sample = &hitbox_samples.front();
-    for (const proj_aim_hitbox_sample& sample : hitbox_samples) {
-      if (sample.priority < best_sample->priority) {
-        best_sample = &sample;
-      }
-    }
-    return origin + best_sample->offset;
+  const float height = std::max(maxs.z - mins.z, 1.0f);
+  if (aimbot_hitbox_matches_mask(aim_hitbox_head, hitbox_mask)) {
+    return origin + Vec3{0.0f, 0.0f, mins.z + (height * 0.86f)};
+  }
+  if (aimbot_hitbox_matches_mask(aim_hitbox_spine_1, hitbox_mask)) {
+    return origin + Vec3{0.0f, 0.0f, mins.z + (height * 0.55f)};
+  }
+  if (aimbot_hitbox_matches_mask(aim_hitbox_pelvis, hitbox_mask)) {
+    return origin + Vec3{0.0f, 0.0f, mins.z + (height * 0.36f)};
   }
 
-  return origin + Vec3{0.0f, 0.0f, mins.z + ((maxs.z - mins.z) * 0.5f)};
+  return origin + Vec3{0.0f, 0.0f, mins.z + (height * 0.5f)};
 }
 
 inline int projectile_target_attempt_cap(size_t target_count) {
-  int cap = 5;
+  int cap = 4;
   const float frame_time = aim_state::actual_frame_time();
   if (frame_time > (1.0f / 45.0f)) cap = 2;
   else if (frame_time > (1.0f / 60.0f)) cap = 3;
@@ -292,6 +292,13 @@ inline aimbot_candidate find_best_projectile_candidate(Player* localplayer,
     if (aimbot_candidate_better(candidate, best_candidate)) {
       best_candidate = candidate;
       proj_aim_commit_debug_stats();
+    }
+
+    if (hint.current || hint.preferred) {
+      best_candidate = candidate;
+      proj_aim_commit_debug_stats();
+      proj_aim_set_scan_debug_stats(static_cast<int>(target_hints.size()), attempts, max_attempts);
+      return best_candidate;
     }
   }
 

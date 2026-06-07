@@ -22,8 +22,8 @@ V  o o  V  file: src/features/visuals/chams/chams.cpp
 #include "games/tf2/sdk/entities/player.hpp"
 
 void chams(Entity* entity, void* me, void* state, ModelRenderInfo* pinfo, VMatrix* bone_to_world) {
-  const auto* group = visual_groups::group_for_entity(entity, true);
-  if (group == nullptr) {
+  const visual_groups::visual_group_match group = visual_groups::group_for_entity(entity, true);
+  if (!group) {
     DME_RETURN;
   }
 

@@ -27,9 +27,9 @@ struct proj_aim_budget_state {
   int trace_calls = 0;
   int sim_calls = 0;
   int splash_candidates = 0;
-  int trace_call_cap = 144;
-  int sim_call_cap = 24;
-  int splash_candidate_cap = 32;
+  int trace_call_cap = 96;
+  int sim_call_cap = 16;
+  int splash_candidate_cap = 24;
   int trace_budget_rejects = 0;
   int sim_budget_rejects = 0;
   int splash_budget_rejects = 0;
@@ -203,16 +203,16 @@ inline void proj_aim_budget_begin_for_distance(float distance_units) {
   b.intercept_error_cap_add = tier * 120.0f;
   b.splash_solve_budget_percent = static_cast<int>(std::lerp(100.0f, 42.0f, tier));
   b.path_steps_percent = static_cast<int>(std::lerp(100.0f, 55.0f, tier));
-  b.trace_call_cap = tier >= 0.99f ? 72 : (tier > 0.35f ? 96 : 144);
-  b.sim_call_cap = tier >= 0.99f ? 12 : (tier > 0.35f ? 18 : 24);
-  b.splash_candidate_cap = tier >= 0.99f ? 12 : (tier > 0.35f ? 20 : 32);
+  b.trace_call_cap = tier >= 0.99f ? 48 : (tier > 0.35f ? 72 : 96);
+  b.sim_call_cap = tier >= 0.99f ? 8 : (tier > 0.35f ? 12 : 16);
+  b.splash_candidate_cap = tier >= 0.99f ? 10 : (tier > 0.35f ? 16 : 24);
 
   const int frame_percent = proj_aim_budget_frame_percent();
   b.splash_solve_budget_percent = std::max(20, (b.splash_solve_budget_percent * frame_percent) / 100);
   b.path_steps_percent = std::max(35, (b.path_steps_percent * frame_percent) / 100);
-  b.trace_call_cap = std::max(48, (b.trace_call_cap * frame_percent) / 100);
-  b.sim_call_cap = std::max(8, (b.sim_call_cap * frame_percent) / 100);
-  b.splash_candidate_cap = std::max(8, (b.splash_candidate_cap * frame_percent) / 100);
+  b.trace_call_cap = std::max(24, (b.trace_call_cap * frame_percent) / 100);
+  b.sim_call_cap = std::max(4, (b.sim_call_cap * frame_percent) / 100);
+  b.splash_candidate_cap = std::max(4, (b.splash_candidate_cap * frame_percent) / 100);
   proj_aim_budget_begin_frame();
 }
 

@@ -707,8 +707,8 @@ void reset_head_emoji_texture()
 [[nodiscard]] RGBA player_esp_color(Player* player, Player* localplayer)
 {
   (void)localplayer;
-  const auto* group = player != nullptr ? visual_groups::group_for_entity(player->to_entity(), false) : nullptr;
-  return group != nullptr ? visual_groups::color_for_entity(player->to_entity(), *group).to_RGBA() : RGBA{255, 255, 255, 255};
+  const visual_groups::visual_group_match group = player != nullptr ? visual_groups::group_for_entity(player->to_entity(), false) : visual_groups::visual_group_match{};
+  return group ? visual_groups::color_for_entity(player->to_entity(), *group).to_RGBA() : RGBA{255, 255, 255, 255};
 }
 
 [[nodiscard]] Vec3 get_esp_draw_origin(Entity* entity)
@@ -1513,7 +1513,7 @@ void draw_player_head_emoji(ImDrawList* draw_list, const esp_bounds& bounds, Pla
     return false;
   }
 
-  return visual_groups::group_for_entity(player->to_entity(), false) != nullptr;
+  return static_cast<bool>(visual_groups::group_for_entity(player->to_entity(), false));
 }
 
 [[nodiscard]] bool should_draw_teammate_head_emoji(Player* player, Player* localplayer)
@@ -1522,8 +1522,8 @@ void draw_player_head_emoji(ImDrawList* draw_list, const esp_bounds& bounds, Pla
     return false;
   }
 
-  const auto* group = visual_groups::group_for_entity(player->to_entity(), false);
-  return group != nullptr && (group->esp.draw_mask & group_esp_settings::head_emoji) != 0;
+  const visual_groups::visual_group_match group = visual_groups::group_for_entity(player->to_entity(), false);
+  return group && (group->esp.draw_mask & group_esp_settings::head_emoji) != 0;
 }
 
 void draw_player_head_emoji_only(ImDrawList* draw_list, Player* player, Player* localplayer)
@@ -1542,7 +1542,7 @@ void draw_player_head_emoji_only(ImDrawList* draw_list, Player* player, Player* 
     return;
   }
 
-  if (const auto* group = visual_groups::group_for_entity(entity, false)) {
+  if (const visual_groups::visual_group_match group = visual_groups::group_for_entity(entity, false)) {
     draw_player_head_emoji(draw_list, smooth_esp_bounds(entity, bounds), player, localplayer, *group);
   }
 }
@@ -1623,7 +1623,7 @@ void draw_player_esp(ImDrawList* draw_list, Player* player, Player* localplayer,
     return false;
   }
 
-  return visual_groups::group_for_entity(entity, false) != nullptr;
+  return static_cast<bool>(visual_groups::group_for_entity(entity, false));
 }
 
 void draw_group_entity_esp(ImDrawList* draw_list, Entity* entity, const visual_group& group)
@@ -1762,8 +1762,8 @@ void update_player_head_emoji_cache()
     if (!should_draw_player(player, localplayer) && !should_draw_teammate_head_emoji(player, localplayer)) {
       continue;
     }
-    const auto* group = player != nullptr ? visual_groups::group_for_entity(player->to_entity(), false) : nullptr;
-    if (group == nullptr || (group->esp.draw_mask & group_esp_settings::head_emoji) == 0) {
+    const visual_groups::visual_group_match group = player != nullptr ? visual_groups::group_for_entity(player->to_entity(), false) : visual_groups::visual_group_match{};
+    if (!group || (group->esp.draw_mask & group_esp_settings::head_emoji) == 0) {
       continue;
     }
     if (!should_draw_player_overlay_icon(player, localplayer, (group->conditions & visual_group::condition_team) != 0)) {
@@ -1835,8 +1835,8 @@ void draw_players_imgui()
       continue;
     }
 
-    const auto* group = visual_groups::group_for_entity(entity, false);
-    if (group == nullptr) {
+    const visual_groups::visual_group_match group = visual_groups::group_for_entity(entity, false);
+    if (!group) {
       continue;
     }
 

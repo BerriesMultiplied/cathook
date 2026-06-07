@@ -5,6 +5,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstring>
+#include <memory>
 #include <string_view>
 #include <unordered_map>
 
@@ -19,8 +20,27 @@
 namespace
 {
 
-std::unordered_map<Entity*, const visual_group*> g_entity_groups{};
-std::unordered_map<Entity*, const visual_group*> g_model_groups{};
+constexpr std::size_t visual_group_not_found = static_cast<std::size_t>(-1);
+
+}
+
+namespace visual_groups
+{
+
+struct visual_group_snapshot
+{
+  std::vector<visual_group> groups{};
+  uint32_t active_group_mask = 0;
+  std::unordered_map<Entity*, std::size_t> entity_groups{};
+  std::unordered_map<Entity*, std::size_t> model_groups{};
+};
+
+}
+
+namespace
+{
+
+std::shared_ptr<const visual_groups::visual_group_snapshot> g_group_snapshot{};
 
 [[nodiscard]] bool text_contains(std::string_view text, std::string_view needle)
 {
@@ -555,26 +575,26 @@ std::unordered_map<Entity*, const visual_group*> g_model_groups{};
   return team_conditions_match(group, entity, localplayer, owner_player_for_entity(entity));
 }
 
-[[nodiscard]] const visual_group* find_group(Entity* entity, Player* localplayer, bool models)
+[[nodiscard]] std::size_t find_group_index(Entity* entity, Player* localplayer, bool models, const visual_groups::visual_group_snapshot& snapshot)
 {
-  if (!visual_groups::groups_active()) {
-    return nullptr;
+  if (snapshot.active_group_mask == 0 || snapshot.groups.empty()) {
+    return visual_group_not_found;
   }
 
-  const auto& groups = config.visual_groups.groups;
+  const std::vector<visual_group>& groups = snapshot.groups;
   for (std::size_t index = groups.size(); index > 0; --index) {
     const std::size_t group_index = index - 1;
-    if ((config.visual_groups.active_group_mask & (1u << group_index)) == 0) {
+    if ((snapshot.active_group_mask & (1u << group_index)) == 0) {
       continue;
     }
 
     const auto& group = groups[group_index];
     if (group_matches_entity(group, entity, localplayer, models)) {
-      return &group;
+      return group_index;
     }
   }
 
-  return nullptr;
+  return visual_group_not_found;
 }
 
 [[nodiscard]] visual_group make_group(const char* name, uint32_t targets, uint32_t conditions, RGBA_float color, uint32_t esp_mask, chams_material_type material, int glow)
@@ -586,8 +606,8 @@ std::unordered_map<Entity*, const visual_group*> g_model_groups{};
   group.color = color;
   group.esp.draw_mask = esp_mask;
   group.chams.visible_material = material;
-  group.chams.occluded_material = material;
-  group.chams.ignore_z = true;
+  group.chams.occluded_material = chams_material_type::none;
+  group.chams.ignore_z = false;
   group.glow.outline_scale = glow;
   group.glow.blur_scale = glow > 0 ? 2.0f : 0.0f;
   group.glow.smooth_alpha = true;
@@ -645,16 +665,18 @@ void ensure_defaults()
 void store(Player* localplayer)
 {
   ensure_defaults();
-  g_entity_groups.clear();
-  g_model_groups.clear();
+  auto next_snapshot = std::make_shared<visual_group_snapshot>();
+  next_snapshot->groups = config.visual_groups.groups;
+  next_snapshot->active_group_mask = config.visual_groups.active_group_mask;
 
   if (!groups_active() || localplayer == nullptr || entity_list == nullptr || engine == nullptr || !engine->is_in_game()) {
+    std::atomic_store(&g_group_snapshot, std::shared_ptr<const visual_group_snapshot>{next_snapshot});
     return;
   }
 
   const int max_entities = std::max(entity_list->get_max_entities(), 0);
-  g_entity_groups.reserve(static_cast<std::size_t>(max_entities));
-  g_model_groups.reserve(static_cast<std::size_t>(max_entities));
+  next_snapshot->entity_groups.reserve(static_cast<std::size_t>(max_entities));
+  next_snapshot->model_groups.reserve(static_cast<std::size_t>(max_entities));
 
   for (int index = 1; index <= max_entities; ++index) {
     auto* entity = entity_list->entity_from_index(static_cast<unsigned int>(index));
@@ -662,24 +684,40 @@ void store(Player* localplayer)
       continue;
     }
 
-    if (const auto* group = find_group(entity, localplayer, false)) {
-      g_entity_groups.emplace(entity, group);
+    const std::size_t entity_group = find_group_index(entity, localplayer, false, *next_snapshot);
+    if (entity_group != visual_group_not_found) {
+      next_snapshot->entity_groups.emplace(entity, entity_group);
     }
-    if (const auto* group = find_group(entity, localplayer, true)) {
-      g_model_groups.emplace(entity, group);
+    const std::size_t model_group = find_group_index(entity, localplayer, true, *next_snapshot);
+    if (model_group != visual_group_not_found) {
+      next_snapshot->model_groups.emplace(entity, model_group);
     }
   }
+
+  std::atomic_store(&g_group_snapshot, std::shared_ptr<const visual_group_snapshot>{next_snapshot});
 }
 
-const visual_group* group_for_entity(Entity* entity, bool models)
+visual_group_match group_for_entity(Entity* entity, bool models)
 {
   if (entity == nullptr) {
-    return nullptr;
+    return {};
   }
 
-  const auto& groups = models ? g_model_groups : g_entity_groups;
+  std::shared_ptr<const visual_group_snapshot> snapshot = std::atomic_load(&g_group_snapshot);
+  if (snapshot == nullptr) {
+    return {};
+  }
+
+  const std::unordered_map<Entity*, std::size_t>& groups = models ? snapshot->model_groups : snapshot->entity_groups;
   const auto found = groups.find(entity);
-  return found != groups.end() ? found->second : nullptr;
+  if (found == groups.end() || found->second >= snapshot->groups.size()) {
+    return {};
+  }
+
+  return {
+    .snapshot = std::move(snapshot),
+    .group = &snapshot->groups[found->second]
+  };
 }
 
 bool groups_active()

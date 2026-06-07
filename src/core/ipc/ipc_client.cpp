@@ -372,7 +372,7 @@ void try_connect()
     return;
   }
 
-  next_connect_attempt = now + std::chrono::seconds(2);
+  next_connect_attempt = now + std::chrono::seconds(10);
 
   try
   {

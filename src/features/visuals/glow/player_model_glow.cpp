@@ -851,8 +851,8 @@ void store()
       continue;
     }
 
-    const auto* group = visual_groups::group_for_entity(entity, true);
-    if (group == nullptr || (group->glow.outline_scale <= 0 && group->glow.filled_body == false)) {
+    const visual_groups::visual_group_match group = visual_groups::group_for_entity(entity, true);
+    if (!group || (group->glow.outline_scale <= 0 && group->glow.filled_body == false)) {
       continue;
     }
 
