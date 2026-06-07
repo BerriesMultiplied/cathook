@@ -6,10 +6,12 @@
 #include <cmath>
 #include <cstring>
 #include <memory>
+#include <string>
 #include <string_view>
 #include <unordered_map>
 
 #include "core/player_manager.hpp"
+#include "features/combat/anti_aim/anti_aim.hpp"
 #include "features/combat/aimbot/aimbot.hpp"
 #include "games/tf2/sdk/entities/building.hpp"
 #include "games/tf2/sdk/entities/player.hpp"
@@ -347,12 +349,86 @@ std::shared_ptr<const visual_groups::visual_group_snapshot> g_group_snapshot{};
   }
 
   const std::string_view network_name = safe_text(entity->get_network_name());
+  const std::string_view model_name = safe_text(entity->get_model_name());
   return text_contains(network_name, "projectile") ||
     text_contains(network_name, "grenade") ||
     text_contains(network_name, "rocket") ||
     text_contains(network_name, "arrow") ||
+    text_contains(network_name, "pipebomb") ||
+    text_contains(network_name, "healingbolt") ||
+    text_contains(network_name, "flare") ||
+    text_contains(network_name, "balloffire") ||
+    text_contains(network_name, "cleaver") ||
+    text_contains(network_name, "jarmilk") ||
+    text_contains(network_name, "jargas") ||
+    text_contains(network_name, "jar") ||
     text_contains(network_name, "stunball") ||
-    text_contains(network_name, "ornament");
+    text_contains(network_name, "energy") ||
+    text_contains(network_name, "mechanicalarm") ||
+    text_contains(network_name, "meteorshower") ||
+    text_contains(network_name, "lightning") ||
+    text_contains(network_name, "fireball") ||
+    text_contains(network_name, "merasmusgrenade") ||
+    text_contains(network_name, "spellbats") ||
+    text_contains(network_name, "spawnboss") ||
+    text_contains(network_name, "spawnhorde") ||
+    text_contains(network_name, "spawnzombie") ||
+    text_contains(network_name, "ornament") ||
+    text_contains(model_name, "pipebomb") ||
+    text_contains(model_name, "sticky") ||
+    text_contains(model_name, "rocket") ||
+    text_contains(model_name, "arrow") ||
+    text_contains(model_name, "projectile");
+}
+
+[[nodiscard]] std::string recv_table_for_entity(Entity* entity)
+{
+  if (entity == nullptr) {
+    return {};
+  }
+
+  const std::string_view network_name = safe_text(entity->get_network_name());
+  if (network_name.empty()) {
+    return {};
+  }
+
+  std::string table_name = "DT_";
+  if (network_name.size() > 1 && network_name.front() == 'C') {
+    table_name.append(network_name.substr(1));
+  } else {
+    table_name.append(network_name);
+  }
+
+  return table_name;
+}
+
+[[nodiscard]] bool read_bool_netvar(Entity* entity, const char* prop_name)
+{
+  if (entity == nullptr || prop_name == nullptr) {
+    return false;
+  }
+
+  const auto table_name = recv_table_for_entity(entity);
+  if (table_name.empty()) {
+    return false;
+  }
+
+  const int offset = tf2_netvars::find_offset(table_name.c_str(), {prop_name});
+  if (offset <= 0) {
+    return false;
+  }
+
+  return *reinterpret_cast<bool*>(reinterpret_cast<uintptr_t>(entity) + static_cast<uintptr_t>(offset));
+}
+
+[[nodiscard]] bool projectile_is_critical(Entity* entity)
+{
+  return read_bool_netvar(entity, "m_bCritical");
+}
+
+[[nodiscard]] bool projectile_is_minicrit(Entity* entity)
+{
+  return read_bool_netvar(entity, "m_bMiniCrit");
 }
 
 [[nodiscard]] bool projectile_filter_matches(const visual_group& group, Entity* entity)
@@ -363,6 +439,20 @@ std::shared_ptr<const visual_groups::visual_group_snapshot> g_group_snapshot{};
 
   if ((group.projectiles & visual_group::projectile_classes) != 0 && (group.projectiles & projectile_class_flag(entity)) == 0) {
     return false;
+  }
+
+  const uint32_t projectile_conditions = group.projectiles & visual_group::projectile_conditions;
+  if (projectile_conditions != 0) {
+    bool condition_matches = false;
+    if ((projectile_conditions & visual_group::projectile_crit) != 0 && projectile_is_critical(entity)) {
+      condition_matches = true;
+    }
+    if ((projectile_conditions & visual_group::projectile_minicrit) != 0 && projectile_is_minicrit(entity)) {
+      condition_matches = true;
+    }
+    if (!condition_matches) {
+      return false;
+    }
   }
 
   return true;
@@ -425,13 +515,57 @@ std::shared_ptr<const visual_groups::visual_group_snapshot> g_group_snapshot{};
   return entity != nullptr && (text_contains(safe_text(entity->get_network_name()), "halloweengift") || text_contains(safe_text(entity->get_model_name()), "gargoyle"));
 }
 
-[[nodiscard]] uint32_t target_for_entity(Entity* entity, bool models)
+[[nodiscard]] bool is_viewmodel_entity(Entity* entity)
+{
+  if (entity == nullptr) {
+    return false;
+  }
+
+  const std::string_view network_name = safe_text(entity->get_network_name());
+  const std::string_view model_name = safe_text(entity->get_model_name());
+  return entity->get_class_id() == class_id::WEARABLE_VM ||
+    text_contains(network_name, "viewmodel") ||
+    text_contains(network_name, "wearablevm") ||
+    text_contains(model_name, "viewmodel") ||
+    text_contains(model_name, "c_arms") ||
+    text_contains(model_name, "/v_");
+}
+
+[[nodiscard]] bool is_viewmodel_hands(Entity* entity)
+{
+  if (!is_viewmodel_entity(entity)) {
+    return false;
+  }
+
+  const std::string_view network_name = safe_text(entity->get_network_name());
+  const std::string_view model_name = safe_text(entity->get_model_name());
+  return entity->get_class_id() == class_id::WEARABLE_VM ||
+    text_contains(network_name, "wearablevm") ||
+    text_contains(model_name, "arms") ||
+    text_contains(model_name, "hands");
+}
+
+[[nodiscard]] uint32_t target_for_entity(Entity* entity, bool models, Player* localplayer)
 {
   if (entity == nullptr) {
     return 0;
   }
 
   if (models) {
+    if (localplayer != nullptr && entity != localplayer->to_entity()) {
+      auto* owner = owner_player_for_entity(entity);
+      if (owner == localplayer && entity->is_base_combat_weapon()) {
+        return visual_group::target_viewmodel_weapon;
+      }
+    }
+
+    if (is_viewmodel_hands(entity)) {
+      return visual_group::target_viewmodel_hands;
+    }
+    if (is_viewmodel_entity(entity)) {
+      return visual_group::target_viewmodel_weapon;
+    }
+
     if (auto* owner = owner_player_for_entity(entity); owner != nullptr && owner->to_entity() != entity) {
       return visual_group::target_players;
     }
@@ -563,7 +697,11 @@ std::shared_ptr<const visual_groups::visual_group_snapshot> g_group_snapshot{};
     return false;
   }
 
-  const uint32_t target = target_for_entity(entity, models);
+  const uint32_t target = target_for_entity(entity, models, localplayer);
+  if (models && entity == localplayer->to_entity() && anti_aim::is_active() && (group.targets & visual_group::target_fake_angle) != 0) {
+    return team_conditions_match(group, entity, localplayer, localplayer);
+  }
+
   if (target == 0 || (group.targets & target) == 0) {
     return false;
   }
@@ -786,6 +924,11 @@ RGBA_float color_for_entity(Entity* entity, const visual_group& group)
   }
 
   return color;
+}
+
+RGBA_float resolve_color(Entity* entity, const visual_group& group, bool override_enabled, const RGBA_float& override_color)
+{
+  return override_enabled ? override_color : color_for_entity(entity, group);
 }
 
 float alpha_for_entity(Entity* entity, float start, float end, bool smooth_alpha)

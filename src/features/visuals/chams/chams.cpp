@@ -35,8 +35,8 @@ void chams(Entity* entity, void* me, void* state, ModelRenderInfo* pinfo, VMatri
   error_assert(materials.empty(), "Materials list is still empty even after initialization!");
 
   auto settings = get_chams_settings(*group);
-  settings.color = visual_groups::color_for_entity(entity, *group);
-  settings.color_z = settings.color;
+  settings.color = visual_groups::resolve_color(entity, *group, group->chams.visible_override_color, group->chams.visible_color);
+  settings.color_z = visual_groups::resolve_color(entity, *group, group->chams.occluded_override_color, group->chams.occluded_color);
   if (settings.material == nullptr && settings.material_z == nullptr) {
     draw_model_execute_original(me, state, pinfo, bone_to_world);
   } else {

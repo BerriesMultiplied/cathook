@@ -194,7 +194,6 @@ void config_store::import_config(const Config& config)
     set_int("aimbot.key", config.aimbot.key.button);
     set_int("aimbot.key_mode", static_cast<int>(config.aimbot.key.mode));
     set_float("aimbot.fov", config.aimbot.fov);
-    set_float("aimbot.smooth_factor", config.aimbot.smooth_factor);
     set_float("aimbot.assist_strength", config.aimbot.assist_strength);
     set_bool("aimbot.draw_fov", config.aimbot.draw_fov);
     set_bool("aimbot.shoot_through_glass", config.aimbot.shoot_through_glass);
@@ -268,6 +267,8 @@ void config_store::import_config(const Config& config)
         set_int(prefix + "buildings", static_cast<int>(group.buildings));
         set_int(prefix + "projectiles", static_cast<int>(group.projectiles));
         set_int(prefix + "esp.draw_mask", static_cast<int>(group.esp.draw_mask));
+        set_bool(prefix + "esp.override_color", group.esp.override_color);
+        set_color(prefix + "esp.color", group.esp.color);
         set_int(prefix + "esp.box_style", static_cast<int>(group.esp.box_style));
         set_float(prefix + "esp.start", group.esp.start);
         set_float(prefix + "esp.end", group.esp.end);
@@ -279,9 +280,17 @@ void config_store::import_config(const Config& config)
         set_int(prefix + "esp.mafia_level_position", static_cast<int>(group.esp.mafia_level_position));
         set_int(prefix + "chams.visible_material", static_cast<int>(group.chams.visible_material));
         set_int(prefix + "chams.occluded_material", static_cast<int>(group.chams.occluded_material));
+        set_bool(prefix + "chams.visible_override_color", group.chams.visible_override_color);
+        set_color(prefix + "chams.visible_color", group.chams.visible_color);
+        set_bool(prefix + "chams.occluded_override_color", group.chams.occluded_override_color);
+        set_color(prefix + "chams.occluded_color", group.chams.occluded_color);
         set_bool(prefix + "chams.ignore_z", group.chams.ignore_z);
         set_int(prefix + "glow.outline_scale", group.glow.outline_scale);
         set_float(prefix + "glow.blur_scale", group.glow.blur_scale);
+        set_bool(prefix + "glow.visible_override_color", group.glow.visible_override_color);
+        set_color(prefix + "glow.visible_color", group.glow.visible_color);
+        set_bool(prefix + "glow.occluded_override_color", group.glow.occluded_override_color);
+        set_color(prefix + "glow.occluded_color", group.glow.occluded_color);
         set_float(prefix + "glow.start", group.glow.start);
         set_float(prefix + "glow.end", group.glow.end);
         set_bool(prefix + "glow.smooth_alpha", group.glow.smooth_alpha);
@@ -293,9 +302,17 @@ void config_store::import_config(const Config& config)
         set_int(prefix + "backtrack", static_cast<int>(group.backtrack));
         set_int(prefix + "backtrack_chams.visible_material", static_cast<int>(group.backtrack_chams.visible_material));
         set_int(prefix + "backtrack_chams.occluded_material", static_cast<int>(group.backtrack_chams.occluded_material));
+        set_bool(prefix + "backtrack_chams.visible_override_color", group.backtrack_chams.visible_override_color);
+        set_color(prefix + "backtrack_chams.visible_color", group.backtrack_chams.visible_color);
+        set_bool(prefix + "backtrack_chams.occluded_override_color", group.backtrack_chams.occluded_override_color);
+        set_color(prefix + "backtrack_chams.occluded_color", group.backtrack_chams.occluded_color);
         set_bool(prefix + "backtrack_chams.ignore_z", group.backtrack_chams.ignore_z);
         set_int(prefix + "backtrack_glow.outline_scale", group.backtrack_glow.outline_scale);
         set_float(prefix + "backtrack_glow.blur_scale", group.backtrack_glow.blur_scale);
+        set_bool(prefix + "backtrack_glow.visible_override_color", group.backtrack_glow.visible_override_color);
+        set_color(prefix + "backtrack_glow.visible_color", group.backtrack_glow.visible_color);
+        set_bool(prefix + "backtrack_glow.occluded_override_color", group.backtrack_glow.occluded_override_color);
+        set_color(prefix + "backtrack_glow.occluded_color", group.backtrack_glow.occluded_color);
         set_float(prefix + "backtrack_glow.start", group.backtrack_glow.start);
         set_float(prefix + "backtrack_glow.end", group.backtrack_glow.end);
         set_bool(prefix + "backtrack_glow.smooth_alpha", group.backtrack_glow.smooth_alpha);
@@ -529,7 +546,6 @@ void config_store::export_config(Config& config) const
         2));
     reset_button_state(config.aimbot.key);
     config.aimbot.fov = get_float("aimbot.fov", config.aimbot.fov);
-    config.aimbot.smooth_factor = get_float("aimbot.smooth_factor", config.aimbot.smooth_factor);
     config.aimbot.assist_strength = std::clamp(
         get_float("aimbot.assist_strength", config.aimbot.assist_strength),
         0.0f,
@@ -667,6 +683,8 @@ void config_store::export_config(Config& config) const
         group.buildings = static_cast<uint32_t>(std::max(0, get_int(prefix + "buildings", static_cast<int>(group.buildings))));
         group.projectiles = static_cast<uint32_t>(std::max(0, get_int(prefix + "projectiles", static_cast<int>(group.projectiles))));
         group.esp.draw_mask = static_cast<uint32_t>(std::max(0, get_int(prefix + "esp.draw_mask", static_cast<int>(group.esp.draw_mask))));
+        group.esp.override_color = get_bool(prefix + "esp.override_color", group.esp.override_color);
+        group.esp.color = get_color(prefix + "esp.color", group.esp.color);
         group.esp.box_style = static_cast<esp_box_type>(std::clamp(get_int(prefix + "esp.box_style", static_cast<int>(group.esp.box_style)), 0, 4));
         group.esp.start = std::clamp(get_float(prefix + "esp.start", group.esp.start), 0.0f, 8192.0f);
         group.esp.end = std::clamp(get_float(prefix + "esp.end", group.esp.end), 0.0f, 8192.0f);
@@ -681,9 +699,17 @@ void config_store::export_config(Config& config) const
         group.esp.mafia_level_position = static_cast<mafia_level_position>(std::clamp(get_int(prefix + "esp.mafia_level_position", static_cast<int>(group.esp.mafia_level_position)), 0, 2));
         group.chams.visible_material = static_cast<chams_material_type>(std::clamp(get_int(prefix + "chams.visible_material", static_cast<int>(group.chams.visible_material)), 0, 10));
         group.chams.occluded_material = static_cast<chams_material_type>(std::clamp(get_int(prefix + "chams.occluded_material", static_cast<int>(group.chams.occluded_material)), 0, 10));
+        group.chams.visible_override_color = get_bool(prefix + "chams.visible_override_color", group.chams.visible_override_color);
+        group.chams.visible_color = get_color(prefix + "chams.visible_color", group.chams.visible_color);
+        group.chams.occluded_override_color = get_bool(prefix + "chams.occluded_override_color", group.chams.occluded_override_color);
+        group.chams.occluded_color = get_color(prefix + "chams.occluded_color", group.chams.occluded_color);
         group.chams.ignore_z = get_bool(prefix + "chams.ignore_z", group.chams.ignore_z);
         group.glow.outline_scale = std::clamp(get_int(prefix + "glow.outline_scale", group.glow.outline_scale), 0, 10);
         group.glow.blur_scale = std::clamp(get_float(prefix + "glow.blur_scale", group.glow.blur_scale), 0.0f, 10.0f);
+        group.glow.visible_override_color = get_bool(prefix + "glow.visible_override_color", group.glow.visible_override_color);
+        group.glow.visible_color = get_color(prefix + "glow.visible_color", group.glow.visible_color);
+        group.glow.occluded_override_color = get_bool(prefix + "glow.occluded_override_color", group.glow.occluded_override_color);
+        group.glow.occluded_color = get_color(prefix + "glow.occluded_color", group.glow.occluded_color);
         group.glow.start = std::clamp(get_float(prefix + "glow.start", group.glow.start), 0.0f, 8192.0f);
         group.glow.end = std::clamp(get_float(prefix + "glow.end", group.glow.end), 0.0f, 8192.0f);
         if (group.glow.end < group.glow.start) {
@@ -698,9 +724,17 @@ void config_store::export_config(Config& config) const
         group.backtrack = static_cast<uint32_t>(std::max(0, get_int(prefix + "backtrack", static_cast<int>(group.backtrack))));
         group.backtrack_chams.visible_material = static_cast<chams_material_type>(std::clamp(get_int(prefix + "backtrack_chams.visible_material", static_cast<int>(group.backtrack_chams.visible_material)), 0, 10));
         group.backtrack_chams.occluded_material = static_cast<chams_material_type>(std::clamp(get_int(prefix + "backtrack_chams.occluded_material", static_cast<int>(group.backtrack_chams.occluded_material)), 0, 10));
+        group.backtrack_chams.visible_override_color = get_bool(prefix + "backtrack_chams.visible_override_color", group.backtrack_chams.visible_override_color);
+        group.backtrack_chams.visible_color = get_color(prefix + "backtrack_chams.visible_color", group.backtrack_chams.visible_color);
+        group.backtrack_chams.occluded_override_color = get_bool(prefix + "backtrack_chams.occluded_override_color", group.backtrack_chams.occluded_override_color);
+        group.backtrack_chams.occluded_color = get_color(prefix + "backtrack_chams.occluded_color", group.backtrack_chams.occluded_color);
         group.backtrack_chams.ignore_z = get_bool(prefix + "backtrack_chams.ignore_z", group.backtrack_chams.ignore_z);
         group.backtrack_glow.outline_scale = std::clamp(get_int(prefix + "backtrack_glow.outline_scale", group.backtrack_glow.outline_scale), 0, 10);
         group.backtrack_glow.blur_scale = std::clamp(get_float(prefix + "backtrack_glow.blur_scale", group.backtrack_glow.blur_scale), 0.0f, 10.0f);
+        group.backtrack_glow.visible_override_color = get_bool(prefix + "backtrack_glow.visible_override_color", group.backtrack_glow.visible_override_color);
+        group.backtrack_glow.visible_color = get_color(prefix + "backtrack_glow.visible_color", group.backtrack_glow.visible_color);
+        group.backtrack_glow.occluded_override_color = get_bool(prefix + "backtrack_glow.occluded_override_color", group.backtrack_glow.occluded_override_color);
+        group.backtrack_glow.occluded_color = get_color(prefix + "backtrack_glow.occluded_color", group.backtrack_glow.occluded_color);
         group.backtrack_glow.start = std::clamp(get_float(prefix + "backtrack_glow.start", group.backtrack_glow.start), 0.0f, 8192.0f);
         group.backtrack_glow.end = std::clamp(get_float(prefix + "backtrack_glow.end", group.backtrack_glow.end), 0.0f, 8192.0f);
         if (group.backtrack_glow.end < group.backtrack_glow.start) {

@@ -852,7 +852,7 @@ void store()
     }
 
     const visual_groups::visual_group_match group = visual_groups::group_for_entity(entity, true);
-    if (!group || (group->glow.outline_scale <= 0 && group->glow.filled_body == false)) {
+    if (!group || (group->glow.outline_scale <= 0 && group->glow.blur_scale <= 0.0f && group->glow.filled_body == false)) {
       continue;
     }
 
@@ -861,12 +861,13 @@ void store()
       continue;
     }
 
-    g_outline_scale = std::max(g_outline_scale, group->glow.outline_scale);
+    const int effective_outline_scale = std::max(group->glow.outline_scale, group->glow.blur_scale > 0.0f ? 1 : 0);
+    g_outline_scale = std::max(g_outline_scale, effective_outline_scale);
     g_blur_scale = std::max(g_blur_scale, group->glow.blur_scale);
     g_filled_body = g_filled_body || group->glow.filled_body;
 
-    auto color = visual_groups::color_for_entity(entity, *group);
-    auto color_z = color;
+    auto color = visual_groups::resolve_color(entity, *group, group->glow.visible_override_color, group->glow.visible_color);
+    auto color_z = visual_groups::resolve_color(entity, *group, group->glow.occluded_override_color, group->glow.occluded_color);
     color.a *= alpha;
     color_z.a *= alpha;
 

@@ -40,6 +40,7 @@ void store(Player* localplayer);
 [[nodiscard]] bool groups_active();
 void move_group(int from, int to);
 [[nodiscard]] RGBA_float color_for_entity(Entity* entity, const visual_group& group);
+[[nodiscard]] RGBA_float resolve_color(Entity* entity, const visual_group& group, bool override_enabled, const RGBA_float& override_color);
 [[nodiscard]] float alpha_for_entity(Entity* entity, float start, float end, bool smooth_alpha);
 [[nodiscard]] const char* label_for_entity(Entity* entity);
 

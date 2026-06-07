@@ -1409,7 +1409,6 @@ static void draw_aimbot_content() {
     cat_menu::checkbox("Debug overlay", &config.aimbot.debug_overlay);
     cat_menu::combo("Aim mode", (int*)&config.aimbot.aim_mode, aim_mode_items, IM_ARRAYSIZE(aim_mode_items));
     cat_menu::slider_float("Aim FOV", &config.aimbot.fov, 0.0f, 180.0f, "%.0f deg");
-    cat_menu::slider_float("Smooth factor", &config.aimbot.smooth_factor, 1.0f, 30.0f, "%.1f");
     cat_menu::slider_float("Assist strength", &config.aimbot.assist_strength, 0.0f, 100.0f, "%.0f%%");
     cat_menu::slider_int("Resolver yaws", &config.aimbot.resolver_max_yaws, 4, 24);
   });
@@ -1669,8 +1668,10 @@ static void draw_visual_groups_content() {
     cat_menu::multi_select_combo("Buildings", &group.buildings, building_items, building_bits, IM_ARRAYSIZE(building_items));
     cat_menu::multi_select_combo("Projectiles", &group.projectiles, projectile_items, projectile_bits, IM_ARRAYSIZE(projectile_items));
   });
-  cat_menu::flow_panel("ESP", 1, 334.0f, [&]() {
+  cat_menu::flow_panel("ESP", 1, 388.0f, [&]() {
     cat_menu::multi_select_combo("Draw", &group.esp.draw_mask, esp_items, esp_bits, IM_ARRAYSIZE(esp_items));
+    cat_menu::checkbox("Override color", &group.esp.override_color);
+    cat_menu::color_picker("ESP color", group.esp.color.to_arr());
     cat_menu::combo("Box type", (int*)&group.esp.box_style, box_type_items, IM_ARRAYSIZE(box_type_items));
     cat_menu::slider_float("Fade near", &group.esp.start, 0.0f, 2048.0f, "%.0f HU");
     cat_menu::slider_float("Fade far", &group.esp.end, 512.0f, 8192.0f, "%.0f HU");
@@ -1684,14 +1685,22 @@ static void draw_visual_groups_content() {
     cat_menu::combo("Emoji style", &group.esp.head_emoji_style, head_emoji_items, IM_ARRAYSIZE(head_emoji_items));
     cat_menu::combo("Mafia position", (int*)&group.esp.mafia_level_position, mafia_position_items, IM_ARRAYSIZE(mafia_position_items));
   });
-  cat_menu::flow_panel("Chams", 2, 116.0f, [&]() {
+  cat_menu::flow_panel("Chams", 2, 230.0f, [&]() {
     cat_menu::combo("Visible material", (int*)&group.chams.visible_material, material_items, IM_ARRAYSIZE(material_items));
+    cat_menu::checkbox("Visible color override", &group.chams.visible_override_color);
+    cat_menu::color_picker("Visible color", group.chams.visible_color.to_arr());
     cat_menu::combo("Occluded material", (int*)&group.chams.occluded_material, material_items, IM_ARRAYSIZE(material_items));
+    cat_menu::checkbox("Occluded color override", &group.chams.occluded_override_color);
+    cat_menu::color_picker("Occluded color", group.chams.occluded_color.to_arr());
     cat_menu::checkbox("Ignore z", &group.chams.ignore_z);
   });
-  cat_menu::flow_panel("Glow", 2, 198.0f, [&]() {
+  cat_menu::flow_panel("Glow", 2, 312.0f, [&]() {
     cat_menu::slider_int("Outline size", &group.glow.outline_scale, 0, 10);
     cat_menu::slider_float("Blur strength", &group.glow.blur_scale, 0.0f, 10.0f, "%.1f");
+    cat_menu::checkbox("Visible color override", &group.glow.visible_override_color);
+    cat_menu::color_picker("Glow visible color", group.glow.visible_color.to_arr());
+    cat_menu::checkbox("Occluded color override", &group.glow.occluded_override_color);
+    cat_menu::color_picker("Glow occluded color", group.glow.occluded_color.to_arr());
     cat_menu::slider_float("Fade near", &group.glow.start, 0.0f, 2048.0f, "%.0f HU");
     cat_menu::slider_float("Fade far", &group.glow.end, 512.0f, 8192.0f, "%.0f HU");
     if (group.glow.end < group.glow.start) group.glow.end = group.glow.start;

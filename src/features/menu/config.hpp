@@ -104,7 +104,6 @@ struct Aim {
   struct button key = {.button = SDLK_UNKNOWN};
   
   float fov = 45;
-  float smooth_factor = 8.0f;
   float assist_strength = 25.0f;
   bool draw_fov = false;
   bool shoot_through_glass = false;
@@ -229,6 +228,8 @@ struct group_esp_settings {
   };
 
   uint32_t draw_mask = name | box | health_bar;
+  bool override_color = false;
+  RGBA_float color = {.r = 1.0f, .g = 0.501960784f, .b = 0.0f, .a = 1.0f};
   esp_box_type box_style = esp_box_type::corner;
   float start = 0.0f;
   float end = 8192.0f;
@@ -243,12 +244,20 @@ struct group_esp_settings {
 struct group_chams_settings {
   chams_material_type visible_material = chams_material_type::none;
   chams_material_type occluded_material = chams_material_type::none;
+  bool visible_override_color = false;
+  RGBA_float visible_color = {.r = 1.0f, .g = 0.501960784f, .b = 0.0f, .a = 1.0f};
+  bool occluded_override_color = false;
+  RGBA_float occluded_color = {.r = 1.0f, .g = 0.501960784f, .b = 0.0f, .a = 1.0f};
   bool ignore_z = true;
 };
 
 struct group_glow_settings {
   int outline_scale = 0;
   float blur_scale = 0.0f;
+  bool visible_override_color = false;
+  RGBA_float visible_color = {.r = 1.0f, .g = 0.501960784f, .b = 0.0f, .a = 1.0f};
+  bool occluded_override_color = false;
+  RGBA_float occluded_color = {.r = 1.0f, .g = 0.501960784f, .b = 0.0f, .a = 1.0f};
   float start = 0.0f;
   float end = 8192.0f;
   bool smooth_alpha = false;

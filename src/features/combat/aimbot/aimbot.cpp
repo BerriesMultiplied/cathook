@@ -451,6 +451,7 @@ void apply_auto_shoot(aimbot_run_context& ctx) {
 
 void apply_fire_state(aimbot_run_context& ctx) {
   const bool firing = (ctx.cmd->buttons & IN_ATTACK) != 0 || ctx.auto_shoot.release_attack;
+  const bool visible_steering = aimbot_mode_uses_visible_steering();
 
   if (ctx.target.player != nullptr) {
     if (ctx.readiness.ready()) {
@@ -471,15 +472,18 @@ void apply_fire_state(aimbot_run_context& ctx) {
     return;
   }
 
-  if (firing && ctx.hitscan && ctx.hitscan_fire.ready) {
+  if (firing && visible_steering) {
+    ctx.cmd->view_angles = ctx.applied_angles;
+  } else if (firing && ctx.hitscan && ctx.hitscan_fire.ready) {
     ctx.cmd->view_angles = ctx.hitscan_fire.command_angles;
-    if (ctx.target.player != nullptr) {
-      resolver::note_shot(ctx.target.player, ctx.target.hitbox, ctx.target.simulation_time, ctx.target.backtrack);
-    }
   } else if (firing && ctx.projectile) {
     ctx.cmd->view_angles = ctx.projectile_angles;
   } else if (firing) {
     ctx.cmd->view_angles = ctx.target_angles;
+  }
+
+  if (firing && ctx.hitscan && ctx.hitscan_fire.ready && ctx.target.player != nullptr) {
+    resolver::note_shot(ctx.target.player, ctx.target.hitbox, ctx.target.simulation_time, ctx.target.backtrack);
   }
 
   if (firing && ctx.target.player != nullptr && ctx.hitscan && ctx.target.backtrack && ctx.target.tick_count > 0) {

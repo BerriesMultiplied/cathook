@@ -18,6 +18,7 @@ V  o o  V  file: src/features/visuals/esp/esp.cpp
 #include <cstdio>
 #include <cstdlib>
 #include <cstdint>
+#include <cctype>
 #include <cstring>
 #include <cwchar>
 #include <filesystem>
@@ -25,11 +26,14 @@ V  o o  V  file: src/features/visuals/esp/esp.cpp
 #include <limits>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
 #include "core/logger.hpp"
 #include "core/entity_cache.hpp"
+#include "core/math/math.hpp"
+#include "core/player_manager.hpp"
 
 #include "features/combat/aimbot/aimbot.hpp"
 #include "features/combat/aimbot/proj_aim.hpp"
@@ -40,7 +44,9 @@ V  o o  V  file: src/features/visuals/esp/esp.cpp
 #include "features/visuals/groups/visual_groups.hpp"
 
 #include "games/tf2/sdk/entities/building.hpp"
+#include "games/tf2/sdk/entities/capture_flag.hpp"
 #include "games/tf2/sdk/entities/player.hpp"
+#include "games/tf2/sdk/entities/weapon.hpp"
 #include "games/tf2/sdk/aim_hitboxes.hpp"
 #include "games/tf2/sdk/interfaces/convar_system.hpp"
 #include "games/tf2/sdk/interfaces/engine.hpp"
@@ -226,6 +232,9 @@ bool g_esp_was_in_game = false;
 [[nodiscard]] bool get_entity_screen_bounds(Entity* entity, esp_bounds* bounds);
 [[nodiscard]] bool get_entity_projected_box(Entity* entity, projected_box* box);
 [[nodiscard]] Vec3 get_esp_draw_origin(Entity* entity);
+
+template <typename value_type>
+[[nodiscard]] value_type read_player_resource_value(Entity* player_resource, uintptr_t array_offset, int player_index);
 
 [[nodiscard]] bool is_finite_bounds(const esp_bounds& bounds)
 {
@@ -566,7 +575,7 @@ void smooth_projected_box(Entity* entity, projected_box* box)
     return true;
   }
 
-  return !entity->is_dormant() && get_cached_esp_bounds(entity, bounds);
+  return get_cached_esp_bounds(entity, bounds);
 }
 
 [[nodiscard]] std::vector<uint8_t> read_file_bytes(const std::filesystem::path& path)
@@ -762,11 +771,567 @@ void reset_head_emoji_texture()
   return std::string(buffer);
 }
 
+[[nodiscard]] bool esp_text_contains(std::string_view text, std::string_view needle)
+{
+  if (needle.empty()) {
+    return true;
+  }
+
+  return std::search(text.begin(), text.end(), needle.begin(), needle.end(), [](char left, char right) {
+    return std::tolower(static_cast<unsigned char>(left)) == std::tolower(static_cast<unsigned char>(right));
+  }) != text.end();
+}
+
+[[nodiscard]] std::string_view safe_string_view(const char* value)
+{
+  return value != nullptr ? std::string_view{value} : std::string_view{};
+}
+
+[[nodiscard]] RGBA_float esp_color_for_entity(Entity* entity, const visual_group& group)
+{
+  return visual_groups::resolve_color(entity, group, group.esp.override_color, group.esp.color);
+}
+
 [[nodiscard]] RGBA player_esp_color(Player* player, Player* localplayer)
 {
   (void)localplayer;
   const visual_groups::visual_group_match group = player != nullptr ? visual_groups::group_for_entity(player->to_entity(), false) : visual_groups::visual_group_match{};
-  return group ? visual_groups::color_for_entity(player->to_entity(), *group).to_RGBA() : RGBA{255, 255, 255, 255};
+  return group ? esp_color_for_entity(player->to_entity(), *group).to_RGBA() : RGBA{255, 255, 255, 255};
+}
+
+[[nodiscard]] std::string player_name(Player* player)
+{
+  if (player == nullptr) {
+    return {};
+  }
+
+  wchar_t wide_name[32]{};
+  player->get_player_name(wide_name);
+  return wide_to_utf8(wide_name);
+}
+
+[[nodiscard]] const char* player_class_name(tf_class class_type)
+{
+  switch (class_type) {
+    case tf_class::SCOUT:
+      return "Scout";
+    case tf_class::SNIPER:
+      return "Sniper";
+    case tf_class::SOLDIER:
+      return "Soldier";
+    case tf_class::DEMOMAN:
+      return "Demoman";
+    case tf_class::MEDIC:
+      return "Medic";
+    case tf_class::HEAVYWEAPONS:
+      return "Heavy";
+    case tf_class::PYRO:
+      return "Pyro";
+    case tf_class::SPY:
+      return "Spy";
+    case tf_class::ENGINEER:
+      return "Engineer";
+    default:
+      return "Unknown";
+  }
+}
+
+[[nodiscard]] const char* weapon_id_name(int weapon_id)
+{
+  switch (weapon_id) {
+    case TF_WEAPON_BAT:
+    case TF_WEAPON_BAT_WOOD:
+    case TF_WEAPON_BAT_FISH:
+    case TF_WEAPON_BAT_GIFTWRAP:
+      return "Bat";
+    case TF_WEAPON_BOTTLE:
+      return "Bottle";
+    case TF_WEAPON_FIREAXE:
+      return "Fire Axe";
+    case TF_WEAPON_CLUB:
+      return "Club";
+    case TF_WEAPON_KNIFE:
+      return "Knife";
+    case TF_WEAPON_FISTS:
+      return "Fists";
+    case TF_WEAPON_SHOVEL:
+      return "Shovel";
+    case TF_WEAPON_WRENCH:
+      return "Wrench";
+    case TF_WEAPON_BONESAW:
+      return "Bonesaw";
+    case TF_WEAPON_SHOTGUN_PRIMARY:
+    case TF_WEAPON_SHOTGUN_SOLDIER:
+    case TF_WEAPON_SHOTGUN_HWG:
+    case TF_WEAPON_SHOTGUN_PYRO:
+      return "Shotgun";
+    case TF_WEAPON_SCATTERGUN:
+      return "Scattergun";
+    case TF_WEAPON_SNIPERRIFLE:
+    case TF_WEAPON_SNIPERRIFLE_DECAP:
+    case TF_WEAPON_SNIPERRIFLE_CLASSIC:
+      return "Sniper Rifle";
+    case TF_WEAPON_MINIGUN:
+      return "Minigun";
+    case TF_WEAPON_SMG:
+    case TF_WEAPON_CHARGED_SMG:
+      return "SMG";
+    case TF_WEAPON_SYRINGEGUN_MEDIC:
+      return "Syringe Gun";
+    case TF_WEAPON_ROCKETLAUNCHER:
+    case TF_WEAPON_ROCKETLAUNCHER_DIRECTHIT:
+      return "Rocket Launcher";
+    case TF_WEAPON_GRENADELAUNCHER:
+    case TF_WEAPON_CANNON:
+      return "Grenade Launcher";
+    case TF_WEAPON_PIPEBOMBLAUNCHER:
+      return "Sticky Launcher";
+    case TF_WEAPON_FLAMETHROWER:
+      return "Flamethrower";
+    case TF_WEAPON_PISTOL:
+    case TF_WEAPON_PISTOL_SCOUT:
+      return "Pistol";
+    case TF_WEAPON_REVOLVER:
+      return "Revolver";
+    case TF_WEAPON_MEDIGUN:
+      return "Medi Gun";
+    case TF_WEAPON_FLAREGUN:
+    case TF_WEAPON_FLAREGUN_REVENGE:
+      return "Flare Gun";
+    case TF_WEAPON_LUNCHBOX:
+      return "Lunchbox";
+    case TF_WEAPON_JAR:
+      return "Jarate";
+    case TF_WEAPON_JAR_MILK:
+      return "Mad Milk";
+    case TF_WEAPON_COMPOUND_BOW:
+      return "Bow";
+    case TF_WEAPON_BUFF_ITEM:
+      return "Banner";
+    case TF_WEAPON_SWORD:
+      return "Sword";
+    case TF_WEAPON_CROSSBOW:
+      return "Crossbow";
+    case TF_WEAPON_RAYGUN:
+    case TF_WEAPON_PARTICLE_CANNON:
+    case TF_WEAPON_DRG_POMSON:
+      return "Energy Weapon";
+    case TF_WEAPON_MECHANICAL_ARM:
+      return "Short Circuit";
+    case TF_WEAPON_CLEAVER:
+      return "Cleaver";
+    case TF_WEAPON_THROWABLE:
+    case TF_WEAPON_GRENADE_THROWABLE:
+      return "Throwable";
+    case TF_WEAPON_SPELLBOOK:
+      return "Spellbook";
+    case TF_WEAPON_GRAPPLINGHOOK:
+      return "Grappling Hook";
+    case TF_WEAPON_PASSTIME_GUN:
+      return "PASS Time";
+    default:
+      return nullptr;
+  }
+}
+
+[[nodiscard]] std::string weapon_text_for(Weapon* weapon)
+{
+  if (weapon == nullptr) {
+    return {};
+  }
+
+  if (const char* name = weapon_id_name(weapon->get_weapon_id())) {
+    return name;
+  }
+
+  return "Weapon #" + std::to_string(weapon->get_def_id());
+}
+
+[[nodiscard]] std::string base_name_from_path(std::string_view path)
+{
+  if (path.empty()) {
+    return {};
+  }
+
+  const auto slash = path.find_last_of("/\\");
+  const auto start = slash == std::string_view::npos ? 0 : slash + 1;
+  const auto dot = path.find_last_of('.');
+  const auto end = dot == std::string_view::npos || dot < start ? path.size() : dot;
+  return std::string(path.substr(start, end - start));
+}
+
+[[nodiscard]] std::string projectile_label(Entity* entity)
+{
+  if (entity == nullptr) {
+    return {};
+  }
+
+  const std::string_view network_name = safe_string_view(entity->get_network_name());
+  const std::string_view model_name = safe_string_view(entity->get_model_name());
+
+  if (entity->get_class_id() == class_id::ROCKET || esp_text_contains(network_name, "rocket")) return "Rocket";
+  if (entity->get_class_id() == class_id::PILL_OR_STICKY) return esp_text_contains(model_name, "sticky") ? "Sticky" : "Pipe";
+  if (entity->get_class_id() == class_id::ARROW || esp_text_contains(network_name, "arrow")) return "Arrow";
+  if (entity->get_class_id() == class_id::CROSSBOW_BOLT || esp_text_contains(network_name, "healingbolt")) return "Heal Bolt";
+  if (entity->get_class_id() == class_id::FLARE || esp_text_contains(network_name, "flare")) return "Flare";
+  if (esp_text_contains(network_name, "balloffire")) return "Fire";
+  if (esp_text_contains(network_name, "cleaver")) return "Cleaver";
+  if (esp_text_contains(network_name, "jarmilk") || esp_text_contains(network_name, "bread")) return "Milk";
+  if (esp_text_contains(network_name, "jargas")) return "Gas";
+  if (esp_text_contains(network_name, "jar")) return "Jarate";
+  if (esp_text_contains(network_name, "stunball")) return "Baseball";
+  if (esp_text_contains(network_name, "energy")) return "Energy";
+  if (esp_text_contains(network_name, "mechanicalarm")) return "Short Circuit";
+  if (esp_text_contains(network_name, "meteorshower")) return "Meteor";
+  if (esp_text_contains(network_name, "lightning")) return "Lightning";
+  if (esp_text_contains(network_name, "fireball")) return "Fireball";
+  if (esp_text_contains(network_name, "merasmusgrenade")) return "Bomb";
+  if (esp_text_contains(network_name, "spellbats")) return "Bats";
+  if (esp_text_contains(network_name, "pumpkin")) return "Pumpkin";
+  if (esp_text_contains(network_name, "spawnboss")) return "Monoculus";
+  if (esp_text_contains(network_name, "spawnhorde") || esp_text_contains(network_name, "spawnzombie")) return "Skeleton";
+  if (esp_text_contains(network_name, "pipebomb") || esp_text_contains(model_name, "pipebomb")) return esp_text_contains(model_name, "sticky") ? "Sticky" : "Pipe";
+
+  const auto model_base = base_name_from_path(model_name);
+  return model_base.empty() ? "Projectile" : model_base;
+}
+
+[[nodiscard]] std::string entity_label(Entity* entity)
+{
+  if (entity == nullptr) {
+    return {};
+  }
+
+  if (entity->get_class_id() == class_id::PLAYER) {
+    return "Player";
+  }
+  if (entity->is_base_combat_weapon()) {
+    return weapon_text_for(reinterpret_cast<Weapon*>(entity));
+  }
+  const auto generic = std::string(visual_groups::label_for_entity(entity));
+  if (generic != "PROJECTILE") {
+    return generic;
+  }
+  return projectile_label(entity);
+}
+
+[[nodiscard]] Player* owner_player_for_esp(Entity* entity)
+{
+  if (entity == nullptr || entity_list == nullptr) {
+    return nullptr;
+  }
+
+  if (entity->get_class_id() == class_id::PLAYER) {
+    return reinterpret_cast<Player*>(entity);
+  }
+
+  auto* owner = entity->get_owner_entity();
+  if (owner != nullptr && owner->get_class_id() == class_id::PLAYER) {
+    return reinterpret_cast<Player*>(owner);
+  }
+
+  if (entity->is_building()) {
+    auto* builder = reinterpret_cast<Building*>(entity)->get_owner_entity();
+    if (builder != nullptr && builder->get_class_id() == class_id::PLAYER) {
+      return reinterpret_cast<Player*>(builder);
+    }
+  }
+
+  return nullptr;
+}
+
+[[nodiscard]] bool player_is_priority(Player* player)
+{
+  return player != nullptr && cathook::core::players::is_prioritized(cathook::core::players::account_id_for_player_index(player->get_index()));
+}
+
+[[nodiscard]] bool player_is_invisible_esp(Player* player)
+{
+  return player != nullptr &&
+    (player->get_invisibility() > 0.05f || player->in_cond(TF_COND_STEALTHED) || player->in_cond(TF_COND_STEALTHED_BLINK));
+}
+
+[[nodiscard]] float entity_distance_hu(Entity* entity, Player* localplayer)
+{
+  if (entity == nullptr || localplayer == nullptr) {
+    return 0.0f;
+  }
+
+  return distance_between(entity->get_collision_origin(), localplayer->get_collision_origin());
+}
+
+[[nodiscard]] int player_ping(Entity* player_resource, int player_index)
+{
+  static const int ping_offset = tf2_netvars::find_offset("DT_TFPlayerResource", { "baseclass", "m_iPing" });
+  return ping_offset > 0 ? read_player_resource_value<int>(player_resource, static_cast<uintptr_t>(ping_offset), player_index) : 0;
+}
+
+[[nodiscard]] std::string player_kdr_text(Entity* player_resource, int player_index)
+{
+  if (player_resource == nullptr || player_index <= 0) {
+    return {};
+  }
+
+  const int score = read_player_resource_value<int>(player_resource, player_resource_score_offset, player_index);
+  const int deaths = read_player_resource_value<int>(player_resource, player_resource_deaths_offset, player_index);
+  char buffer[32]{};
+  if (deaths <= 0) {
+    std::snprintf(buffer, sizeof(buffer), "KDR %d", score);
+  } else {
+    std::snprintf(buffer, sizeof(buffer), "KDR %.1f", static_cast<float>(score) / static_cast<float>(deaths));
+  }
+  return buffer;
+}
+
+[[nodiscard]] std::string ammo_text_for(Player* player)
+{
+  if (player == nullptr) {
+    return {};
+  }
+
+  auto* weapon = player->get_weapon();
+  if (weapon == nullptr) {
+    return {};
+  }
+
+  const int clip = weapon->get_clip1();
+  if (clip < 0) {
+    return {};
+  }
+
+  return "Ammo " + std::to_string(clip);
+}
+
+[[nodiscard]] std::string ammo_text_for(Entity* entity)
+{
+  if (entity == nullptr || !entity->is_base_combat_weapon()) {
+    return {};
+  }
+
+  auto* weapon = reinterpret_cast<Weapon*>(entity);
+  const int clip = weapon->get_clip1();
+  if (clip < 0) {
+    return {};
+  }
+
+  return "Ammo " + std::to_string(clip);
+}
+
+[[nodiscard]] std::string flag_status_text(Entity* entity)
+{
+  if (entity == nullptr || entity->get_class_id() != class_id::CAPTURE_FLAG) {
+    return {};
+  }
+
+  switch (reinterpret_cast<CaptureFlag*>(entity)->get_status()) {
+    case HOME:
+      return "Intel home";
+    case STOLEN:
+      return "Intel stolen";
+    case DROPPED:
+      return "Intel dropped";
+    default:
+      return "Intel";
+  }
+}
+
+[[nodiscard]] bool active_visual_group_index(std::size_t index)
+{
+  return index < visual_group_config::max_groups && (config.visual_groups.active_group_mask & (1u << index)) != 0;
+}
+
+[[nodiscard]] const visual_group* first_pickup_timer_group()
+{
+  for (std::size_t index = config.visual_groups.groups.size(); index > 0; --index) {
+    const std::size_t group_index = index - 1;
+    if (!active_visual_group_index(group_index)) {
+      continue;
+    }
+
+    const auto& group = config.visual_groups.groups[group_index];
+    if (group.pickup_timer) {
+      return &group;
+    }
+  }
+
+  return nullptr;
+}
+
+[[nodiscard]] bool any_backtrack_group_enabled()
+{
+  for (std::size_t index = 0; index < config.visual_groups.groups.size(); ++index) {
+    if (active_visual_group_index(index) && (config.visual_groups.groups[index].backtrack & visual_group::backtrack_enabled) != 0) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+[[nodiscard]] ImVec2 overlay_screen_center()
+{
+  return ImVec2(overlay_projection::state.screen_width * 0.5f, overlay_projection::state.screen_height * 0.5f);
+}
+
+[[nodiscard]] bool screen_point_inside_view(const ImVec2& point)
+{
+  return point.x >= 0.0f && point.y >= 0.0f &&
+    point.x <= overlay_projection::state.screen_width &&
+    point.y <= overlay_projection::state.screen_height;
+}
+
+void draw_offscreen_arrow(ImDrawList* draw_list, Entity* entity, Player* localplayer, const visual_group& group)
+{
+  if (draw_list == nullptr || entity == nullptr || localplayer == nullptr || !group.offscreen_arrows ||
+      overlay_projection::state.screen_width <= 0.0f || overlay_projection::state.screen_height <= 0.0f) {
+    return;
+  }
+
+  const float distance = entity_distance_hu(entity, localplayer);
+  if (group.offscreen_arrows_max_distance > 0.0f && distance > group.offscreen_arrows_max_distance) {
+    return;
+  }
+
+  Vec3 screen{};
+  if (!overlay_projection::world_to_screen(get_esp_draw_origin(entity), &screen)) {
+    return;
+  }
+
+  const ImVec2 projected(screen.x, screen.y);
+  if (screen_point_inside_view(projected)) {
+    return;
+  }
+
+  const ImVec2 center = overlay_screen_center();
+  ImVec2 direction(projected.x - center.x, projected.y - center.y);
+  const float length = std::sqrt((direction.x * direction.x) + (direction.y * direction.y));
+  if (length <= 0.001f) {
+    return;
+  }
+
+  direction.x /= length;
+  direction.y /= length;
+  const float max_margin = std::max(8.0f, (std::min(overlay_projection::state.screen_width, overlay_projection::state.screen_height) * 0.5f) - 24.0f);
+  const float margin = std::clamp(static_cast<float>(group.offscreen_arrows_offset), 8.0f, max_margin);
+  const float edge_x = direction.x > 0.0f
+    ? (overlay_projection::state.screen_width - margin - center.x) / direction.x
+    : (margin - center.x) / direction.x;
+  const float edge_y = direction.y > 0.0f
+    ? (overlay_projection::state.screen_height - margin - center.y) / direction.y
+    : (margin - center.y) / direction.y;
+  const float edge_scale = std::max(0.0f, std::min(edge_x > 0.0f ? edge_x : std::numeric_limits<float>::max(), edge_y > 0.0f ? edge_y : std::numeric_limits<float>::max()));
+  if (!std::isfinite(edge_scale)) {
+    return;
+  }
+
+  const ImVec2 tip(center.x + (direction.x * edge_scale), center.y + (direction.y * edge_scale));
+  const ImVec2 perpendicular(-direction.y, direction.x);
+  constexpr float arrow_length = 13.0f;
+  constexpr float arrow_width = 8.0f;
+  const ImVec2 base(tip.x - (direction.x * arrow_length), tip.y - (direction.y * arrow_length));
+  const ImVec2 left(base.x + (perpendicular.x * arrow_width), base.y + (perpendicular.y * arrow_width));
+  const ImVec2 right(base.x - (perpendicular.x * arrow_width), base.y - (perpendicular.y * arrow_width));
+
+  auto arrow_color = esp_color_for_entity(entity, group);
+  arrow_color.a = std::clamp(arrow_color.a, 0.0f, 1.0f);
+  const auto color = to_imgui_color(arrow_color.to_RGBA());
+  draw_list->AddTriangleFilled(
+    ImVec2(tip.x + 1.0f, tip.y + 1.0f),
+    ImVec2(left.x + 1.0f, left.y + 1.0f),
+    ImVec2(right.x + 1.0f, right.y + 1.0f),
+    IM_COL32(0, 0, 0, 190));
+  draw_list->AddTriangleFilled(tip, left, right, color);
+}
+
+void draw_world_line(ImDrawList* draw_list, const Vec3& start, const Vec3& end, ImU32 color, float thickness = 1.0f)
+{
+  if (draw_list == nullptr) {
+    return;
+  }
+
+  Vec3 start_screen{};
+  Vec3 end_screen{};
+  if (!overlay_projection::world_to_screen(start, &start_screen) ||
+      !overlay_projection::world_to_screen(end, &end_screen)) {
+    return;
+  }
+
+  draw_list->AddLine(
+    ImVec2(start_screen.x + 1.0f, start_screen.y + 1.0f),
+    ImVec2(end_screen.x + 1.0f, end_screen.y + 1.0f),
+    IM_COL32(0, 0, 0, 190),
+    thickness + 2.0f);
+  draw_list->AddLine(ImVec2(start_screen.x, start_screen.y), ImVec2(end_screen.x, end_screen.y), color, thickness);
+}
+
+void draw_player_sightline(ImDrawList* draw_list, Player* player, const visual_group& group)
+{
+  if (draw_list == nullptr || player == nullptr || (group.sightlines & visual_group::sightline_enabled) == 0) {
+    return;
+  }
+
+  Vec3 forward{};
+  angle_vectors(player->get_eye_angles(), &forward, nullptr, nullptr);
+  const Vec3 start = player->get_shoot_pos();
+  const Vec3 end = start + (forward * 8192.0f);
+  auto color = esp_color_for_entity(player->to_entity(), group);
+  color.a = std::min(color.a, 0.78f);
+  draw_world_line(draw_list, start, end, to_imgui_color(color.to_RGBA()), 1.5f);
+}
+
+[[nodiscard]] Vec3 entity_velocity(Entity* entity)
+{
+  if (entity == nullptr) {
+    return {};
+  }
+
+  return *reinterpret_cast<Vec3*>(reinterpret_cast<uintptr_t>(entity) + 0x168);
+}
+
+void draw_entity_trajectory(ImDrawList* draw_list, Entity* entity, const visual_group& group)
+{
+  if (draw_list == nullptr || entity == nullptr || (group.trajectory & visual_group::trajectory_enabled) == 0) {
+    return;
+  }
+
+  const Vec3 velocity = entity_velocity(entity);
+  const float speed = std::sqrt((velocity.x * velocity.x) + (velocity.y * velocity.y) + (velocity.z * velocity.z));
+  if (!std::isfinite(speed) || speed < 1.0f) {
+    return;
+  }
+
+  const Vec3 start = get_esp_draw_origin(entity);
+  auto color = esp_color_for_entity(entity, group);
+  color.a = std::min(color.a, 0.82f);
+  const ImU32 line_color = to_imgui_color(color.to_RGBA());
+  constexpr int segments = 12;
+  constexpr float step_time = 0.075f;
+  Vec3 previous = start;
+  for (int segment = 1; segment <= segments; ++segment) {
+    const float time = static_cast<float>(segment) * step_time;
+    Vec3 current = start + (velocity * time);
+    if ((group.trajectory & visual_group::trajectory_predict) != 0) {
+      current.z -= 400.0f * time * time;
+    }
+
+    if ((group.trajectory & visual_group::trajectory_path) != 0 || (group.trajectory & visual_group::trajectory_trace) != 0) {
+      draw_world_line(draw_list, previous, current, line_color, 1.5f);
+    }
+
+    previous = current;
+  }
+
+  Vec3 end_screen{};
+  if (overlay_projection::world_to_screen(previous, &end_screen)) {
+    if ((group.trajectory & visual_group::trajectory_sphere) != 0) {
+      draw_list->AddCircle(ImVec2(end_screen.x, end_screen.y), 5.0f, IM_COL32(0, 0, 0, 210), 18, 3.0f);
+      draw_list->AddCircle(ImVec2(end_screen.x, end_screen.y), 4.0f, line_color, 18, 1.5f);
+    }
+    if ((group.trajectory & visual_group::trajectory_radius) != 0) {
+      draw_list->AddCircle(ImVec2(end_screen.x, end_screen.y), 18.0f, IM_COL32(0, 0, 0, 160), 32, 3.0f);
+      draw_list->AddCircle(ImVec2(end_screen.x, end_screen.y), 17.0f, line_color, 32, 1.0f);
+    }
+  }
 }
 
 [[nodiscard]] Vec3 get_esp_draw_origin(Entity* entity)
@@ -997,9 +1562,6 @@ template <typename value_type>
   if (player == localplayer || !player->is_alive()) {
     return false;
   }
-  if (player->is_dormant()) {
-    return false;
-  }
 
   return true;
 }
@@ -1030,9 +1592,9 @@ template <typename value_type>
   return true;
 }
 
-[[nodiscard]] int get_head_emoji_tile_column()
+[[nodiscard]] int get_head_emoji_tile_column(int style)
 {
-  return cathook_head_emoji_first_tile_column;
+  return cathook_head_emoji_first_tile_column + std::clamp(style, 0, cathook_head_emoji_style_count - 1);
 }
 
 void draw_atlas_tile(
@@ -1430,6 +1992,23 @@ void draw_text_centered(ImDrawList* draw_list, const ImVec2& position, ImU32 col
   draw_list->AddText(text_pos, color, text.c_str());
 }
 
+void draw_text_centered_with_background(ImDrawList* draw_list, const ImVec2& position, ImU32 color, const std::string& text, uint8_t background_alpha, float alpha_scale)
+{
+  if (draw_list == nullptr || text.empty()) {
+    return;
+  }
+
+  const auto text_size = ImGui::CalcTextSize(text.c_str());
+  const auto text_pos = ImVec2(position.x - text_size.x * 0.5f, position.y);
+  const auto alpha = std::clamp(static_cast<int>(std::round(static_cast<float>(background_alpha) * alpha_scale)), 0, 255);
+  draw_list->AddRectFilled(
+    ImVec2(text_pos.x - 3.0f, text_pos.y - 2.0f),
+    ImVec2(text_pos.x + text_size.x + 3.0f, text_pos.y + text_size.y + 2.0f),
+    IM_COL32(0, 0, 0, alpha),
+    2.0f);
+  draw_text_centered(draw_list, position, color, text);
+}
+
 void draw_text(ImDrawList* draw_list, const ImVec2& position, ImU32 color, const std::string& text)
 {
   if (draw_list == nullptr || text.empty()) {
@@ -1438,6 +2017,80 @@ void draw_text(ImDrawList* draw_list, const ImVec2& position, ImU32 color, const
 
   draw_list->AddText(ImVec2(position.x + 1.0f, position.y + 1.0f), IM_COL32(0, 0, 0, 255), text.c_str());
   draw_list->AddText(position, color, text.c_str());
+}
+
+void draw_right_line(ImDrawList* draw_list, const esp_bounds& bounds, float* y, ImU32 color, const std::string& text)
+{
+  if (draw_list == nullptr || y == nullptr || text.empty()) {
+    return;
+  }
+
+  draw_text(draw_list, ImVec2(bounds.max_x + cathook_text_padding, *y), color, text);
+  *y += ImGui::GetTextLineHeight();
+}
+
+void draw_left_line(ImDrawList* draw_list, const esp_bounds& bounds, float* y, ImU32 color, const std::string& text)
+{
+  if (draw_list == nullptr || y == nullptr || text.empty()) {
+    return;
+  }
+
+  const auto text_size = ImGui::CalcTextSize(text.c_str());
+  draw_text(draw_list, ImVec2(bounds.min_x - cathook_text_padding - text_size.x, *y), color, text);
+  *y += ImGui::GetTextLineHeight();
+}
+
+void draw_bottom_center_line(ImDrawList* draw_list, const esp_bounds& bounds, float* y, ImU32 color, const std::string& text)
+{
+  if (draw_list == nullptr || y == nullptr || text.empty()) {
+    return;
+  }
+
+  draw_text_centered(draw_list, ImVec2((bounds.min_x + bounds.max_x) * 0.5f, *y), color, text);
+  *y += ImGui::GetTextLineHeight();
+}
+
+void draw_player_bones(ImDrawList* draw_list, Player* player, ImU32 color, float alpha_scale)
+{
+  if (draw_list == nullptr || player == nullptr) {
+    return;
+  }
+
+  constexpr std::array<std::pair<int, int>, 16> bones = {{
+    {aim_hitbox_head, aim_hitbox_spine_3},
+    {aim_hitbox_spine_3, aim_hitbox_spine_2},
+    {aim_hitbox_spine_2, aim_hitbox_spine_1},
+    {aim_hitbox_spine_1, aim_hitbox_pelvis},
+    {aim_hitbox_spine_3, aim_hitbox_left_upper_arm},
+    {aim_hitbox_left_upper_arm, aim_hitbox_left_forearm},
+    {aim_hitbox_left_forearm, aim_hitbox_left_hand},
+    {aim_hitbox_spine_3, aim_hitbox_right_upper_arm},
+    {aim_hitbox_right_upper_arm, aim_hitbox_right_forearm},
+    {aim_hitbox_right_forearm, aim_hitbox_right_hand},
+    {aim_hitbox_pelvis, aim_hitbox_left_thigh},
+    {aim_hitbox_left_thigh, aim_hitbox_left_calf},
+    {aim_hitbox_left_calf, aim_hitbox_left_foot},
+    {aim_hitbox_pelvis, aim_hitbox_right_thigh},
+    {aim_hitbox_right_thigh, aim_hitbox_right_calf},
+    {aim_hitbox_right_calf, aim_hitbox_right_foot},
+  }};
+
+  const auto shadow = black_with_alpha(alpha_scale);
+  for (const auto& [first_hitbox, second_hitbox] : bones) {
+    Vec3 first_world{};
+    Vec3 second_world{};
+    Vec3 first_screen{};
+    Vec3 second_screen{};
+    if (!player->get_hitbox_center(first_hitbox, &first_world) ||
+        !player->get_hitbox_center(second_hitbox, &second_world) ||
+        !overlay_projection::world_to_screen(first_world, &first_screen) ||
+        !overlay_projection::world_to_screen(second_world, &second_screen)) {
+      continue;
+    }
+
+    draw_list->AddLine(ImVec2(first_screen.x + 1.0f, first_screen.y + 1.0f), ImVec2(second_screen.x + 1.0f, second_screen.y + 1.0f), shadow, 3.0f);
+    draw_list->AddLine(ImVec2(first_screen.x, first_screen.y), ImVec2(second_screen.x, second_screen.y), color, 1.0f);
+  }
 }
 
 void draw_player_mafia_text(ImDrawList* draw_list, const esp_bounds& bounds, Player* player, Entity* player_resource, const visual_group& group, float right_aligned_y = -1.0f)
@@ -1559,7 +2212,7 @@ void draw_player_head_emoji(ImDrawList* draw_list, const esp_bounds& bounds, Pla
   draw_atlas_tile(
     draw_list,
     texture,
-    get_head_emoji_tile_column(),
+    get_head_emoji_tile_column(group.esp.head_emoji_style),
     cathook_head_emoji_tile_row,
     smoothed_screen,
     size);
@@ -1607,48 +2260,99 @@ void draw_player_head_emoji_only(ImDrawList* draw_list, Player* player, Player* 
 
 void draw_player_esp(ImDrawList* draw_list, Player* player, Player* localplayer, Entity* player_resource, const visual_group& group)
 {
-  auto bounds = esp_bounds{};
-  if (!get_stable_entity_screen_bounds(player->to_entity(), &bounds)) {
+  auto* entity = player != nullptr ? player->to_entity() : nullptr;
+  if (draw_list == nullptr || player == nullptr || localplayer == nullptr || entity == nullptr) {
     return;
   }
-  bounds = smooth_esp_bounds(player->to_entity(), bounds);
 
-  auto base_color = visual_groups::color_for_entity(player->to_entity(), group);
-  const float alpha_scale = visual_groups::alpha_for_entity(player->to_entity(), group.esp.start, group.esp.end, group.esp.smooth_alpha);
+  auto bounds = esp_bounds{};
+  if (!get_stable_entity_screen_bounds(entity, &bounds)) {
+    return;
+  }
+  bounds = smooth_esp_bounds(entity, bounds);
+
+  auto base_color = esp_color_for_entity(entity, group);
+  const float alpha_scale = visual_groups::alpha_for_entity(entity, group.esp.start, group.esp.end, group.esp.smooth_alpha);
   if (alpha_scale <= 0.0f) {
     return;
   }
   base_color.a *= alpha_scale;
   const auto color = to_imgui_color(base_color.to_RGBA());
+  const auto text_alpha = std::clamp(static_cast<int>(std::round(255.0f * alpha_scale)), 0, 255);
+  const auto white_text = IM_COL32(255, 255, 255, text_alpha);
+  const auto green_text = IM_COL32(0, 220, 80, text_alpha);
+  const auto red_text = IM_COL32(255, 50, 50, text_alpha);
 
   if ((group.esp.draw_mask & group_esp_settings::box) != 0) {
-    draw_esp_box(draw_list, player->to_entity(), bounds, group.esp.box_style, color, alpha_scale);
+    draw_esp_box(draw_list, entity, bounds, group.esp.box_style, color, alpha_scale);
+  }
+
+  if ((group.esp.draw_mask & group_esp_settings::bones) != 0) {
+    draw_player_bones(draw_list, player, color, alpha_scale);
   }
 
   if ((group.esp.draw_mask & group_esp_settings::health_bar) != 0) {
     draw_vertical_health_bar(draw_list, bounds, player->get_health(), player->get_max_health(), alpha_scale);
   }
 
-  if ((group.esp.draw_mask & group_esp_settings::name) != 0) {
-    wchar_t wide_name[32]{};
-    player->get_player_name(wide_name);
-    const auto name = wide_to_utf8(wide_name);
-    draw_text_centered(draw_list, ImVec2((bounds.min_x + bounds.max_x) * 0.5f, bounds.min_y - ImGui::GetTextLineHeight() - cathook_text_padding), IM_COL32(255, 255, 255, 255), name);
+  float left_y = bounds.min_y;
+  if ((group.esp.draw_mask & group_esp_settings::health_text) != 0) {
+    draw_left_line(draw_list, bounds, &left_y, with_alpha(get_health_color(player->get_health(), player->get_max_health()), alpha_scale), std::to_string(player->get_health()));
   }
 
-  float flag_y = bounds.min_y;
-  const auto flag_x = bounds.max_x + cathook_text_padding;
-  if ((group.esp.draw_mask & group_esp_settings::flags) != 0 && player == aimbot::active_target_player()) {
-    draw_text(draw_list, ImVec2(flag_x, flag_y), IM_COL32(255, 0, 0, 255), "TARGET");
-    flag_y += ImGui::GetTextLineHeight();
+  if ((group.esp.draw_mask & group_esp_settings::name) != 0) {
+    const auto name = player_name(player);
+    const auto name_position = ImVec2((bounds.min_x + bounds.max_x) * 0.5f, bounds.min_y - ImGui::GetTextLineHeight() - cathook_text_padding);
+    if ((group.esp.draw_mask & group_esp_settings::name_background) != 0) {
+      draw_text_centered_with_background(draw_list, name_position, white_text, name, group.esp.background_alpha, alpha_scale);
+    } else {
+      draw_text_centered(draw_list, name_position, white_text, name);
+    }
   }
-  if ((group.esp.draw_mask & group_esp_settings::flags) != 0 && player->is_friend()) {
-    draw_text(draw_list, ImVec2(flag_x, flag_y), IM_COL32(0, 220, 80, 255), "FRIEND");
-    flag_y += ImGui::GetTextLineHeight();
+
+  float right_y = bounds.min_y;
+  if ((group.esp.draw_mask & group_esp_settings::priority) != 0 && player_is_priority(player)) {
+    draw_right_line(draw_list, bounds, &right_y, red_text, "PRIORITY");
   }
-  if ((group.esp.draw_mask & group_esp_settings::flags) != 0 && player->is_scoped()) {
-    draw_text(draw_list, ImVec2(flag_x, flag_y), IM_COL32(0, 220, 80, 255), "ZOOM");
-    flag_y += ImGui::GetTextLineHeight();
+  if ((group.esp.draw_mask & group_esp_settings::flags) != 0) {
+    if (player == aimbot::active_target_player()) draw_right_line(draw_list, bounds, &right_y, red_text, "TARGET");
+    if (player->is_friend()) draw_right_line(draw_list, bounds, &right_y, green_text, "FRIEND");
+    if (player->is_ignored()) draw_right_line(draw_list, bounds, &right_y, white_text, "IGNORED");
+    if (player->is_invulnerable()) draw_right_line(draw_list, bounds, &right_y, IM_COL32(80, 180, 255, text_alpha), "UBER");
+    if (player->is_crit_boosted()) draw_right_line(draw_list, bounds, &right_y, IM_COL32(255, 120, 255, text_alpha), "CRIT");
+    if (player->is_scoped()) draw_right_line(draw_list, bounds, &right_y, green_text, "ZOOM");
+    if (player_is_invisible_esp(player)) draw_right_line(draw_list, bounds, &right_y, IM_COL32(170, 170, 170, text_alpha), "CLOAK");
+    if (player->in_cond(TF_COND_DISGUISED) || player->in_cond(TF_COND_DISGUISING)) draw_right_line(draw_list, bounds, &right_y, white_text, "DISGUISE");
+    if (player->in_cond(TF_COND_BURNING)) draw_right_line(draw_list, bounds, &right_y, IM_COL32(255, 125, 0, text_alpha), "FIRE");
+    if (player->in_cond(TF_COND_URINE)) draw_right_line(draw_list, bounds, &right_y, IM_COL32(255, 220, 40, text_alpha), "JARATE");
+    if (player->in_cond(TF_COND_MAD_MILK)) draw_right_line(draw_list, bounds, &right_y, IM_COL32(220, 255, 255, text_alpha), "MILK");
+    if (player->in_cond(TF_COND_BLEEDING)) draw_right_line(draw_list, bounds, &right_y, red_text, "BLEED");
+    if (player->in_cond(TF_COND_MARKEDFORDEATH) || player->in_cond(TF_COND_MARKEDFORDEATH_SILENT)) draw_right_line(draw_list, bounds, &right_y, red_text, "MARKED");
+    if (player->in_cond(TF_COND_STUNNED)) draw_right_line(draw_list, bounds, &right_y, white_text, "STUN");
+  }
+
+  if ((group.esp.draw_mask & group_esp_settings::class_text) != 0) {
+    draw_right_line(draw_list, bounds, &right_y, white_text, player_class_name(player->get_tf_class()));
+  }
+  if ((group.esp.draw_mask & group_esp_settings::weapon_text) != 0) {
+    draw_right_line(draw_list, bounds, &right_y, white_text, weapon_text_for(player->get_weapon()));
+  }
+  if ((group.esp.draw_mask & group_esp_settings::ping) != 0) {
+    const int ping_value = player_ping(player_resource, player->get_index());
+    if (ping_value > 0) {
+      draw_right_line(draw_list, bounds, &right_y, white_text, std::to_string(ping_value) + "ms");
+    }
+  }
+  if ((group.esp.draw_mask & group_esp_settings::kdr) != 0) {
+    draw_right_line(draw_list, bounds, &right_y, white_text, player_kdr_text(player_resource, player->get_index()));
+  }
+
+  float bottom_y = bounds.max_y + 2.0f;
+  if ((group.esp.draw_mask & group_esp_settings::distance) != 0) {
+    draw_bottom_center_line(draw_list, bounds, &bottom_y, white_text, std::to_string(static_cast<int>(entity_distance_hu(entity, localplayer))) + " HU");
+  }
+  if ((group.esp.draw_mask & group_esp_settings::ammo_text) != 0) {
+    draw_bottom_center_line(draw_list, bounds, &bottom_y, white_text, ammo_text_for(player));
   }
 
   if (config.debug.show_active_flag_ids_of_players) {
@@ -1657,14 +2361,13 @@ void draw_player_esp(ImDrawList* draw_list, Player* player, Player* localplayer,
         continue;
       }
 
-      draw_text(draw_list, ImVec2(flag_x, flag_y), IM_COL32(255, 225, 255, 255), std::to_string(cond_id));
-      flag_y += ImGui::GetTextLineHeight();
+      draw_right_line(draw_list, bounds, &right_y, IM_COL32(255, 225, 255, text_alpha), std::to_string(cond_id));
     }
   }
 
   draw_player_class_icon(draw_list, bounds, player, localplayer, group);
   draw_player_head_emoji(draw_list, bounds, player, localplayer, group);
-  draw_player_mafia_text(draw_list, bounds, player, player_resource, group, flag_y);
+  draw_player_mafia_text(draw_list, bounds, player, player_resource, group, right_y);
 }
 
 [[nodiscard]] bool should_draw_building(Entity* entity, Player* localplayer)
@@ -1720,9 +2423,11 @@ void draw_group_entity_esp(ImDrawList* draw_list, Entity* entity, const visual_g
     text_position = ImVec2((bounds.min_x + bounds.max_x) * 0.5f, bounds.max_y + 2.0f);
   }
 
-  auto color = visual_groups::color_for_entity(entity, group);
+  auto color = esp_color_for_entity(entity, group);
   color.a *= alpha_scale;
   const auto imgui_color = to_imgui_color(color.to_RGBA());
+  const auto text_alpha = std::clamp(static_cast<int>(std::round(255.0f * alpha_scale)), 0, 255);
+  const auto white_text = IM_COL32(255, 255, 255, text_alpha);
 
   if ((group.esp.draw_mask & group_esp_settings::box) != 0) {
     draw_esp_box(draw_list, entity, bounds, group.esp.box_style, imgui_color, alpha_scale);
@@ -1733,17 +2438,46 @@ void draw_group_entity_esp(ImDrawList* draw_list, Entity* entity, const visual_g
     draw_vertical_health_bar(draw_list, bounds, building->get_health(), building->get_max_health(), alpha_scale);
   }
 
-  if ((group.esp.draw_mask & group_esp_settings::name) != 0) {
-    draw_text_centered(draw_list, text_position, imgui_color, visual_groups::label_for_entity(entity));
+  float left_y = bounds.min_y;
+  if ((group.esp.draw_mask & group_esp_settings::health_text) != 0 && entity->is_building()) {
+    auto* building = reinterpret_cast<Building*>(entity);
+    draw_left_line(draw_list, bounds, &left_y, with_alpha(get_health_color(building->get_health(), building->get_max_health()), alpha_scale), std::to_string(building->get_health()));
   }
 
+  if ((group.esp.draw_mask & group_esp_settings::name) != 0) {
+    const auto label = entity_label(entity);
+    if ((group.esp.draw_mask & group_esp_settings::name_background) != 0) {
+      draw_text_centered_with_background(draw_list, text_position, imgui_color, label, group.esp.background_alpha, alpha_scale);
+    } else {
+      draw_text_centered(draw_list, text_position, imgui_color, label);
+    }
+  }
+
+  float bottom_y = text_position.y + (((group.esp.draw_mask & group_esp_settings::name) != 0) ? ImGui::GetTextLineHeight() : 0.0f);
   if ((group.esp.draw_mask & group_esp_settings::distance) != 0 && entity_list != nullptr) {
     auto* localplayer = entity_list->get_localplayer();
     if (localplayer != nullptr) {
-      const Vec3 delta = entity->get_collision_origin() - localplayer->get_collision_origin();
-      const int distance = static_cast<int>(std::sqrt((delta.x * delta.x) + (delta.y * delta.y) + (delta.z * delta.z)));
-      draw_text_centered(draw_list, ImVec2(text_position.x, text_position.y + ImGui::GetTextLineHeight()), imgui_color, std::to_string(distance));
+      const int distance = static_cast<int>(entity_distance_hu(entity, localplayer));
+      draw_text_centered(draw_list, ImVec2(text_position.x, bottom_y), imgui_color, std::to_string(distance) + " HU");
+      bottom_y += ImGui::GetTextLineHeight();
     }
+  }
+
+  float right_y = bounds.min_y;
+  if ((group.esp.draw_mask & group_esp_settings::owner) != 0) {
+    if (auto* owner = owner_player_for_esp(entity); owner != nullptr && owner->to_entity() != entity) {
+      draw_right_line(draw_list, bounds, &right_y, white_text, "Owner " + player_name(owner));
+    }
+  }
+  if ((group.esp.draw_mask & group_esp_settings::level) != 0 && entity->is_building()) {
+    auto* building = reinterpret_cast<Building*>(entity);
+    draw_right_line(draw_list, bounds, &right_y, white_text, "Level " + std::to_string(building->get_building_level()));
+  }
+  if ((group.esp.draw_mask & group_esp_settings::ammo_text) != 0) {
+    draw_right_line(draw_list, bounds, &right_y, white_text, ammo_text_for(entity));
+  }
+  if ((group.esp.draw_mask & group_esp_settings::intel_return_time) != 0) {
+    draw_right_line(draw_list, bounds, &right_y, white_text, flag_status_text(entity));
   }
 }
 
@@ -1752,6 +2486,14 @@ void draw_pickup_timers(ImDrawList* draw_list)
   if (draw_list == nullptr || global_vars == nullptr) {
     return;
   }
+
+  const visual_group* timer_group = first_pickup_timer_group();
+  if (timer_group == nullptr) {
+    return;
+  }
+
+  auto timer_color = timer_group->esp.override_color ? timer_group->esp.color : timer_group->color;
+  const auto imgui_color = to_imgui_color(timer_color.to_RGBA());
 
   for (size_t index = 0; index < pickup_item_cache.size();) {
     const auto& pickup_item = pickup_item_cache[index];
@@ -1768,7 +2510,7 @@ void draw_pickup_timers(ImDrawList* draw_list)
       if (time_text.size() > 4) {
         time_text.resize(4);
       }
-      draw_text_centered(draw_list, ImVec2(screen.x, screen.y), IM_COL32(255, 255, 255, 255), time_text);
+      draw_text_centered(draw_list, ImVec2(screen.x, screen.y), imgui_color, time_text);
     }
 
     ++index;
@@ -1902,6 +2644,8 @@ void draw_players_imgui()
     if (entity->get_class_id() == class_id::PLAYER) {
       auto* player = reinterpret_cast<Player*>(entity);
       if (should_draw_player(player, localplayer)) {
+        draw_offscreen_arrow(draw_list, entity, localplayer, *group);
+        draw_player_sightline(draw_list, player, *group);
         draw_player_esp(draw_list, player, localplayer, player_resource, *group);
       } else if (should_draw_teammate_head_emoji(player, localplayer)) {
         draw_player_head_emoji_only(draw_list, player, localplayer);
@@ -1909,6 +2653,8 @@ void draw_players_imgui()
       continue;
     }
 
+    draw_offscreen_arrow(draw_list, entity, localplayer, *group);
+    draw_entity_trajectory(draw_list, entity, *group);
     draw_group_entity_esp(draw_list, entity, *group);
   }
 
@@ -1919,8 +2665,9 @@ void draw_players_imgui()
 
 void draw_backtrack_visualizer_imgui()
 {
+  const bool group_backtrack_enabled = any_backtrack_group_enabled();
   if (!backtrack::is_enabled() ||
-      !config.backtrack.visualizer ||
+      (!config.backtrack.visualizer && !group_backtrack_enabled) ||
       engine == nullptr ||
       entity_list == nullptr ||
       !engine->is_in_game() ||
@@ -1935,10 +2682,18 @@ void draw_backtrack_visualizer_imgui()
   }
 
   const int max_draw_ticks = std::clamp(config.backtrack.visualizer_ticks, 1, backtrack::max_records);
-  RGBA base_color{255, 128, 0, 255};
   for (unsigned int index = 1; index <= entity_list->get_max_entities(); ++index) {
     auto* player = entity_list->player_from_index(index);
-    if (player == nullptr || player == localplayer || player->is_friend() || player->is_ignored()) {
+    if (player == nullptr || player == localplayer) {
+      continue;
+    }
+
+    const visual_groups::visual_group_match group = visual_groups::group_for_entity(player->to_entity(), false);
+    const bool group_draws_backtrack = group && (group->backtrack & visual_group::backtrack_enabled) != 0;
+    if (!config.backtrack.visualizer && !group_draws_backtrack) {
+      continue;
+    }
+    if (!group_draws_backtrack && (player->is_friend() || player->is_ignored())) {
       continue;
     }
 
@@ -1947,15 +2702,45 @@ void draw_backtrack_visualizer_imgui()
       continue;
     }
 
+    RGBA base_color{255, 128, 0, 255};
+    uint32_t backtrack_flags = visual_group::backtrack_enabled | visual_group::backtrack_always;
+    if (group_draws_backtrack) {
+      base_color = esp_color_for_entity(player->to_entity(), *group).to_RGBA();
+      backtrack_flags = group->backtrack;
+    }
+
+    int newest_valid_record = -1;
+    int oldest_valid_record = -1;
+    for (int record_index = 0; record_index < history->record_count; ++record_index) {
+      const auto& record = history->records[record_index];
+      if (!backtrack::is_record_valid(record, player) || record.hitbox_count <= 0 || !record.hitboxes[0].valid) {
+        continue;
+      }
+
+      if (newest_valid_record < 0) {
+        newest_valid_record = record_index;
+      }
+      oldest_valid_record = record_index;
+    }
+
     Vec3 previous_screen{};
     bool previous_valid = false;
     int drawn_records = 0;
+    const bool draw_always = (backtrack_flags & visual_group::backtrack_always) != 0 ||
+      (backtrack_flags & (visual_group::backtrack_last | visual_group::backtrack_first)) == 0;
 
     for (int record_index = 0; record_index < history->record_count && drawn_records < max_draw_ticks; ++record_index) {
       const auto& record = history->records[record_index];
       if (!backtrack::is_record_valid(record, player) || record.hitbox_count <= 0 || !record.hitboxes[0].valid) {
         previous_valid = false;
         continue;
+      }
+      if (!draw_always) {
+        const bool draw_newest = (backtrack_flags & visual_group::backtrack_last) != 0 && record_index == newest_valid_record;
+        const bool draw_oldest = (backtrack_flags & visual_group::backtrack_first) != 0 && record_index == oldest_valid_record;
+        if (!draw_newest && !draw_oldest) {
+          continue;
+        }
       }
 
       const float age_fraction = static_cast<float>(drawn_records) / static_cast<float>(std::max(max_draw_ticks, 1));
