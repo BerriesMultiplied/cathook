@@ -753,7 +753,6 @@ struct Debug {
   int font_weight = 400;
   bool debug_render_all_entities = false;
   bool show_active_flag_ids_of_players = false;
-  bool disable_friend_checks = true;
   bool insider_settings_unlocked = false;
 };
 

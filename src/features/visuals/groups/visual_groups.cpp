@@ -634,32 +634,12 @@ void ensure_defaults()
     return;
   }
 
-  constexpr uint32_t active_conditions = visual_group::condition_enemy | visual_group::condition_team | visual_group::condition_blu | visual_group::condition_red;
   constexpr uint32_t enemy_conditions = visual_group::condition_enemy | visual_group::condition_blu | visual_group::condition_red;
-  constexpr uint32_t friend_conditions = active_conditions | visual_group::condition_friends;
-  constexpr uint32_t party_conditions = active_conditions | visual_group::condition_party;
-  constexpr uint32_t ignored_conditions = active_conditions | visual_group::condition_ignored;
-  constexpr uint32_t cat_conditions = active_conditions | visual_group::condition_cat;
-  constexpr uint32_t priority_conditions = active_conditions | visual_group::condition_priority;
   constexpr uint32_t esp_player = group_esp_settings::name | group_esp_settings::box | group_esp_settings::health_bar | group_esp_settings::flags;
-  constexpr uint32_t esp_entity = group_esp_settings::name | group_esp_settings::box | group_esp_settings::distance;
 
-  config.visual_groups.groups.reserve(14);
+  config.visual_groups.groups.reserve(1);
   config.visual_groups.groups.emplace_back(make_group("Enemy players", visual_group::target_players, enemy_conditions, RGBA_float{1.0f, 0.501960784f, 0.0f, 1.0f}, esp_player, chams_material_type::flat, 0));
-  config.visual_groups.groups.emplace_back(make_group("Friends", visual_group::target_players, friend_conditions, RGBA_float{0.0f, 0.862745098f, 0.31372549f, 1.0f}, esp_player, chams_material_type::flat, 0));
-  config.visual_groups.groups.emplace_back(make_group("Party", visual_group::target_players, party_conditions, RGBA_float{0.35f, 0.85f, 1.0f, 1.0f}, esp_player, chams_material_type::flat, 0));
-  config.visual_groups.groups.emplace_back(make_group("Ignored", visual_group::target_players, ignored_conditions, RGBA_float{0.55f, 0.55f, 0.55f, 1.0f}, esp_player, chams_material_type::flat, 0));
-  config.visual_groups.groups.emplace_back(make_group("CAT", visual_group::target_players, cat_conditions, RGBA_float{0.0f, 0.8f, 0.35f, 1.0f}, esp_player, chams_material_type::flat, 0));
-  config.visual_groups.groups.emplace_back(make_group("Priority", visual_group::target_players, priority_conditions, RGBA_float{1.0f, 0.2f, 0.2f, 1.0f}, esp_player, chams_material_type::flat, 0));
-  config.visual_groups.groups.emplace_back(make_group("Team players", visual_group::target_players, visual_group::condition_team | visual_group::condition_blu | visual_group::condition_red, RGBA_float{1.0f, 1.0f, 1.0f, 1.0f}, esp_player, chams_material_type::shaded, 0));
-  config.visual_groups.groups.emplace_back(make_group("Buildings", visual_group::target_buildings, active_conditions, RGBA_float{0.25f, 0.75f, 1.0f, 1.0f}, group_esp_settings::name | group_esp_settings::box | group_esp_settings::health_bar | group_esp_settings::level, chams_material_type::flat, 0));
-  config.visual_groups.groups.emplace_back(make_group("Projectiles", visual_group::target_projectiles, active_conditions, RGBA_float{1.0f, 0.2f, 0.2f, 1.0f}, esp_entity, chams_material_type::flat, 0));
-  config.visual_groups.groups.emplace_back(make_group("Pickups", visual_group::target_health | visual_group::target_ammo | visual_group::target_money | visual_group::target_powerups | visual_group::target_spellbook | visual_group::target_gargoyle, active_conditions, RGBA_float{0.75f, 1.0f, 0.35f, 1.0f}, group_esp_settings::name | group_esp_settings::box, chams_material_type::none, 0));
-  config.visual_groups.groups.emplace_back(make_group("Objectives", visual_group::target_objective | visual_group::target_bombs, active_conditions, RGBA_float{0.95f, 0.75f, 0.2f, 1.0f}, esp_entity | group_esp_settings::intel_return_time, chams_material_type::flat, 0));
-  config.visual_groups.groups.emplace_back(make_group("NPCs", visual_group::target_npcs, active_conditions, RGBA_float{0.85f, 0.35f, 1.0f, 1.0f}, esp_entity | group_esp_settings::health_bar, chams_material_type::flat, 0));
-  config.visual_groups.groups.emplace_back(make_group("Ragdolls", visual_group::target_ragdolls, active_conditions, RGBA_float{0.65f, 0.65f, 0.65f, 0.7f}, group_esp_settings::name, chams_material_type::none, 0));
-  config.visual_groups.groups.emplace_back(make_group("Viewmodels", visual_group::target_viewmodel_weapon | visual_group::target_viewmodel_hands | visual_group::target_fake_angle, active_conditions | visual_group::condition_local, RGBA_float{0.0f, 0.8f, 0.35f, 1.0f}, 0, chams_material_type::shaded, 0));
-  config.visual_groups.active_group_mask = active_bit(0) | active_bit(1) | active_bit(2) | active_bit(3) | active_bit(4) | active_bit(5) | active_bit(7) | active_bit(8) | active_bit(9) | active_bit(10);
+  config.visual_groups.active_group_mask = active_bit(0);
 }
 
 void store(Player* localplayer)

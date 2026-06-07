@@ -149,7 +149,7 @@ void frame_stage_notify_hook(void* me, ClientFrameStage current_stage) {
               backtrack::record_player(player);
             }
 	    
-	    if (steam_friends != nullptr && config.debug.disable_friend_checks == false && global_vars->curtime - last_time >= 1) {
+	    if (steam_friends != nullptr && global_vars->curtime - last_time >= 1) {
 	      player_info pinfo;
 	      if (engine->get_player_info(entity->get_index(), &pinfo) && pinfo.friends_id != 0) { 
 		friend_cache_store(pinfo.friends_id, steam_friends->is_friend(pinfo.friends_id));

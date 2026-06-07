@@ -1753,10 +1753,7 @@ static void draw_visuals_ui_content() {
   };
 
   cat_menu::begin_flow_layout("visuals_ui_layout", 2);
-  cat_menu::flow_panel("UI", 0, 144.0f, [&]() {
-    cat_menu::checkbox("Disable friend checks", &config.debug.disable_friend_checks);
-  });
-  cat_menu::flow_panel("Indicators", 1, 228.0f, [&]() {
+  cat_menu::flow_panel("Indicators", 0, 228.0f, [&]() {
     cat_menu::multi_select_combo("Visible widgets", &config.visuals.indicators.enabled_mask, indicator_items, indicator_bits, IM_ARRAYSIZE(indicator_items));
     cat_menu::color_picker("Tickbase bar", config.visuals.indicators.tickbase_bar_color.to_arr());
     cat_menu::color_picker("Crit hack bar", config.visuals.indicators.crit_hack_bar_color.to_arr());
@@ -2598,7 +2595,6 @@ static void draw_debug_content() {
     }
     cat_menu::checkbox("Draw all entities", &config.debug.debug_render_all_entities);
     cat_menu::checkbox("Show active flag IDs", &config.debug.show_active_flag_ids_of_players);
-    cat_menu::checkbox("Disable friend checks", &config.debug.disable_friend_checks);
     
     ImGui::Dummy(ImVec2(0.0f, 8.0f));
     

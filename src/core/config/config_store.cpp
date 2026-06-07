@@ -181,6 +181,7 @@ void config_store::import_config(const Config& config)
     erase_prefix("binds.");
     erase_key("button_binds.count");
     erase_prefix("button_binds.");
+    erase_key("debug.disable_friend_checks");
 
     const bool spectator_indicator_enabled = (config.visuals.indicators.enabled_mask & Visuals::Indicators::spectators) != 0;
     const bool keybind_indicator_enabled = (config.visuals.indicators.enabled_mask & Visuals::Indicators::keybinds) != 0;
@@ -496,7 +497,6 @@ void config_store::import_config(const Config& config)
     set_int("debug.font_weight", config.debug.font_weight);
     set_bool("debug.render_all_entities", config.debug.debug_render_all_entities);
     set_bool("debug.show_active_flag_ids_of_players", config.debug.show_active_flag_ids_of_players);
-    set_bool("debug.disable_friend_checks", config.debug.disable_friend_checks);
 }
 
 void config_store::export_config(Config& config) const
@@ -1165,7 +1165,6 @@ void config_store::export_config(Config& config) const
     config.debug.font_weight = get_int("debug.font_weight", config.debug.font_weight);
     config.debug.debug_render_all_entities = get_bool("debug.render_all_entities", config.debug.debug_render_all_entities);
     config.debug.show_active_flag_ids_of_players = get_bool("debug.show_active_flag_ids_of_players", config.debug.show_active_flag_ids_of_players);
-    config.debug.disable_friend_checks = get_bool("debug.disable_friend_checks", config.debug.disable_friend_checks);
 }
 
 void config_store::set_bool(std::string key, const bool value)
