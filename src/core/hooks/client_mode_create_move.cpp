@@ -166,7 +166,7 @@ static bool run_move_features(user_cmd* user_cmd) {
 
   const bool moonwalk_psilent = !menu_movement_blocked && moonwalk_create_move(user_cmd);
 
-  const crit_hack::create_move_result crit_result = crit_hack::on_create_move(user_cmd);
+  const crit_hack::create_move_result crit_result = crit_hack::on_create_move(user_cmd, aimbot_result.requested_shot);
   if (crit_result.attack_suppressed && aimbot_result.psilent_command) {
     user_cmd->view_angles = original_view_angles;
   }

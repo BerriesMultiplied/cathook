@@ -374,7 +374,7 @@ crit_request get_crit_request(user_cmd* cmd, Weapon* weapon) {
 
 } // namespace
 
-create_move_result on_create_move(user_cmd* cmd) {
+create_move_result on_create_move(user_cmd* cmd, bool aimbot_requested_shot) {
   create_move_result result{};
 
   auto* local = entity_list->get_localplayer();
@@ -429,6 +429,11 @@ create_move_result on_create_move(user_cmd* cmd) {
   result.skip_requested = req == crit_request::skip;
 
   if (!is_crit_command(cmd->command_number, weapon, wants_crit, true, is_melee_weapon)) {
+    if (aimbot_requested_shot) {
+      result.attack_allowed = true;
+      return result;
+    }
+
     cmd->buttons &= ~IN_ATTACK;
     if (is_melee_weapon && weapon->get_weapon_id() == TF_WEAPON_FISTS) {
       cmd->buttons &= ~IN_ATTACK2;

@@ -81,6 +81,7 @@ constexpr float esp_bounds_fallback_min_height = 8.0f;
 constexpr float esp_smoothing_snap_distance = 180.0f;
 constexpr float esp_smoothing_snap_scale = 1.75f;
 constexpr unsigned int esp_smoothing_stale_frames = 2;
+constexpr unsigned int esp_bounds_cache_stale_frames = 2;
 constexpr uintptr_t player_resource_score_offset = 0xC80;
 constexpr uintptr_t player_resource_deaths_offset = 0xE18;
 constexpr uintptr_t tf_player_resource_damage_offset = 0x2360;
@@ -197,10 +198,17 @@ struct esp_smoothing_state
   unsigned int last_seen_frame = 0;
 };
 
+struct esp_bounds_cache_entry
+{
+  esp_bounds bounds{};
+  unsigned int last_seen_frame = 0;
+};
+
 std::array<esp_entity_key, cathook_head_emoji_cache_size> g_head_emoji_keys{};
 float g_next_head_emoji_cache_time = 0.0f;
 float g_next_head_emoji_manual_cache_time = 0.0f;
 std::unordered_map<esp_entity_key, esp_smoothing_state, esp_entity_key_hash> g_esp_smoothing_states{};
+std::unordered_map<esp_entity_key, esp_bounds_cache_entry, esp_entity_key_hash> g_esp_bounds_cache{};
 unsigned int g_esp_smoothing_frame = 0;
 std::string g_esp_level_name{};
 bool g_esp_was_in_game = false;
@@ -374,15 +382,15 @@ bool g_esp_was_in_game = false;
 
 void begin_esp_smoothing_frame()
 {
-  if (!esp_lerp_enabled()) {
-    g_esp_smoothing_states.clear();
-    return;
-  }
-
   ++g_esp_smoothing_frame;
   if (g_esp_smoothing_frame == 0) {
     g_esp_smoothing_states.clear();
+    g_esp_bounds_cache.clear();
     g_esp_smoothing_frame = 1;
+  }
+
+  if (!esp_lerp_enabled()) {
+    g_esp_smoothing_states.clear();
   }
 }
 
@@ -400,6 +408,55 @@ void cleanup_esp_smoothing_states()
       ++iterator;
     }
   }
+}
+
+void cleanup_esp_bounds_cache()
+{
+  for (auto iterator = g_esp_bounds_cache.begin(); iterator != g_esp_bounds_cache.end();) {
+    if (g_esp_smoothing_frame - iterator->second.last_seen_frame > esp_bounds_cache_stale_frames) {
+      iterator = g_esp_bounds_cache.erase(iterator);
+    } else {
+      ++iterator;
+    }
+  }
+}
+
+void remember_esp_bounds(Entity* entity, const esp_bounds& bounds)
+{
+  const auto key = get_esp_entity_key(entity);
+  if (!is_valid_esp_entity_key(key)) {
+    return;
+  }
+
+  g_esp_bounds_cache[key] = esp_bounds_cache_entry{
+    .bounds = bounds,
+    .last_seen_frame = g_esp_smoothing_frame
+  };
+}
+
+[[nodiscard]] bool get_cached_esp_bounds(Entity* entity, esp_bounds* bounds)
+{
+  if (entity == nullptr || bounds == nullptr) {
+    return false;
+  }
+
+  const auto key = get_esp_entity_key(entity);
+  if (!is_valid_esp_entity_key(key)) {
+    return false;
+  }
+
+  const auto entry = g_esp_bounds_cache.find(key);
+  if (entry == g_esp_bounds_cache.end()) {
+    return false;
+  }
+
+  if (g_esp_smoothing_frame - entry->second.last_seen_frame > esp_bounds_cache_stale_frames ||
+      !is_reasonable_screen_bounds(entry->second.bounds)) {
+    return false;
+  }
+
+  *bounds = entry->second.bounds;
+  return true;
 }
 
 [[nodiscard]] esp_bounds smooth_esp_bounds(Entity* entity, const esp_bounds& target_bounds)
@@ -504,11 +561,12 @@ void smooth_projected_box(Entity* entity, projected_box* box)
 
   auto current_bounds = esp_bounds{};
   if (!entity->is_dormant() && get_entity_screen_bounds(entity, &current_bounds) && is_reasonable_screen_bounds(current_bounds)) {
+    remember_esp_bounds(entity, current_bounds);
     *bounds = current_bounds;
     return true;
   }
 
-  return false;
+  return !entity->is_dormant() && get_cached_esp_bounds(entity, bounds);
 }
 
 [[nodiscard]] std::vector<uint8_t> read_file_bytes(const std::filesystem::path& path)
@@ -1732,6 +1790,7 @@ void reset_esp_runtime_state()
 {
   reset_head_emoji_runtime_state();
   g_esp_smoothing_states.clear();
+  g_esp_bounds_cache.clear();
   g_esp_smoothing_frame = 0;
   g_esp_level_name.clear();
   g_esp_was_in_game = false;
@@ -1855,6 +1914,7 @@ void draw_players_imgui()
 
   draw_pickup_timers(draw_list);
   cleanup_esp_smoothing_states();
+  cleanup_esp_bounds_cache();
 }
 
 void draw_backtrack_visualizer_imgui()

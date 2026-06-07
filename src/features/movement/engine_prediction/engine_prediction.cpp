@@ -9,6 +9,7 @@ V  o o  V  file: src/features/movement/engine_prediction/engine_prediction.cpp
   || (___\====
 */
 
+#include <array>
 #include <climits>
 
 #include "MD5/MD5.hpp"
@@ -53,9 +54,24 @@ struct engine_prediction_global_snapshot {
   int random_seed_value = -1;
 };
 
+struct engine_prediction_weapon_snapshot {
+  bool valid = false;
+  float crit_token_bucket = 0.0f;
+  int crit_checks = 0;
+  int crit_seed_requests = 0;
+  float crit_time = 0.0f;
+  int current_seed = 0;
+  int last_crit_check_frame = 0;
+  float last_rapid_fire_crit_check_time = 0.0f;
+  bool current_attack_is_crit = false;
+  bool current_crit_is_random = false;
+  bool current_attack_is_during_demo_charge = false;
+};
+
 struct engine_prediction_state {
   engine_prediction_player_snapshot player{};
   engine_prediction_global_snapshot globals{};
+  std::array<engine_prediction_weapon_snapshot, Player::max_weapon_count> weapons{};
   bool active = false;
 };
 
@@ -106,6 +122,29 @@ bool engine_prediction_capture(Player* localplayer) {
   prediction_state.globals.first_time_predicted = prediction->first_time_predicted;
   prediction_state.globals.in_prediction = prediction->in_prediction;
   prediction_state.globals.random_seed_value = random_seed != nullptr ? static_cast<int>(*random_seed) : -1;
+
+  for (int slot = 0; slot < Player::max_weapon_count; ++slot) {
+    auto& state = prediction_state.weapons[slot];
+    state = {};
+
+    auto* weapon = localplayer->get_weapon_at(slot);
+    if (weapon == nullptr) {
+      continue;
+    }
+
+    state.valid = true;
+    state.crit_token_bucket = weapon->crit_token_bucket();
+    state.crit_checks = weapon->crit_checks();
+    state.crit_seed_requests = weapon->crit_seed_requests();
+    state.crit_time = weapon->crit_time();
+    state.current_seed = weapon->current_seed();
+    state.last_crit_check_frame = weapon->last_crit_check_frame();
+    state.last_rapid_fire_crit_check_time = weapon->last_rapid_fire_crit_check_time();
+    state.current_attack_is_crit = weapon->current_attack_is_crit();
+    state.current_crit_is_random = weapon->current_crit_is_random();
+    state.current_attack_is_during_demo_charge = weapon->current_attack_is_during_demo_charge();
+  }
+
   return true;
 }
 
@@ -138,6 +177,29 @@ void engine_prediction_restore(Player* localplayer) {
   prediction->in_prediction = prediction_state.globals.in_prediction;
   if (random_seed != nullptr) {
     *random_seed = prediction_state.globals.random_seed_value;
+  }
+
+  for (int slot = 0; slot < Player::max_weapon_count; ++slot) {
+    const auto& state = prediction_state.weapons[slot];
+    if (!state.valid) {
+      continue;
+    }
+
+    auto* weapon = localplayer->get_weapon_at(slot);
+    if (weapon == nullptr) {
+      continue;
+    }
+
+    weapon->crit_token_bucket() = state.crit_token_bucket;
+    weapon->crit_checks() = state.crit_checks;
+    weapon->crit_seed_requests() = state.crit_seed_requests;
+    weapon->crit_time() = state.crit_time;
+    weapon->current_seed() = state.current_seed;
+    weapon->last_crit_check_frame() = state.last_crit_check_frame;
+    weapon->last_rapid_fire_crit_check_time() = state.last_rapid_fire_crit_check_time;
+    weapon->current_attack_is_crit() = state.current_attack_is_crit;
+    weapon->current_crit_is_random() = state.current_crit_is_random;
+    weapon->current_attack_is_during_demo_charge() = state.current_attack_is_during_demo_charge;
   }
 
   prediction_state.active = false;
@@ -176,7 +238,7 @@ void start_engine_prediction(user_cmd* user_cmd) {
   global_vars->frametime = prediction->engine_paused ? 0.0f : interval_per_tick;
   global_vars->tickcount = predicted_tickbase;
 
-  prediction->first_time_predicted = true;
+  prediction->first_time_predicted = false;
   prediction->in_prediction = true;
   prediction->set_local_view_angles(user_cmd->view_angles);
 

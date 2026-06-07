@@ -43,7 +43,7 @@ struct create_move_result {
   bool skip_requested = false;
 };
 
-[[nodiscard]] create_move_result on_create_move(user_cmd* cmd);
+[[nodiscard]] create_move_result on_create_move(user_cmd* cmd, bool aimbot_requested_shot = false);
 void on_game_event(GameEvent* event);
 void reset();
 void store_health_history(int index, int health, Player* player = nullptr);

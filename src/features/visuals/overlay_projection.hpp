@@ -98,19 +98,17 @@ inline void use_view_size(const view_setup& view, float* width, float* height)
 
 [[nodiscard]] inline bool begin_frame(screen_space_t screen_space = screen_space_t::imgui)
 {
-  state.valid = false;
-  state.screen_width = 0.0f;
-  state.screen_height = 0.0f;
-
   if (client == nullptr || engine == nullptr || render_view == nullptr) {
+    state.valid = false;
     state.matrix_valid = false;
+    state.screen_width = 0.0f;
+    state.screen_height = 0.0f;
     return false;
   }
 
-  auto matrix_view = view_setup{};
-  if (!client->get_player_view(matrix_view)) {
-    state.matrix_valid = false;
-    return false;
+  auto local_view = view_setup{};
+  if (!client->get_player_view(local_view)) {
+    return state.valid && state.matrix_valid;
   }
 
   VMatrix world_to_screen{};
@@ -118,25 +116,11 @@ inline void use_view_size(const view_setup& view, float* width, float* height)
   VMatrix world_to_projection{};
   VMatrix world_to_pixels{};
   render_view->get_matrices_for_view(
-    matrix_view,
+    local_view,
     &world_to_screen,
     &view_to_projection,
     &world_to_projection,
     &world_to_pixels);
-  for (int row = 0; row < 4; ++row) {
-    for (int column = 0; column < 4; ++column) {
-      state.world_to_projection[row][column] = world_to_projection[row][column];
-      state.world_to_pixels[row][column] = world_to_pixels[row][column];
-    }
-  }
-
-  state.matrix_valid = true;
-
-  auto local_view = view_setup{};
-  if (!client->get_player_view(local_view)) {
-    state.matrix_valid = false;
-    return false;
-  }
 
   auto screen_width = 0.0f;
   auto screen_height = 0.0f;
@@ -157,11 +141,19 @@ inline void use_view_size(const view_setup& view, float* width, float* height)
   }
 
   if (screen_width <= 0.0f || screen_height <= 0.0f) {
-    return false;
+    return state.valid && state.matrix_valid;
+  }
+
+  for (int row = 0; row < 4; ++row) {
+    for (int column = 0; column < 4; ++column) {
+      state.world_to_projection[row][column] = world_to_projection[row][column];
+      state.world_to_pixels[row][column] = world_to_pixels[row][column];
+    }
   }
 
   state.screen_width = screen_width;
   state.screen_height = screen_height;
+  state.matrix_valid = true;
   state.valid = true;
   return true;
 }
@@ -175,8 +167,7 @@ inline void use_view_size(const view_setup& view, float* width, float* height)
 
   auto local_view = view_setup{};
   if (!client->get_player_view(local_view)) {
-    state.matrix_valid = false;
-    return false;
+    return state.matrix_valid;
   }
 
   VMatrix world_to_screen{};
