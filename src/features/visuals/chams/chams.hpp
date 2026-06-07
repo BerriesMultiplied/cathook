@@ -54,10 +54,17 @@ struct chams_settings {
 };
 
 static Material* create_material_ex(const char* name, const char* shader, const char* material_source) {
-  auto* values = new KeyValues(shader);
-  values->load_from_buffer(name, material_source);
+  if (material_system == nullptr || key_values_constructor_original == nullptr || key_values_load_from_buffer_original == nullptr) {
+    return nullptr;
+  }
 
-  auto* material = material_system->create_material(name, values);
+  KeyValues* values = new KeyValues(shader);
+  if (!values->load_from_buffer(name, material_source)) {
+    delete values;
+    return nullptr;
+  }
+
+  Material* material = material_system->create_material(name, values);
   if (material != nullptr) {
     material->increment_reference_count();
   }

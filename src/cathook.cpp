@@ -156,6 +156,23 @@ funchook_t* funchook;
 
 bool initialize_game_runtime();
 
+using material_var_destroy_fn = void (*)(void*);
+material_var_destroy_fn material_var_destroy_original = nullptr;
+
+void material_var_destroy_hook(void* material_var)
+{
+  if (material_var == nullptr) {
+    return;
+  }
+
+  void* vtable = *reinterpret_cast<void**>(material_var);
+  if (vtable == nullptr || material_var_destroy_original == nullptr) {
+    return;
+  }
+
+  material_var_destroy_original(material_var);
+}
+
 namespace
 {
 
@@ -1466,6 +1483,12 @@ bool initialize_game_runtime() {
     print("Failed to find CTFWeaponBaseMelee::CalcIsAttackCritical; melee crit hack prediction fix disabled\n");
   }
 
+  material_var_destroy_original =
+    reinterpret_cast<material_var_destroy_fn>(sigscan_module("materialsystem.so", sigs::material_var_destroy));
+  if (material_var_destroy_original == nullptr) {
+    print("Failed to find material var destroy crashfix hook; material cleanup crashfix disabled\n");
+  }
+
   initialize_cl_move_globals(host_should_run);
   
   int rv;
@@ -1556,6 +1579,11 @@ bool initialize_game_runtime() {
       (void**)&ctf_weapon_base_melee_calc_is_attack_critical_original,
       (void*)ctf_weapon_base_melee_calc_is_attack_critical_hook);
     error_assert(rv != 0, "Failed to prepare CTFWeaponBaseMelee::CalcIsAttackCritical hook\n");
+  }
+
+  if (material_var_destroy_original != nullptr) {
+    rv = funchook_prepare(funchook, (void**)&material_var_destroy_original, (void*)material_var_destroy_hook);
+    error_assert(rv != 0, "Failed to prepare material var destroy crashfix hook\n");
   }
 
   key_values_constructor_original = (KeyValues* (*)(void*, const char*))sigscan_module("client.so", sigs::key_values_constructor);
