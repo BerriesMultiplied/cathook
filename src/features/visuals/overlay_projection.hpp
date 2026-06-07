@@ -14,6 +14,8 @@ V  o o  V  file: src/features/visuals/overlay_projection.hpp
 
 #include "imgui/dearimgui.hpp"
 
+#include <cmath>
+
 #include "core/types.hpp"
 
 #include "games/tf2/sdk/interfaces/client.hpp"
@@ -36,6 +38,7 @@ struct state_t
   bool valid = false;
   bool matrix_valid = false;
   VMatrix world_to_projection{};
+  VMatrix world_to_pixels{};
   float screen_width = 0.0f;
   float screen_height = 0.0f;
 };
@@ -123,6 +126,7 @@ inline void use_view_size(const view_setup& view, float* width, float* height)
   for (int row = 0; row < 4; ++row) {
     for (int column = 0; column < 4; ++column) {
       state.world_to_projection[row][column] = world_to_projection[row][column];
+      state.world_to_pixels[row][column] = world_to_pixels[row][column];
     }
   }
 
@@ -188,6 +192,7 @@ inline void use_view_size(const view_setup& view, float* width, float* height)
   for (int row = 0; row < 4; ++row) {
     for (int column = 0; column < 4; ++column) {
       state.world_to_projection[row][column] = world_to_projection[row][column];
+      state.world_to_pixels[row][column] = world_to_pixels[row][column];
     }
   }
 
@@ -199,6 +204,20 @@ inline void use_view_size(const view_setup& view, float* width, float* height)
 {
   if (screen == nullptr || !state.valid) {
     return false;
+  }
+
+  const auto& pixel_matrix = state.world_to_pixels;
+  const auto pixel_w = (pixel_matrix[3][0] * point.x) + (pixel_matrix[3][1] * point.y) + (pixel_matrix[3][2] * point.z) + pixel_matrix[3][3];
+  if (pixel_w > 0.001f) {
+    const auto inv_w = 1.0f / pixel_w;
+    const auto pixel_x = ((pixel_matrix[0][0] * point.x) + (pixel_matrix[0][1] * point.y) + (pixel_matrix[0][2] * point.z) + pixel_matrix[0][3]) * inv_w;
+    const auto pixel_y = ((pixel_matrix[1][0] * point.x) + (pixel_matrix[1][1] * point.y) + (pixel_matrix[1][2] * point.z) + pixel_matrix[1][3]) * inv_w;
+    if (std::isfinite(pixel_x) && std::isfinite(pixel_y)) {
+      screen->x = pixel_x;
+      screen->y = pixel_y;
+      screen->z = 0.0f;
+      return true;
+    }
   }
 
   const auto& matrix = state.world_to_projection;

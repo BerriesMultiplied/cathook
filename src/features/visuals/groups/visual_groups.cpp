@@ -415,9 +415,9 @@ std::shared_ptr<const visual_groups::visual_group_snapshot> g_group_snapshot{};
 
   const std::string_view network_name = safe_text(entity->get_network_name());
   const std::string_view model_name = safe_text(entity->get_model_name());
-  return entity->get_class_id() == class_id::PUMPKIN ||
-    text_contains(network_name, "bomb") ||
-    text_contains(model_name, "pumpkin_bomb");
+  return text_contains(network_name, "tfpumpkinbomb") ||
+    text_contains(network_name, "tf_pumpkin_bomb") ||
+    text_contains(model_name, "pumpkin_explode");
 }
 
 [[nodiscard]] bool is_gargoyle(Entity* entity)
