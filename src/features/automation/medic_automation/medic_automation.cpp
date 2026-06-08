@@ -30,6 +30,7 @@ V  o o  V  file: src/features/automation/medic_automation/medic_automation.cpp
 #include "games/tf2/sdk/entities/weapon.hpp"
 #include "games/tf2/sdk/interfaces/client.hpp"
 #include "games/tf2/sdk/interfaces/engine.hpp"
+#include "games/tf2/sdk/interfaces/engine_trace.hpp"
 #include "games/tf2/sdk/interfaces/entity_list.hpp"
 #include "games/tf2/sdk/interfaces/game_event_manager.hpp"
 #include "games/tf2/sdk/interfaces/global_vars.hpp"
@@ -142,8 +143,7 @@ bool valid_heal_target(Player* localplayer, Player* player)
     return false;
   }
 
-  const bool preferred = target_matches_mask(player);
-  return preferred || !config.misc.automation.medic_heal_only;
+  return target_matches_mask(player);
 }
 
 bool valid_attached_patient(Player* localplayer, Entity* entity)
@@ -157,7 +157,8 @@ bool valid_attached_patient(Player* localplayer, Entity* entity)
   return player != localplayer
     && !player->is_dormant()
     && player->is_alive()
-    && player->get_team() == localplayer->get_team();
+    && player->get_team() == localplayer->get_team()
+    && target_matches_mask(player);
 }
 
 bool player_wounded(Player* player)
@@ -175,6 +176,9 @@ float health_ratio(Player* player)
   return std::clamp(static_cast<float>(player->get_health()) / static_cast<float>(player->get_max_health()), 0.0f, 2.0f);
 }
 
+Vec3 target_aim_position(Player* player);
+bool medigun_target_visible(Player* localplayer, Player* target);
+
 Player* choose_heal_target(Player* localplayer)
 {
   if (localplayer == nullptr || entity_list == nullptr)
@@ -188,13 +192,17 @@ Player* choose_heal_target(Player* localplayer)
   const bool any_urgent_target = std::any_of(entity_cache[class_id::PLAYER].begin(), entity_cache[class_id::PLAYER].end(), [localplayer](Entity* entity)
   {
     auto* player = reinterpret_cast<Player*>(entity);
-    return valid_heal_target(localplayer, player) && player_wounded(player);
+    return valid_heal_target(localplayer, player) && player_wounded(player) && medigun_target_visible(localplayer, player);
   });
 
   for (auto* entity : entity_cache[class_id::PLAYER])
   {
     auto* player = reinterpret_cast<Player*>(entity);
     if (!valid_heal_target(localplayer, player))
+    {
+      continue;
+    }
+    if (!medigun_target_visible(localplayer, player))
     {
       continue;
     }
@@ -213,11 +221,6 @@ Player* choose_heal_target(Player* localplayer)
     else
     {
       score -= 30.0f;
-    }
-
-    if (target_matches_mask(player))
-    {
-      score += 120.0f;
     }
 
     score -= std::sqrt(distance_squared_2d(local_origin, player->get_origin())) * 0.05f;
@@ -239,6 +242,38 @@ Vec3 target_aim_position(Player* player)
   }
 
   return player->get_origin() + Vec3{0.0f, 0.0f, std::max(player->get_view_offset().z * 0.70f, 42.0f)};
+}
+
+bool world_visible_to_position(Player* localplayer, const Vec3& target_pos)
+{
+  if (localplayer == nullptr || engine_trace == nullptr || !aimbot_vec3_is_finite(target_pos))
+  {
+    return false;
+  }
+
+  Vec3 start_pos = localplayer->get_shoot_pos();
+  Vec3 end_pos = target_pos;
+  auto ray = engine_trace->init_ray(&start_pos, &end_pos);
+  trace_filter filter{};
+  engine_trace->init_world_trace_filter(&filter);
+
+  trace_t trace{};
+  engine_trace->trace_ray(&ray, MASK_VISIBLE, &filter, &trace);
+  return !trace.all_solid && !trace.start_solid && trace.fraction >= 0.999f;
+}
+
+bool medigun_target_visible(Player* localplayer, Player* target)
+{
+  if (localplayer == nullptr || target == nullptr)
+  {
+    return false;
+  }
+
+  const auto origin = target->get_origin();
+  const auto view_offset = target->get_view_offset();
+  return world_visible_to_position(localplayer, target_aim_position(target))
+    || world_visible_to_position(localplayer, origin + Vec3{0.0f, 0.0f, 36.0f})
+    || world_visible_to_position(localplayer, origin + Vec3{0.0f, 0.0f, std::max(view_offset.z * 0.45f, 28.0f)});
 }
 
 void apply_visible_view(user_cmd* user_cmd)
@@ -395,6 +430,11 @@ void apply_crossbow(user_cmd* user_cmd, Player* localplayer, Player* target, Wea
 void apply_autoheal(user_cmd* user_cmd, Player* localplayer, Player* target, Weapon* medigun)
 {
   if (!config.misc.automation.medic_autoheal || user_cmd == nullptr || localplayer == nullptr || target == nullptr || medigun == nullptr || !medigun->is_medigun())
+  {
+    return;
+  }
+
+  if (!current_heal_beam_target_matches(medigun, target) && !medigun_target_visible(localplayer, target))
   {
     return;
   }

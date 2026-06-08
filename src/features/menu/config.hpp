@@ -703,7 +703,6 @@ struct Misc {
     bool medic_autouber = false;
     bool medic_auto_crossbow = false;
     uint32_t medic_heal_targets_mask = medic_heal_target_default;
-    bool medic_heal_only = false;
     bool auto_queue = false;
     bool auto_requeue = false;
     bool requeue_on_kick = false;

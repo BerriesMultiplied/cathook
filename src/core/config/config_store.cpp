@@ -463,7 +463,6 @@ void config_store::import_config(const Config& config)
     set_bool("misc.automation.medic_autouber", config.misc.automation.medic_autouber);
     set_bool("misc.automation.medic_auto_crossbow", config.misc.automation.medic_auto_crossbow);
     set_int("misc.automation.medic_heal_targets_mask", static_cast<int>(config.misc.automation.medic_heal_targets_mask));
-    set_bool("misc.automation.medic_heal_only", config.misc.automation.medic_heal_only);
     set_bool("misc.automation.auto_report", config.misc.automation.auto_report);
     set_bool("misc.automation.auto_queue", config.misc.automation.auto_queue);
     set_bool("misc.automation.auto_requeue", config.misc.automation.auto_requeue);
@@ -1065,7 +1064,6 @@ void config_store::export_config(Config& config) const
         get_int("misc.automation.medic_heal_targets_mask", static_cast<int>(config.misc.automation.medic_heal_targets_mask)),
         0,
         static_cast<int>(Misc::Automation::medic_heal_target_default)));
-    config.misc.automation.medic_heal_only = get_bool("misc.automation.medic_heal_only", config.misc.automation.medic_heal_only);
     config.misc.automation.auto_report = get_bool("misc.automation.auto_report", config.misc.automation.auto_report);
     config.misc.automation.auto_queue = get_bool("misc.automation.auto_queue", config.misc.automation.auto_queue);
     config.misc.automation.auto_requeue = get_bool("misc.automation.auto_requeue", config.misc.automation.auto_requeue);

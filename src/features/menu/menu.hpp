@@ -1943,7 +1943,6 @@ static void draw_medic_content() {
     cat_menu::checkbox("Autouber", &config.misc.automation.medic_autouber);
     cat_menu::checkbox("Auto Crossbow", &config.misc.automation.medic_auto_crossbow);
     cat_menu::multi_select_combo("Heal targets", &config.misc.automation.medic_heal_targets_mask, heal_target_items, heal_target_bits, IM_ARRAYSIZE(heal_target_items));
-    cat_menu::checkbox("Heal only", &config.misc.automation.medic_heal_only);
   });
   cat_menu::end_flow_layout();
 }
