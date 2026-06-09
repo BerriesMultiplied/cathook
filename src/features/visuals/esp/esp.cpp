@@ -3113,6 +3113,8 @@ void draw_aimbot_fov_imgui()
   if (localplayer == nullptr || !localplayer->is_alive()) {
     return;
   }
+  const bool projection_updated = overlay_projection::begin_frame();
+  (void)projection_updated;
 
   auto* draw_list = ImGui::GetBackgroundDrawList();
   if (draw_list == nullptr) {
@@ -3128,21 +3130,18 @@ void draw_aimbot_fov_imgui()
     return;
   }
 
-  auto local_fov = overlay_projection::state.view_fov;
+  auto local_fov = static_cast<float>(localplayer->get_fov());
   if (!std::isfinite(local_fov) || local_fov <= 1.0f) {
-    local_fov = static_cast<float>(localplayer->get_fov());
-    if (!std::isfinite(local_fov) || local_fov <= 1.0f) {
-      local_fov = static_cast<float>(localplayer->get_default_fov());
-    }
-    if (config.visuals.override_fov && !localplayer->is_scoped()) {
-      local_fov = config.visuals.custom_fov;
-    }
-    if (config.visuals.removals.zoom) {
-      local_fov = static_cast<float>(localplayer->get_default_fov());
-    }
-    if (config.visuals.override_fov && config.visuals.removals.zoom) {
-      local_fov = config.visuals.custom_fov;
-    }
+    local_fov = static_cast<float>(localplayer->get_default_fov());
+  }
+  if (config.visuals.override_fov && !localplayer->is_scoped()) {
+    local_fov = config.visuals.custom_fov;
+  }
+  if (config.visuals.removals.zoom) {
+    local_fov = static_cast<float>(localplayer->get_default_fov());
+  }
+  if (config.visuals.override_fov && config.visuals.removals.zoom) {
+    local_fov = config.visuals.custom_fov;
   }
 
   const auto denominator = std::tan((local_fov / 2.0f) / 180.0f * static_cast<float>(M_PI));
@@ -3157,9 +3156,25 @@ void draw_aimbot_fov_imgui()
     return;
   }
 
+  static float smoothed_radius = 0.0f;
+  static int smoothed_screen_width = 0;
+  static int smoothed_screen_height = 0;
+  const bool reset_smoothing = smoothed_radius <= 0.0f ||
+      smoothed_screen_width != screen_size.x ||
+      smoothed_screen_height != screen_size.y;
+  if (reset_smoothing) {
+    smoothed_radius = radius;
+    smoothed_screen_width = screen_size.x;
+    smoothed_screen_height = screen_size.y;
+  } else {
+    const auto delta_seconds = ImGui::GetIO().DeltaTime;
+    const auto blend = std::clamp(delta_seconds > 0.0f ? delta_seconds * 20.0f : 1.0f, 0.0f, 1.0f);
+    smoothed_radius += (radius - smoothed_radius) * blend;
+  }
+
   auto center = ImVec2(static_cast<float>(screen_size.x) * 0.5f, static_cast<float>(screen_size.y) * 0.5f);
-  draw_list->AddCircle(center, radius, IM_COL32(0, 0, 0, 180), 64, 3.0f);
-  draw_list->AddCircle(center, radius, IM_COL32(255, 255, 255, 255), 64, 1.5f);
+  draw_list->AddCircle(center, smoothed_radius, IM_COL32(0, 0, 0, 180), 64, 3.0f);
+  draw_list->AddCircle(center, smoothed_radius, IM_COL32(255, 255, 255, 255), 64, 1.5f);
 }
 
 void draw_thirdperson_crosshair_imgui()

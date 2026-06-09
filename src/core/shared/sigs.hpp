@@ -186,6 +186,8 @@ constexpr const char* material_var_cleanup =
   "55 48 89 E5 41 54 49 89 FC 53 48 8B 77 50 48 85 F6 74 ? 80 7F 2A 00 74 ? 31 DB 0F 1F 44 00 00 48 8B 3C DE 48 83 C3 01 E8 ? ? ? ? 41 0F B6 44 24 2A 49 8B 74 24 50 39 D8";
 constexpr const char* material_queued_call_drain =
   "48 8B 05 ? ? ? ? 55 48 89 E5 41 56 41 89 F6 41 55 49 89 FD 41 54 53 8B 40 58 85 C0 75 ? 49 8B 9D ? ? ? ? 48 85 DB 74 ? 0F 1F 44 00 00 4C 8B 63 08 49 8B 04 24";
+constexpr const char* shaderapivk_apply_pending_transition_snapshot =
+  "55 48 8D 15 ? ? ? ? 48 89 E5 53 48 89 FB 48 83 EC 08 48 8B 07 48 8B 80 ? ? ? ? 48 39 D0 75 ? 8B 8F ? ? ? ? 85 C9";
 constexpr const char* particle_property_create =
   "55 48 89 E5 41 57 41 56 49 89 F6 41 55 41 54 53 48 89 FB 48 83 EC ? 48 8D 05 ? ? ? ? 89 55 ? 89 4D ? 66 0F D6 45 ?";
 constexpr const char* particle_system_precache =

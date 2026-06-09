@@ -160,6 +160,8 @@ using material_var_cleanup_fn = std::int64_t (*)(void*);
 material_var_cleanup_fn material_var_cleanup_original = nullptr;
 using material_queued_call_drain_fn = std::int64_t (*)(void*, char);
 material_queued_call_drain_fn material_queued_call_drain_original = nullptr;
+using shaderapivk_apply_pending_transition_snapshot_fn = std::int64_t (*)(void*);
+shaderapivk_apply_pending_transition_snapshot_fn shaderapivk_apply_pending_transition_snapshot_original = nullptr;
 
 void material_queued_call_noop(void*)
 {
@@ -222,6 +224,26 @@ std::int64_t material_queued_call_drain_hook(void* queue, char release)
   }
 
   return material_queued_call_drain_original(queue, release);
+}
+
+std::int64_t shaderapivk_apply_pending_transition_snapshot_hook(void* shaderapi)
+{
+  if (shaderapi == nullptr || shaderapivk_apply_pending_transition_snapshot_original == nullptr) {
+    return 0xFFFFFFFFLL;
+  }
+
+  constexpr std::uintptr_t pending_snapshot_offset = 0x3A30;
+  auto* bytes = static_cast<std::uint8_t*>(shaderapi);
+  const auto pending_snapshot = *reinterpret_cast<std::int16_t*>(bytes + pending_snapshot_offset);
+  if (pending_snapshot < 0) {
+    static std::atomic_bool warned_invalid_snapshot = false;
+    if (!warned_invalid_snapshot.exchange(true, std::memory_order_acq_rel)) {
+      print("shaderapivk pending transition snapshot was invalid; skipping apply\n");
+    }
+    return 0xFFFFFFFFLL;
+  }
+
+  return shaderapivk_apply_pending_transition_snapshot_original(shaderapi);
 }
 
 namespace
@@ -1660,6 +1682,25 @@ bool initialize_game_runtime() {
     }
   }
 
+  const bool shaderapivk_loaded = get_module_base_address("shaderapivk.so") != nullptr;
+  if (shaderapivk_loaded) {
+    shaderapivk_apply_pending_transition_snapshot_original =
+      reinterpret_cast<shaderapivk_apply_pending_transition_snapshot_fn>(
+        sigscan_module("shaderapivk.so", sigs::shaderapivk_apply_pending_transition_snapshot));
+    if (shaderapivk_apply_pending_transition_snapshot_original != nullptr) {
+      rv = funchook_prepare(
+        funchook,
+        (void**)&shaderapivk_apply_pending_transition_snapshot_original,
+        (void*)shaderapivk_apply_pending_transition_snapshot_hook);
+      if (rv != 0) {
+        shaderapivk_apply_pending_transition_snapshot_original = nullptr;
+        print("Failed to prepare shaderapivk transition snapshot crashfix hook\n");
+      }
+    } else {
+      print("Failed to find shaderapivk transition snapshot crashfix hook\n");
+    }
+  }
+
   key_values_constructor_original = (KeyValues* (*)(void*, const char*))sigscan_module("client.so", sigs::key_values_constructor);
   error_assert(key_values_constructor_original == nullptr, "Failed to find KeyValues() constructor");
 
@@ -1673,7 +1714,7 @@ bool initialize_game_runtime() {
   
   if (nographics::is_noshaderapi()) {
     print("Empty shader API (-noshaderapi); skipping Vulkan present hooks\n");
-  } else if (get_module_base_address("shaderapivk.so") != nullptr) {
+  } else if (shaderapivk_loaded) {
     void* lib_vulkan_handle = open_loaded_library("libvulkan.so.1");
     if (lib_vulkan_handle == nullptr) {
       lib_vulkan_handle = dlopen("/usr/lib/libvulkan.so.1", RTLD_LAZY | RTLD_NOLOAD);
