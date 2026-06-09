@@ -210,6 +210,7 @@ inline aimbot_candidate proj_aim_find_flamethrower_candidate(Player* localplayer
     point_candidate.projectile_miss_distance = 0.0f;
     point_candidate.projectile_target_base_origin = predicted_base;
     point_candidate.projectile_target_offset = sample.offset;
+    point_candidate.projectile_target_velocity = target_velocity;
 
     if (candidate.entity == nullptr ||
         sample.priority < best_priority ||
@@ -443,6 +444,7 @@ inline aimbot_candidate proj_aim_find_simple_candidate(Player* localplayer,
     point_candidate.projectile_miss_distance = intercept.miss_distance;
     point_candidate.projectile_target_base_origin = intercept.target_base_origin;
     point_candidate.projectile_target_offset = intercept.target_offset;
+    point_candidate.projectile_target_velocity = intercept.target_velocity;
 
     const int point_priority = sample.priority;
     if (direct_candidate.entity == nullptr ||
@@ -626,6 +628,7 @@ inline aimbot_candidate proj_aim_find_candidate(Player* localplayer, Weapon* wea
       point_candidate.projectile_miss_distance = intercept.miss_distance;
       point_candidate.projectile_target_base_origin = intercept.target_base_origin;
       point_candidate.projectile_target_offset = intercept.target_offset;
+      point_candidate.projectile_target_velocity = intercept.target_velocity;
 
       const int point_priority = sample.priority;
 

@@ -314,6 +314,53 @@ inline float proj_aim_segment_point_distance(const Vec3& start,
   return distance_3d(start + (segment * fraction), point);
 }
 
+inline Vec3 proj_aim_vec3_min(const Vec3& left, const Vec3& right) {
+  return Vec3{
+    std::min(left.x, right.x),
+    std::min(left.y, right.y),
+    std::min(left.z, right.z)
+  };
+}
+
+inline Vec3 proj_aim_vec3_max(const Vec3& left, const Vec3& right) {
+  return Vec3{
+    std::max(left.x, right.x),
+    std::max(left.y, right.y),
+    std::max(left.z, right.z)
+  };
+}
+
+inline Vec3 proj_aim_intercept_target_base_at_time(const LocalPredictionInterceptResult& intercept, float time) {
+  if (intercept.has_target_base_origin) {
+    return intercept.target_base_origin +
+      (intercept.target_velocity * (time - intercept.intercept_time));
+  }
+
+  return intercept.target_origin - intercept.target_offset;
+}
+
+inline float proj_aim_segment_moving_point_distance(const Vec3& projectile_start,
+  const Vec3& projectile_end,
+  const Vec3& point_start,
+  const Vec3& point_end,
+  float* fraction_out = nullptr) {
+  const Vec3 projectile_delta = projectile_end - projectile_start;
+  const Vec3 point_delta = point_end - point_start;
+  const Vec3 relative_start = projectile_start - point_start;
+  const Vec3 relative_delta = projectile_delta - point_delta;
+  const float relative_delta_sq = local_prediction_dot_3d(relative_delta, relative_delta);
+  float fraction = 0.0f;
+  if (relative_delta_sq > 0.0001f) {
+    fraction = std::clamp(-local_prediction_dot_3d(relative_start, relative_delta) / relative_delta_sq, 0.0f, 1.0f);
+  }
+
+  if (fraction_out != nullptr) {
+    *fraction_out = fraction;
+  }
+
+  return local_prediction_vector_length(relative_start + (relative_delta * fraction));
+}
+
 inline float proj_aim_direct_trace_point_tolerance(Weapon* weapon, const projectile_sim_profile& sim_profile) {
   const float hull_radius = std::max(
     proj_aim_hull_radius_for_weapon(weapon),
@@ -346,19 +393,32 @@ inline bool proj_aim_trace_path_segment_loop(Player* localplayer,
     proj_aim_hull_radius_for_weapon(weapon),
     std::max(sim_profile.hull.x, std::max(sim_profile.hull.y, sim_profile.hull.z)));
   const Vec3 inflate{hull_radius, hull_radius, hull_radius};
-  const Vec3 predicted_origin = intercept.has_target_base_origin
-    ? intercept.target_base_origin
-    : intercept.target_origin;
-  const Vec3 target_mins = target->get_player_mins(target->is_ducking()) + predicted_origin - inflate;
-  const Vec3 target_maxs = target->get_player_maxs(target->is_ducking()) + predicted_origin + inflate;
+  const Vec3 local_target_mins = target->get_player_mins(target->is_ducking());
+  const Vec3 local_target_maxs = target->get_player_maxs(target->is_ducking());
   const float point_tolerance = proj_aim_direct_trace_point_tolerance(weapon, sim_profile);
 
   for (size_t index = 1; index < step_count; ++index) {
-    const Vec3 start = steps[index - 1].position;
-    const Vec3 end = steps[index].position;
+    const LocalPredictionProjectileStep& previous_step = steps[index - 1];
+    const LocalPredictionProjectileStep& current_step = steps[index];
+    const Vec3 start = previous_step.position;
+    const Vec3 end = current_step.position;
+    const Vec3 target_base_start = proj_aim_intercept_target_base_at_time(intercept, previous_step.time);
+    const Vec3 target_base_end = proj_aim_intercept_target_base_at_time(intercept, current_step.time);
+    const Vec3 target_mins_start = local_target_mins + target_base_start - inflate;
+    const Vec3 target_maxs_start = local_target_maxs + target_base_start + inflate;
+    const Vec3 target_mins_end = local_target_mins + target_base_end - inflate;
+    const Vec3 target_maxs_end = local_target_maxs + target_base_end + inflate;
+    const Vec3 target_mins = proj_aim_vec3_min(target_mins_start, target_mins_end);
+    const Vec3 target_maxs = proj_aim_vec3_max(target_maxs_start, target_maxs_end);
 
     float target_enter_fraction = 1.0f;
     const bool reaches_target = aimbot_segment_aabb_enter_fraction(start, end, target_mins, target_maxs, &target_enter_fraction);
+    const Vec3 target_point_start = target_base_start + intercept.target_offset;
+    const Vec3 target_point_end = target_base_end + intercept.target_offset;
+    float point_fraction = 0.0f;
+    const bool reaches_target_point = reaches_target &&
+      proj_aim_segment_moving_point_distance(start, end, target_point_start, target_point_end, &point_fraction) <= point_tolerance &&
+      point_fraction + 0.025f >= target_enter_fraction;
 
     trace_t trace{};
     if (!projectile_trace_ray(
@@ -377,17 +437,30 @@ inline bool proj_aim_trace_path_segment_loop(Player* localplayer,
       return false;
     }
     if (trace.entity == target) {
-      return true;
+      if (reaches_target && trace.fraction + 0.001f < target_enter_fraction) {
+        trace_t world_trace{};
+        if (!projectile_trace_ray(
+            start,
+            end,
+            sim_profile.hull_trace ? &hull_mins : nullptr,
+            sim_profile.hull_trace ? &hull_maxs : nullptr,
+            projectile_trace_contract::world_block,
+            localplayer,
+            -1,
+            &world_trace)) {
+          return false;
+        }
+        if (world_trace.start_solid || world_trace.all_solid || world_trace.fraction + 0.001f < target_enter_fraction) {
+          return false;
+        }
+      }
+      return reaches_target;
     }
     if (trace.fraction < 1.0f && (!reaches_target || trace.fraction + 0.001f < target_enter_fraction)) {
       return false;
     }
-    if (reaches_target) {
-      float point_fraction = 0.0f;
-      if (proj_aim_segment_point_distance(start, end, intercept.target_origin, &point_fraction) <= point_tolerance &&
-          point_fraction + 0.001f >= target_enter_fraction) {
-        return true;
-      }
+    if (reaches_target_point) {
+      return true;
     }
   }
 

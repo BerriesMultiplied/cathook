@@ -443,6 +443,7 @@ inline bool projectile_solution_ready(Player* localplayer,
   adjusted_intercept.target_origin = candidate.aim_position;
   adjusted_intercept.target_base_origin = candidate.projectile_target_base_origin;
   adjusted_intercept.target_offset = candidate.projectile_target_offset;
+  adjusted_intercept.target_velocity = candidate.projectile_target_velocity;
 
   if (candidate.projectile_direct) {
     return proj_aim_trace_simple_path(localplayer, candidate.player, weapon, adjusted_intercept);

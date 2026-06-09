@@ -136,6 +136,7 @@ struct projectile_timing_context {
   float interp_time = 0.0f;
   float outgoing_latency = 0.0f;
   float entity_staleness = 0.0f;
+  float choke_lag = 0.0f;
   float unclamped_lead_time = 0.0f;
   float clamped_lead_time = 0.0f;
   int lead_ticks = 0;

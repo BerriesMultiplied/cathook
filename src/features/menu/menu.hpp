@@ -2151,6 +2151,14 @@ static void draw_queue_content() {
     "Queue only",
     "Leave + requeue"
   };
+  const char* queueing_mode_items[] = {
+    "Normal",
+    "Boost"
+  };
+  const char* boost_queue_mode_items[] = {
+    "Wait",
+    "Instant"
+  };
 
   cat_menu::begin_flow_layout("queue_layout", 3);
   cat_menu::flow_panel("Class", 0, 104.0f, [&]() {
@@ -2159,6 +2167,12 @@ static void draw_queue_content() {
     cat_menu::checkbox("Don't join class during warmup", &config.misc.automation.auto_class_dont_join_during_warmup);
   });
   cat_menu::flow_panel("Queue", 1, 248.0f, [&]() {
+    cat_menu::combo("Mode", (int*)&config.misc.automation.queue_mode, queueing_mode_items, IM_ARRAYSIZE(queueing_mode_items));
+    if (config.misc.automation.queue_mode == Misc::Automation::queueing_mode::BOOST) {
+      cat_menu::checkbox("Enabled", &config.misc.automation.boost_queue_enabled);
+      cat_menu::combo("Boost", (int*)&config.misc.automation.boost_queue, boost_queue_mode_items, IM_ARRAYSIZE(boost_queue_mode_items));
+      return;
+    }
     cat_menu::checkbox("Auto queue", &config.misc.automation.auto_queue);
     cat_menu::checkbox("Auto requeue", &config.misc.automation.auto_requeue);
     cat_menu::checkbox("Requeue on kick", &config.misc.automation.requeue_on_kick);

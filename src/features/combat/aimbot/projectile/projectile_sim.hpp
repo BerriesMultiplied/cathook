@@ -94,66 +94,11 @@ inline Vec3 local_prediction_projectile_offset_for_weapon(Player* localplayer, W
 
 
 
-inline LocalPredictionLaunchState local_prediction_build_launch_state(Player* localplayer, user_cmd* user_cmd) {
-  LocalPredictionLaunchState state{};
-  if (localplayer == nullptr || user_cmd == nullptr) return state;
-  state.origin = localplayer->get_shoot_pos();
-  state.view_angles = user_cmd->view_angles;
-  state.direction = local_prediction_normalize(local_prediction_angles_to_direction(state.view_angles));
-  state.inherited_velocity = localplayer->get_velocity();
-  return state;
-}
-
-inline LocalPredictionLaunchState local_prediction_build_launch_state(Player* localplayer, Weapon* weapon, user_cmd* user_cmd) {
-  LocalPredictionLaunchState state = local_prediction_build_launch_state(localplayer, user_cmd);
-  if (localplayer == nullptr || weapon == nullptr || user_cmd == nullptr) {
-    return state;
-  }
-
-  const Vec3 offset = local_prediction_projectile_offset_for_weapon(localplayer, weapon);
-  if (offset.x == 0.0f && offset.y == 0.0f && offset.z == 0.0f) {
-    return state;
-  }
-
-  Vec3 forward{};
-  Vec3 right{};
-  Vec3 up{};
-  angle_vectors(state.view_angles, &forward, &right, &up);
-  state.origin += (forward * offset.x) + (right * offset.y) + (up * offset.z);
-  return state;
-}
-
-inline LocalPredictionProjectileTrace local_prediction_simulate_projectile(const LocalPredictionLaunchState& launch_state,
-  const LocalPredictionProjectileParameters& params) {
-  LocalPredictionProjectileTrace trace{};
-  if (params.speed <= 0.0f || params.time_step <= 0.0f || params.max_time <= 0.0f) return trace;
-
-  Vec3 position = launch_state.origin;
-  Vec3 velocity{
-    launch_state.direction.x * params.speed + launch_state.inherited_velocity.x,
-    launch_state.direction.y * params.speed + launch_state.inherited_velocity.y,
-    launch_state.direction.z * params.speed + launch_state.inherited_velocity.z
-  };
-
-  int step_count = std::max(1, static_cast<int>(std::ceil(params.max_time / params.time_step)));
-  trace.steps.reserve(step_count + 1);
-  for (int step_index = 0; step_index <= step_count; ++step_index) {
-    float time = std::min(params.max_time, step_index * params.time_step);
-    LocalPredictionProjectileStep step{};
-    step.time = time;
-    step.position = position;
-    step.velocity = velocity;
-    trace.steps.push_back(step);
-
-    if (time >= params.max_time) break;
-    position.x += velocity.x * params.time_step;
-    position.y += velocity.y * params.time_step;
-    position.z += velocity.z * params.time_step;
-    velocity.z -= params.gravity * params.time_step;
-  }
-
-  trace.valid = !trace.steps.empty();
-  return trace;
+inline float local_prediction_projectile_charge_lookahead() {
+  return std::clamp(
+    local_prediction_outgoing_latency() + static_cast<float>(TICK_INTERVAL),
+    0.0f,
+    0.25f);
 }
 
 inline LocalPredictionProjectileParameters local_prediction_projectile_parameters_for_weapon(Weapon* weapon) {
@@ -247,7 +192,7 @@ inline LocalPredictionProjectileParameters local_prediction_projectile_parameter
     {
       const float charge_begin_time = weapon->get_charge_begin_time();
       const float held_time = charge_begin_time > 0.0f && global_vars != nullptr
-        ? std::clamp(global_vars->curtime - charge_begin_time, 0.0f, 1.0f)
+        ? std::clamp(global_vars->curtime - charge_begin_time + local_prediction_projectile_charge_lookahead(), 0.0f, 1.0f)
         : 0.0f;
       const float charge = std::clamp(held_time, 0.0f, 1.0f);
       params.speed = 1800.0f + ((2600.0f - 1800.0f) * charge);
@@ -334,7 +279,7 @@ inline LocalPredictionProjectileParameters local_prediction_projectile_parameter
         : 4.0f;
       const float charge_begin_time = weapon->get_charge_begin_time();
       const float held_time = charge_begin_time > 0.0f && global_vars != nullptr
-        ? std::clamp(global_vars->curtime - charge_begin_time, 0.0f, charge_rate)
+        ? std::clamp(global_vars->curtime - charge_begin_time + local_prediction_projectile_charge_lookahead(), 0.0f, charge_rate)
         : 0.0f;
       const float charge = charge_rate > 0.0f ? std::clamp(held_time / charge_rate, 0.0f, 1.0f) : 0.0f;
       params.speed = projectile_range_speed(900.0f + ((2400.0f - 900.0f) * charge));

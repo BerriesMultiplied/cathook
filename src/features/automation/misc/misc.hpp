@@ -56,6 +56,7 @@ private:
   void run_mvm_actions();
   void run_ping_reducer();
   void run_queueing();
+  void run_boost_queueing();
 
   float next_class_action_time_ = 0.0f;
   float next_auto_report_time_ = 0.0f;
@@ -70,6 +71,7 @@ private:
   float next_mvm_buybot_time_ = 0.0f;
   float next_ping_reduce_time_ = 0.0f;
   float queue_loading_start_time_ = 0.0f;
+  float boost_match_start_time_ = 0.0f;
   float last_active_input_time_ = 0.0f;
   bool was_in_game_ = false;
   bool warmup_active_ = false;
@@ -80,6 +82,7 @@ private:
   bool ping_reducer_saved_cmd_rate_ = false;
   bool micspam_recording_ = false;
   bool micspam_voice_inputfromfile_active_ = false;
+  bool boost_leave_requested_ = false;
   int original_cmd_rate_ = 0;
   int mvm_buybot_step_ = 1;
   int autotaunt_previous_slot_ = -1;

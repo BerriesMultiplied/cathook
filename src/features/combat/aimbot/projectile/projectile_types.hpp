@@ -27,13 +27,6 @@ struct LocalPredictionProjectileParameters {
   float time_step = 0.015f;
 };
 
-struct LocalPredictionLaunchState {
-  Vec3 origin{};
-  Vec3 direction{};
-  Vec3 view_angles{};
-  Vec3 inherited_velocity{};
-};
-
 struct LocalPredictionProjectileStep {
   float time = 0.0f;
   Vec3 position{};

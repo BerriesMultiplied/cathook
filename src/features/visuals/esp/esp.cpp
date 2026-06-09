@@ -3034,10 +3034,11 @@ void draw_projectile_debug_imgui()
     std::snprintf(
       line,
       sizeof(line),
-      "timing interp=%.3f out=%.3f stale=%.3f lead=%.3f",
+      "timing interp=%.3f out=%.3f stale=%.3f choke=%.3f lead=%.3f",
       stats.interp_time,
       stats.outgoing_latency,
       stats.entity_staleness,
+      stats.choke_lag,
       stats.clamped_lead_time);
     draw_debug_line(line, y, IM_COL32(190, 220, 255, 235));
     y += 15.0f;

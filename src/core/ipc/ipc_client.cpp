@@ -1073,6 +1073,104 @@ int peer_id()
   return local_peer_id;
 }
 
+int local_ipc_peer_count_on_current_server()
+{
+  if (ipc_state == nullptr || !valid_local_peer_id())
+  {
+    return 0;
+  }
+
+  try_scoped_lock lock{ipc_state};
+  if (!lock.locked() || !valid_local_peer_id())
+  {
+    return 0;
+  }
+
+  const auto now = now_seconds();
+  const auto& local_peer = ipc_state->peer_data[local_peer_id];
+  const auto& local_data = ipc_state->peer_user_data[local_peer_id];
+  if (!peer_alive(local_peer, now) ||
+      !local_data.connected ||
+      !local_data.ingame.good ||
+      local_data.ingame.server[0] == '\0')
+  {
+    return 0;
+  }
+
+  int same_server_count = 0;
+  for (auto index = 0u; index < max_peers; ++index)
+  {
+    const auto& peer = ipc_state->peer_data[index];
+    const auto& data = ipc_state->peer_user_data[index];
+    if (!peer_alive(peer, now) ||
+        !data.connected ||
+        !data.ingame.good ||
+        data.ingame.server[0] == '\0' ||
+        std::strncmp(data.ingame.server, local_data.ingame.server, sizeof(data.ingame.server)) != 0)
+    {
+      continue;
+    }
+
+    ++same_server_count;
+  }
+
+  return same_server_count;
+}
+
+bool is_first_local_ipc_peer_on_current_server()
+{
+  if (ipc_state == nullptr || !valid_local_peer_id())
+  {
+    return false;
+  }
+
+  try_scoped_lock lock{ipc_state};
+  if (!lock.locked() || !valid_local_peer_id())
+  {
+    return false;
+  }
+
+  const auto now = now_seconds();
+  const auto& local_peer = ipc_state->peer_data[local_peer_id];
+  const auto& local_data = ipc_state->peer_user_data[local_peer_id];
+  if (!peer_alive(local_peer, now) ||
+      !local_data.connected ||
+      !local_data.ingame.good ||
+      local_data.ingame.server[0] == '\0')
+  {
+    return false;
+  }
+
+  const auto local_connected_time = local_data.ts_connected != 0 ? local_data.ts_connected : local_peer.starttime;
+  for (auto index = 0u; index < max_peers; ++index)
+  {
+    if (static_cast<int>(index) == local_peer_id)
+    {
+      continue;
+    }
+
+    const auto& peer = ipc_state->peer_data[index];
+    const auto& data = ipc_state->peer_user_data[index];
+    if (!peer_alive(peer, now) ||
+        !data.connected ||
+        !data.ingame.good ||
+        data.ingame.server[0] == '\0' ||
+        std::strncmp(data.ingame.server, local_data.ingame.server, sizeof(data.ingame.server)) != 0)
+    {
+      continue;
+    }
+
+    const auto connected_time = data.ts_connected != 0 ? data.ts_connected : peer.starttime;
+    if (connected_time < local_connected_time ||
+        (connected_time == local_connected_time && index < static_cast<unsigned int>(local_peer_id)))
+    {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 bool is_local_ipc_friend(std::uint32_t friend_id)
 {
   if (!auto_ignore_enabled.load(std::memory_order_acquire) || friend_id == 0)

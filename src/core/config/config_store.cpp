@@ -467,6 +467,9 @@ void config_store::import_config(const Config& config)
     set_bool("misc.automation.auto_queue", config.misc.automation.auto_queue);
     set_bool("misc.automation.auto_requeue", config.misc.automation.auto_requeue);
     set_bool("misc.automation.requeue_on_kick", config.misc.automation.requeue_on_kick);
+    set_int("misc.automation.queue_mode", static_cast<int>(config.misc.automation.queue_mode));
+    set_bool("misc.automation.boost_queue_enabled", config.misc.automation.boost_queue_enabled);
+    set_int("misc.automation.boost_queue", static_cast<int>(config.misc.automation.boost_queue));
     set_bool("misc.automation.auto_casual_join", config.misc.automation.auto_casual_join);
     set_int("misc.automation.auto_queue_mode", config.misc.automation.auto_queue_mode);
     set_int("misc.automation.rq_if_players_lte", config.misc.automation.rq_if_players_lte);
@@ -1068,6 +1071,17 @@ void config_store::export_config(Config& config) const
     config.misc.automation.auto_queue = get_bool("misc.automation.auto_queue", config.misc.automation.auto_queue);
     config.misc.automation.auto_requeue = get_bool("misc.automation.auto_requeue", config.misc.automation.auto_requeue);
     config.misc.automation.requeue_on_kick = get_bool("misc.automation.requeue_on_kick", config.misc.automation.requeue_on_kick);
+    config.misc.automation.queue_mode = static_cast<Misc::Automation::queueing_mode>(std::clamp(
+        get_int("misc.automation.queue_mode", static_cast<int>(config.misc.automation.queue_mode)),
+        0,
+        1));
+    config.misc.automation.boost_queue_enabled = get_bool(
+        "misc.automation.boost_queue_enabled",
+        config.misc.automation.boost_queue_enabled);
+    config.misc.automation.boost_queue = static_cast<Misc::Automation::boost_queue_mode>(std::clamp(
+        get_int("misc.automation.boost_queue", static_cast<int>(config.misc.automation.boost_queue)),
+        0,
+        1));
     config.misc.automation.auto_casual_join = get_bool(
         "misc.automation.auto_casual_join",
         config.misc.automation.auto_casual_join);

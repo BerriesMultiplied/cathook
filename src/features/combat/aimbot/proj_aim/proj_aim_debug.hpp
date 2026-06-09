@@ -119,6 +119,7 @@ struct proj_aim_debug_stats {
   float interp_time = 0.0f;
   float outgoing_latency = 0.0f;
   float entity_staleness = 0.0f;
+  float choke_lag = 0.0f;
   float clamped_lead_time = 0.0f;
   float target_speed = 0.0f;
   float target_vertical_speed = 0.0f;
@@ -161,7 +162,8 @@ inline projectile_timing_context proj_aim_build_timing_context(Entity* target) {
   context.interp_time = local_prediction_interp_time();
   context.outgoing_latency = local_prediction_outgoing_latency();
   context.entity_staleness = local_prediction_estimate_entity_lag(target);
-  context.unclamped_lead_time = context.outgoing_latency + context.interp_time + (context.entity_staleness * 0.5f);
+  context.choke_lag = local_prediction_estimate_entity_choke_lag(target);
+  context.unclamped_lead_time = context.outgoing_latency + context.interp_time + context.choke_lag;
   const int max_lead_ticks = std::clamp(config.aimbot.projectile_prediction_ticks, 8, 420) / 2;
   context.lead_ticks = std::clamp(local_prediction_time_to_ticks(context.unclamped_lead_time), 0, max_lead_ticks);
   context.clamped_lead_time = local_prediction_ticks_to_time(context.lead_ticks);
@@ -199,6 +201,7 @@ inline void proj_aim_reset_debug_stats(Weapon* weapon,
   proj_aim_current_debug_stats.interp_time = timing_context.interp_time;
   proj_aim_current_debug_stats.outgoing_latency = timing_context.outgoing_latency;
   proj_aim_current_debug_stats.entity_staleness = timing_context.entity_staleness;
+  proj_aim_current_debug_stats.choke_lag = timing_context.choke_lag;
   proj_aim_current_debug_stats.clamped_lead_time = timing_context.clamped_lead_time;
   proj_aim_current_debug_stats.target_speed = local_prediction_velocity_2d_length(target_path.final_velocity);
   proj_aim_current_debug_stats.target_vertical_speed = target_path.final_velocity.z;

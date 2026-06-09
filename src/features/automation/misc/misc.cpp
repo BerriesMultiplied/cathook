@@ -66,6 +66,7 @@ constexpr float auto_report_interval = 5.0f;
 constexpr float auto_queue_interval = 5.0f;
 constexpr float auto_queue_loading_timeout = 120.0f;
 constexpr float auto_requeue_loading_timeout = 360.0f;
+constexpr float boost_queue_wait_seconds = 60.0f;
 constexpr float noisemaker_interval = 0.2f;
 constexpr float voice_command_spam_interval = 6.5f;
 constexpr int micspam_min_interval_seconds = 1;
@@ -2342,6 +2343,159 @@ void automation_controller::run_ping_reducer()
   }
 }
 
+void automation_controller::run_boost_queueing()
+{
+  static float next_debug_log_time = 0.0f;
+  const bool emit_debug_log = should_emit_queue_debug(next_debug_log_time);
+
+  const bool in_game = engine->is_in_game();
+  const bool is_connected = engine->is_connected();
+  const bool is_loading = engine->is_drawing_loading_image();
+  const bool has_net_channel = client_state != nullptr && client_state->m_NetChannel != nullptr;
+  const bool still_attached_to_server = in_game || is_connected || has_net_channel;
+  const bool loading_or_connecting = !in_game && still_attached_to_server;
+
+  if (!config.misc.automation.boost_queue_enabled)
+  {
+    boost_leave_requested_ = false;
+    boost_match_start_time_ = 0.0f;
+    queue_loading_start_time_ = 0.0f;
+    cat_ipc::client::set_in_casual_queue(false);
+    return;
+  }
+
+  auto* party_client = get_party_client();
+  if (party_client == nullptr)
+  {
+    if (emit_debug_log)
+    {
+      log_queue_debug("boost skip party_client=null api_ready=%d\n", party_client_api_ready() ? 1 : 0);
+    }
+    return;
+  }
+
+  bool in_match_queue = g_party_client_api.is_in_queue_for_match_group != nullptr &&
+                        g_party_client_api.is_in_queue_for_match_group(party_client, casual_match_group_default);
+  bool in_standby = is_in_standby_queue(party_client);
+  cat_ipc::client::set_in_casual_queue(in_match_queue || in_standby);
+
+  const auto leave_current_match = [&](const char* reason) {
+    if (boost_leave_requested_)
+    {
+      return;
+    }
+
+    const bool used_abandon = abandon_current_match();
+    log_queue_debug("boost %s abandon=%d\n", reason, used_abandon ? 1 : 0);
+    if (!used_abandon)
+    {
+      engine->client_cmd_unrestricted("disconnect");
+    }
+
+    boost_leave_requested_ = true;
+    next_queue_action_time_ = 0.0f;
+  };
+
+  if (still_attached_to_server)
+  {
+    if (config.misc.automation.boost_queue == Misc::Automation::boost_queue_mode::INSTANT)
+    {
+      leave_current_match("instant leave");
+      return;
+    }
+
+    if (loading_or_connecting || is_loading)
+    {
+      boost_match_start_time_ = 0.0f;
+      if (queue_loading_start_time_ <= 0.0f)
+      {
+        queue_loading_start_time_ = global_vars->realtime;
+      }
+
+      const float loading_duration = global_vars->realtime - queue_loading_start_time_;
+      if (loading_duration >= boost_queue_wait_seconds)
+      {
+        leave_current_match("loading wait timeout");
+      }
+      else if (emit_debug_log)
+      {
+        log_queue_debug("boost wait loading duration=%.2f\n", loading_duration);
+      }
+      return;
+    }
+
+    queue_loading_start_time_ = 0.0f;
+    if (in_game)
+    {
+      const int ipc_peer_count = cat_ipc::client::local_ipc_peer_count_on_current_server();
+      if (ipc_peer_count <= 1)
+      {
+        if (boost_match_start_time_ <= 0.0f)
+        {
+          boost_match_start_time_ = global_vars->realtime;
+        }
+
+        const float match_duration = global_vars->realtime - boost_match_start_time_;
+        if (match_duration >= boost_queue_wait_seconds)
+        {
+          leave_current_match("solo match wait timeout");
+        }
+        else if (emit_debug_log)
+        {
+          log_queue_debug("boost wait solo ipc_peers=%d duration=%.2f\n", ipc_peer_count, match_duration);
+        }
+      }
+      else
+      {
+        boost_match_start_time_ = 0.0f;
+        if (cat_ipc::client::is_first_local_ipc_peer_on_current_server())
+        {
+          leave_current_match("first ipc peer");
+        }
+        else if (emit_debug_log)
+        {
+          log_queue_debug("boost wait staying ipc_peers=%d first=0\n", ipc_peer_count);
+        }
+      }
+      return;
+    }
+
+    return;
+  }
+
+  boost_leave_requested_ = false;
+  boost_match_start_time_ = 0.0f;
+  queue_loading_start_time_ = 0.0f;
+
+  if (in_standby)
+  {
+    if (cancel_standby_queue(party_client))
+    {
+      log_queue_debug("boost leaving standby queue\n");
+    }
+    next_queue_action_time_ = global_vars->realtime + auto_queue_interval;
+    return;
+  }
+
+  if (in_match_queue || global_vars->realtime < next_queue_action_time_)
+  {
+    if (emit_debug_log)
+    {
+      log_queue_debug(
+        "boost skip queued_or_waiting in_match_queue=%d waiting=%d\n",
+        in_match_queue ? 1 : 0,
+        global_vars->realtime < next_queue_action_time_ ? 1 : 0);
+    }
+    return;
+  }
+
+  log_queue_debug("boost requesting casual queue\n");
+  if (request_match_queue(party_client, casual_match_group_default))
+  {
+    next_queue_action_time_ = global_vars->realtime + auto_queue_interval;
+  }
+}
+
 void automation_controller::run_queueing()
 {
   static float next_debug_log_time = 0.0f;
@@ -2351,6 +2505,20 @@ void automation_controller::run_queueing()
   static bool cancel_queue_requested = false;
   static bool queued_once = false;
   static bool was_disconnected = false;
+
+  if (config.misc.automation.queue_mode == Misc::Automation::queueing_mode::BOOST)
+  {
+    queued_once = false;
+    queued_from_player_threshold = false;
+    leave_for_requeue_requested = false;
+    cancel_queue_requested = false;
+    was_disconnected = false;
+    run_boost_queueing();
+    return;
+  }
+
+  boost_leave_requested_ = false;
+  boost_match_start_time_ = 0.0f;
 
   const bool in_game = engine->is_in_game();
   const bool is_connected = engine->is_connected();

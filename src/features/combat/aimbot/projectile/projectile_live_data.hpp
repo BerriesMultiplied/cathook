@@ -78,7 +78,8 @@ inline float projectile_flamethrower_size_attr(Weapon* weapon, float base_value)
 
 inline float projectile_flamethrower_speed(Weapon* weapon) {
   static Convar* tf_flamethrower_velocity = nullptr;
-  return projectile_flamethrower_life_attr(weapon, projectile_convar_float(tf_flamethrower_velocity, "tf_flamethrower_velocity", 2300.0f));
+  (void)weapon;
+  return projectile_convar_float(tf_flamethrower_velocity, "tf_flamethrower_velocity", 2300.0f);
 }
 
 inline float projectile_flamethrower_lifetime(Weapon* weapon) {

@@ -605,6 +605,16 @@ struct Misc {
       LEAVE_AND_REQUEUE = 1
     };
 
+    enum class queueing_mode {
+      NORMAL = 0,
+      BOOST = 1
+    };
+
+    enum class boost_queue_mode {
+      WAIT = 0,
+      INSTANT = 1
+    };
+
     enum class voice_command_spam_mode {
       off = 0,
       random,
@@ -706,6 +716,9 @@ struct Misc {
     bool auto_queue = false;
     bool auto_requeue = false;
     bool requeue_on_kick = false;
+    queueing_mode queue_mode = queueing_mode::NORMAL;
+    bool boost_queue_enabled = false;
+    boost_queue_mode boost_queue = boost_queue_mode::WAIT;
 #if defined(CATHOOK_TEXTMODE) && CATHOOK_TEXTMODE
     bool auto_casual_join = true;
 #else
