@@ -148,6 +148,18 @@ inline void update_screen_size(const view_setup& view, screen_space_t screen_spa
   }
 
   auto local_view = view_setup{};
+  // this sucks but well...
+  if (state.valid && state.matrix_valid) {
+    if (client->get_player_view(local_view)) {
+      update_screen_size(local_view, screen_space);
+      set_view_fov(local_view.fov);
+    } else {
+      update_screen_size(local_view, screen_space);
+    }
+
+    return state.valid && state.matrix_valid;
+  }
+
   if (!client->get_player_view(local_view)) {
     return state.valid && state.matrix_valid;
   }
@@ -182,8 +194,8 @@ inline void update_screen_size(const view_setup& view, screen_space_t screen_spa
 
 [[nodiscard]] inline bool update_view_matrix()
 {
-  if (client == nullptr || render_view == nullptr) {
-    state.matrix_valid = false;
+  if (client == nullptr || engine == nullptr || render_view == nullptr) {
+    invalidate();
     return false;
   }
 
