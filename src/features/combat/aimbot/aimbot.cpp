@@ -59,7 +59,7 @@ struct aimbot_run_context {
     debug.reason = reason;
     debug.requested_shot = state.requested_shot;
     aimbot_debug_set_state(debug);
-    store_input_angles(source_angles);
+    store_input_angles(cmd != nullptr ? cmd->view_angles : source_angles);
     return {
       .psilent_command = psilent,
       .requested_shot = state.requested_shot,
