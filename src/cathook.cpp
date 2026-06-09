@@ -1532,7 +1532,7 @@ bool initialize_game_runtime() {
   }
 
   tf_gc_client_system_so_event_original =
-    (void (*)(void*, void*, int))sigscan_module("client.so", sigs::tf_gc_client_system_so_event);
+    (std::intptr_t (*)(void*, void*, int))sigscan_module("client.so", sigs::tf_gc_client_system_so_event);
   if (tf_gc_client_system_so_event_original == nullptr) {
     print("Failed to find CTFGCClientSystem SO event handler; auto casual join disabled\n");
   }

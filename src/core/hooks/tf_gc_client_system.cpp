@@ -71,14 +71,13 @@ std::uint64_t get_lobby_invite_id(void* shared_object)
   return get_lobby_id(shared_object);
 }
 
-void accept_lobby_invite(void* self, void* shared_object)
+void accept_lobby_invite(void* self, const std::uint64_t lobby_id)
 {
   if (tf_gc_client_system_request_accept_match_invite == nullptr)
   {
     return;
   }
 
-  const std::uint64_t lobby_id = get_lobby_invite_id(shared_object);
   if (lobby_id == 0)
   {
     return;
@@ -87,29 +86,29 @@ void accept_lobby_invite(void* self, void* shared_object)
   tf_gc_client_system_request_accept_match_invite(self, lobby_id);
 }
 
-void call_original_so_event(void* self, void* shared_object, const int event_type)
+std::intptr_t call_original_so_event(void* self, void* shared_object, const int event_type)
 {
   if (tf_gc_client_system_so_event_original == nullptr)
   {
-    return;
+    return 0;
   }
 
-  tf_gc_client_system_so_event_original(self, shared_object, event_type);
+  return tf_gc_client_system_so_event_original(self, shared_object, event_type);
 }
 
 } // namespace
 
-void tf_gc_client_system_so_event_hook(void* self, void* shared_object, const int event_type)
+std::intptr_t tf_gc_client_system_so_event_hook(void* self, void* shared_object, const int event_type)
 {
   const unsigned int object_type = get_shared_object_type(shared_object);
   const bool should_auto_join =
     auto_casual_join_enabled() &&
     event_type == shared_object_created_event;
+  const std::uint64_t lobby_id =
+    (should_auto_join && object_type == tf_lobby_invite_type) ? get_lobby_invite_id(shared_object) : 0;
 
-  if (should_auto_join && object_type == tf_lobby_invite_type)
-  {
-    accept_lobby_invite(self, shared_object);
-  }
+  const std::intptr_t result = call_original_so_event(self, shared_object, event_type);
 
-  call_original_so_event(self, shared_object, event_type);
+  accept_lobby_invite(self, lobby_id);
+  return result;
 }
