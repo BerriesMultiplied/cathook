@@ -50,7 +50,7 @@ struct ModelRenderInfo {
 
 void draw_model_execute_hook(void* me, void* state, ModelRenderInfo* pinfo, VMatrix* bone_to_world) {  
   if (nographics::should_skip_rendering_hooks()) {
-    return;
+    DME_RETURN;
   }
 
   if (pinfo == nullptr) {

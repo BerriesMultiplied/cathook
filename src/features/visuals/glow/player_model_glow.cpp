@@ -191,7 +191,6 @@ void release_texture(Texture*& texture)
   }
 
   texture->decrement_reference_count();
-  texture->delete_if_unreferenced();
   texture = nullptr;
 }
 
@@ -692,6 +691,7 @@ void remember_glow_attachment(drawn_glow_attachments& drawn, Entity* attachment)
 void draw_glow_entity_model(Entity* entity)
 {
   if (entity != nullptr) {
+    const auto rendering = scoped_rendering_flag();
     entity->draw_model(glow_attachment_draw_flags);
   }
 }
