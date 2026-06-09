@@ -44,6 +44,8 @@ namespace
 {
 
 std::atomic<std::shared_ptr<const visual_groups::visual_group_snapshot>> g_group_snapshot{};
+thread_local bool g_fake_angle_model = false;
+thread_local bool g_viewmodel_model = false;
 
 [[nodiscard]] bool text_contains(std::string_view text, std::string_view needle)
 {
@@ -553,7 +555,7 @@ std::atomic<std::shared_ptr<const visual_groups::visual_group_snapshot>> g_group
   }
 
   if (models) {
-    if (localplayer != nullptr && entity != localplayer->to_entity()) {
+    if (g_viewmodel_model && localplayer != nullptr && entity != localplayer->to_entity()) {
       auto* owner = owner_player_for_entity(entity);
       if (owner == localplayer && entity->is_base_combat_weapon()) {
         return visual_group::target_viewmodel_weapon;
@@ -699,8 +701,8 @@ std::atomic<std::shared_ptr<const visual_groups::visual_group_snapshot>> g_group
   }
 
   const uint32_t target = target_for_entity(entity, models, localplayer);
-  if (models && entity == localplayer->to_entity() && anti_aim::has_visual_angles() && (group.targets & visual_group::target_fake_angle) != 0) {
-    return team_conditions_match(group, entity, localplayer, localplayer);
+  if (models && g_fake_angle_model && entity == localplayer->to_entity() && anti_aim::has_visual_angles() && (group.targets & visual_group::target_fake_angle) != 0) {
+    return true;
   }
 
   if (target == 0 || (group.targets & target) == 0) {
@@ -781,6 +783,26 @@ void ensure_defaults()
   config.visual_groups.active_group_mask = active_bit(0);
 }
 
+void begin_fake_angle_model()
+{
+  g_fake_angle_model = true;
+}
+
+void end_fake_angle_model()
+{
+  g_fake_angle_model = false;
+}
+
+void begin_viewmodel_model()
+{
+  g_viewmodel_model = true;
+}
+
+void end_viewmodel_model()
+{
+  g_viewmodel_model = false;
+}
+
 void store(Player* localplayer)
 {
   ensure_defaults();
@@ -824,6 +846,18 @@ visual_group_match group_for_entity(Entity* entity, bool models)
 
   std::shared_ptr<const visual_group_snapshot> snapshot = g_group_snapshot.load(std::memory_order_acquire);
   if (snapshot == nullptr) {
+    return {};
+  }
+
+  if (models && (g_fake_angle_model || g_viewmodel_model) && entity_list != nullptr) {
+    auto* localplayer = entity_list->get_localplayer();
+    const std::size_t group_index = find_group_index(entity, localplayer, true, *snapshot);
+    if (group_index != visual_group_not_found && group_index < snapshot->groups.size()) {
+      visual_group_match match{};
+      match.snapshot = std::move(snapshot);
+      match.group = &match.snapshot->groups[group_index];
+      return match;
+    }
     return {};
   }
 

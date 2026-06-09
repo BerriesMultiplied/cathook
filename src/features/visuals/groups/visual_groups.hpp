@@ -36,6 +36,10 @@ struct visual_group_match
 
 void ensure_defaults();
 void store(Player* localplayer);
+void begin_fake_angle_model();
+void end_fake_angle_model();
+void begin_viewmodel_model();
+void end_viewmodel_model();
 [[nodiscard]] visual_group_match group_for_entity(Entity* entity, bool models = true);
 [[nodiscard]] bool groups_active();
 void move_group(int from, int to);
