@@ -1899,16 +1899,20 @@ static void draw_navbot_content() {
   }
 
   cat_menu::begin_flow_layout("navbot_layout", 2);
-  cat_menu::flow_panel("NavBot", 0, 520.0f, [&]() {
+  cat_menu::flow_panel("NavBot", 0, 170.0f, [&]() {
     cat_menu::checkbox("Navbot", &config.misc.automation.navbot_enabled);
     cat_menu::checkbox("Draw path", &config.misc.automation.navbot_draw_path);
     cat_menu::combo("Don't path during", (int*)&config.misc.automation.navbot_block_during_enum, navbot_block_during_items, IM_ARRAYSIZE(navbot_block_during_items));
     cat_menu::checkbox("Warmup only on BLU cp_/pl_", &config.misc.automation.navbot_warmup_only_blu_cp_pl);
+    cat_menu::checkbox("Auto weapon", &config.misc.automation.navbot_auto_weapon);
+    cat_menu::slider_float("Crumb blacklist", &config.misc.automation.navbot_crumb_blacklist_seconds, 50.0f, 150.0f, "%.0f s");
+    cat_menu::checkbox("Debug text", &config.misc.automation.navbot_debug_text);
+  });
+  cat_menu::flow_panel("Path Look", 0, 350.0f, [&]() {
     cat_menu::checkbox("Look at path", &config.misc.automation.navbot_look_at_path);
     cat_menu::combo("Look mode", (int*)&config.misc.automation.navbot_look_mode, navbot_look_mode_items, IM_ARRAYSIZE(navbot_look_mode_items));
     cat_menu::checkbox("Path spin", &config.misc.automation.navbot_look_at_path_spin);
     cat_menu::combo("Spin trigger", (int*)&config.misc.automation.navbot_look_at_path_spin_trigger_mode, navbot_spin_trigger_items, IM_ARRAYSIZE(navbot_spin_trigger_items));
-    cat_menu::checkbox("Auto weapon", &config.misc.automation.navbot_auto_weapon);
     cat_menu::slider_float("Yaw speed", &config.misc.automation.navbot_look_at_path_speed, 45.0f, 1080.0f, "%.0f deg/s");
     cat_menu::slider_float("Pitch speed", &config.misc.automation.navbot_look_at_path_pitch_speed, 15.0f, 720.0f, "%.0f deg/s");
     cat_menu::slider_float("Spin speed", &config.misc.automation.navbot_look_at_path_spin_speed, 180.0f, 2160.0f, "%.0f deg/s");
@@ -1922,12 +1926,12 @@ static void draw_navbot_content() {
     cat_menu::slider_float("Pitch up scale", &config.misc.automation.navbot_look_at_path_pitch_up_scale, 0.0f, 1.0f, "%.2f");
     cat_menu::slider_float("Pitch down scale", &config.misc.automation.navbot_look_at_path_pitch_down_scale, 0.0f, 1.0f, "%.2f");
     cat_menu::slider_float("Pitch limit", &config.misc.automation.navbot_look_at_path_pitch_limit, 0.0f, 89.0f, "%.0f deg");
-    cat_menu::slider_float("Crumb blacklist", &config.misc.automation.navbot_crumb_blacklist_seconds, 50.0f, 150.0f, "%.0f s");
+  });
+  cat_menu::flow_panel("Jobs", 1, 90.0f, [&]() {
     uint32_t navbot_enabled_jobs_mask = navbot_all_job_bits & ~config.misc.automation.navbot_excluded_jobs_mask;
     if (cat_menu::multi_select_combo("Enabled jobs", &navbot_enabled_jobs_mask, navbot_job_items, navbot_job_bits, IM_ARRAYSIZE(navbot_job_items))) {
       config.misc.automation.navbot_excluded_jobs_mask = navbot_all_job_bits & ~navbot_enabled_jobs_mask;
     }
-    cat_menu::checkbox("Debug text", &config.misc.automation.navbot_debug_text);
   });
   cat_menu::end_flow_layout();
 }
