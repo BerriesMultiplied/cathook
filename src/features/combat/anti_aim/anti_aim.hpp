@@ -22,6 +22,7 @@ namespace anti_aim
 void on_create_move(user_cmd* cmd);
 [[nodiscard]] bool should_preserve_shot(user_cmd* cmd);
 [[nodiscard]] bool is_active();
+[[nodiscard]] bool has_visual_angles();
 [[nodiscard]] Vec3 real_angles();
 [[nodiscard]] Vec3 fake_angles();
 

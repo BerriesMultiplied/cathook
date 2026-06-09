@@ -699,7 +699,7 @@ std::atomic<std::shared_ptr<const visual_groups::visual_group_snapshot>> g_group
   }
 
   const uint32_t target = target_for_entity(entity, models, localplayer);
-  if (models && entity == localplayer->to_entity() && anti_aim::is_active() && (group.targets & visual_group::target_fake_angle) != 0) {
+  if (models && entity == localplayer->to_entity() && anti_aim::has_visual_angles() && (group.targets & visual_group::target_fake_angle) != 0) {
     return team_conditions_match(group, entity, localplayer, localplayer);
   }
 

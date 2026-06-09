@@ -86,11 +86,11 @@ void frame_stage_notify_hook(void* me, ClientFrameStage current_stage) {
     return;
   }
 
-  frame_stage_notify_original(me, current_stage);
-
   if (current_stage == FRAME_RENDER_START) {
     thirdperson::begin_render_angles();
   }
+
+  frame_stage_notify_original(me, current_stage);
 
   // Init start time
   if (last_time == 0.0) {

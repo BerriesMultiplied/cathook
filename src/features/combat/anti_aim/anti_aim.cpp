@@ -48,6 +48,7 @@ struct anti_aim_state
   int previous_attack_buttons = 0;
   int previous_command_number = 0;
   bool active = false;
+  bool visual_angles = false;
 };
 
 anti_aim_state g_state{};
@@ -355,7 +356,10 @@ void on_create_move(user_cmd* cmd)
   g_state.active = false;
 
   if (!should_run(cmd)) {
-    if (cmd != nullptr) {
+    if (!should_run_settings()) {
+      g_state.visual_angles = false;
+    }
+    if (!g_state.visual_angles && cmd != nullptr) {
       g_state.real_angles = cmd->view_angles;
       g_state.fake_angles = cmd->view_angles;
     }
@@ -370,6 +374,7 @@ void on_create_move(user_cmd* cmd)
 
   g_state.real_angles = build_angles(localplayer, cmd, false, source_angles);
   g_state.fake_angles = build_angles(localplayer, cmd, true, source_angles);
+  g_state.visual_angles = true;
 
   cmd->view_angles = tickbase::should_send_packet() ? g_state.fake_angles : g_state.real_angles;
   fix_movement(cmd, source_angles, source_forward_move, source_side_move);
@@ -385,6 +390,11 @@ bool should_preserve_shot(user_cmd* cmd)
 bool is_active()
 {
   return g_state.active;
+}
+
+bool has_visual_angles()
+{
+  return g_state.visual_angles && should_run_settings();
 }
 
 Vec3 real_angles()

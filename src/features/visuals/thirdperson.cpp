@@ -169,7 +169,7 @@ void begin_render_angles()
   }
 
   auto* localplayer = get_localplayer();
-  if (!is_enabled_for(localplayer) || !anti_aim::is_active()) {
+  if (!is_enabled_for(localplayer) || !anti_aim::has_visual_angles()) {
     return;
   }
 
@@ -178,7 +178,7 @@ void begin_render_angles()
   render_angles.original_local_angles = localplayer->get_local_eye_angles();
   render_angles.active = true;
 
-  Vec3 visible_angles = anti_aim::fake_angles();
+  Vec3 visible_angles = anti_aim::real_angles();
   visible_angles.z = 0.0f;
   localplayer->set_eye_angles(visible_angles);
   localplayer->set_local_eye_angles(visible_angles);
