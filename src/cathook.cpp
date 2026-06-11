@@ -76,6 +76,8 @@ V  o o  V  file: src/cathook.cpp
 #include "libsigscan/libsigscan.h"
 #include "funchook/funchook.h"
 
+bool (*in_cond_original)(void*, int) = nullptr;
+
 #include "core/hooks/sdl.cpp"
 #include "core/hooks/vulkan.cpp"
 
@@ -888,12 +890,12 @@ bool unload_module_runtime() {
   }
 
   nographics::shutdown();
+  surface_runtime::reset_ready();
   restore_client_crashfix_patches();
   backtrack::clear();
   player_model_glow::shutdown();
   automation::shutdown();
   region_selector_request_queue_for_match_original = nullptr;
-  in_cond_original = nullptr;
 
   print("Unhooking Non-VMT functions\n");
   if (funchook != nullptr) {
@@ -901,6 +903,7 @@ bool unload_module_runtime() {
     funchook_destroy(funchook);
     funchook = nullptr;
   }
+  in_cond_original = nullptr;
 
   tickbase::reset();
 

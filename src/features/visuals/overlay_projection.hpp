@@ -15,6 +15,7 @@ V  o o  V  file: src/features/visuals/overlay_projection.hpp
 #include "imgui/dearimgui.hpp"
 
 #include <cmath>
+#include <mutex>
 
 #include "core/types.hpp"
 
@@ -44,9 +45,11 @@ struct state_t
 };
 
 inline state_t state{};
+inline std::mutex state_mutex{};
 
 inline void invalidate()
 {
+  std::scoped_lock lock(state_mutex);
   state.valid = false;
   state.matrix_valid = false;
   state.screen_width = 0.0f;
@@ -57,6 +60,7 @@ inline void invalidate()
 inline void set_view_fov(float fov)
 {
   if (std::isfinite(fov) && fov > 1.0f) {
+    std::scoped_lock lock(state_mutex);
     state.view_fov = fov;
   }
 }
@@ -77,7 +81,8 @@ inline void use_imgui_size(float* width, float* height)
 
 inline void use_surface_size(float* width, float* height)
 {
-  if (width == nullptr || height == nullptr || (*width > 0.0f && *height > 0.0f) || surface == nullptr) {
+  if (width == nullptr || height == nullptr || (*width > 0.0f && *height > 0.0f) ||
+      surface == nullptr || !surface_runtime::is_ready()) {
     return;
   }
 
@@ -101,28 +106,27 @@ inline void use_engine_size(float* width, float* height)
   }
 }
 
-inline void use_view_size(const view_setup& view, float* width, float* height)
+inline void use_view_size(const view_setup* view, float* width, float* height)
 {
   if (width == nullptr || height == nullptr || (*width > 0.0f && *height > 0.0f)) {
     return;
   }
 
-  if (view.width > 0 && view.height > 0) {
-    *width = static_cast<float>(view.width);
-    *height = static_cast<float>(view.height);
+  if (view != nullptr && view->width > 0 && view->height > 0) {
+    *width = static_cast<float>(view->width);
+    *height = static_cast<float>(view->height);
   }
 }
 
-inline void update_screen_size(const view_setup& view, screen_space_t screen_space)
+inline void update_screen_size(const view_setup* view, screen_space_t screen_space)
 {
   auto screen_width = 0.0f;
   auto screen_height = 0.0f;
 
   if (screen_space == screen_space_t::surface) {
-    use_surface_size(&screen_width, &screen_height);
+    use_imgui_size(&screen_width, &screen_height);
     use_engine_size(&screen_width, &screen_height);
     use_view_size(view, &screen_width, &screen_height);
-    use_imgui_size(&screen_width, &screen_height);
   } else if (screen_space == screen_space_t::engine) {
     use_engine_size(&screen_width, &screen_height);
     use_view_size(view, &screen_width, &screen_height);
@@ -134,6 +138,7 @@ inline void update_screen_size(const view_setup& view, screen_space_t screen_spa
   }
 
   if (screen_width > 0.0f && screen_height > 0.0f) {
+    std::scoped_lock lock(state_mutex);
     state.screen_width = screen_width;
     state.screen_height = screen_height;
     state.valid = true;
@@ -153,15 +158,23 @@ inline bool copy_view_projection(const view_setup& view)
     &world_to_projection,
     &world_to_pixels);
 
-  for (int row = 0; row < 4; ++row) {
-    for (int column = 0; column < 4; ++column) {
-      state.world_to_projection[row][column] = world_to_projection[row][column];
+  {
+    std::scoped_lock lock(state_mutex);
+    for (int row = 0; row < 4; ++row) {
+      for (int column = 0; column < 4; ++column) {
+        state.world_to_projection[row][column] = world_to_projection[row][column];
+      }
     }
+    state.matrix_valid = true;
+    state.valid = true;
   }
-
-  state.matrix_valid = true;
-  state.valid = true;
   return true;
+}
+
+[[nodiscard]] inline bool has_cached_projection()
+{
+  std::scoped_lock lock(state_mutex);
+  return state.valid && state.matrix_valid;
 }
 
 inline bool refresh_projection_state(screen_space_t screen_space)
@@ -173,13 +186,16 @@ inline bool refresh_projection_state(screen_space_t screen_space)
 
   auto local_view = view_setup{};
   if (!client->get_player_view(local_view)) {
-    return state.valid && state.matrix_valid;
+    return has_cached_projection();
   }
 
-  update_screen_size(local_view, screen_space);
+  update_screen_size(&local_view, screen_space);
   set_view_fov(local_view.fov);
-  if (state.screen_width <= 0.0f || state.screen_height <= 0.0f) {
-    return state.valid && state.matrix_valid;
+  {
+    std::scoped_lock lock(state_mutex);
+    if (state.screen_width <= 0.0f || state.screen_height <= 0.0f) {
+      return state.valid && state.matrix_valid;
+    }
   }
 
   return copy_view_projection(local_view);
@@ -187,6 +203,16 @@ inline bool refresh_projection_state(screen_space_t screen_space)
 
 [[nodiscard]] inline bool begin_frame(screen_space_t screen_space = screen_space_t::imgui)
 {
+  if (client == nullptr || engine == nullptr || render_view == nullptr) {
+    invalidate();
+    return false;
+  }
+
+  if (has_cached_projection()) {
+    update_screen_size(nullptr, screen_space);
+    return has_cached_projection();
+  }
+
   return refresh_projection_state(screen_space);
 }
 
@@ -197,10 +223,31 @@ inline bool refresh_projection_state(screen_space_t screen_space)
 
 [[nodiscard]] inline bool world_to_screen(const Vec3& point, Vec3* screen)
 {
-  if (screen == nullptr || !state.valid || !state.matrix_valid) {
+  if (screen == nullptr) {
     return false;
   }
-  const auto& matrix = state.world_to_projection;
+
+  VMatrix matrix{};
+  float screen_width = 0.0f;
+  float screen_height = 0.0f;
+  {
+    std::scoped_lock lock(state_mutex);
+    if (!state.valid || !state.matrix_valid) {
+      return false;
+    }
+    for (int row = 0; row < 4; ++row) {
+      for (int column = 0; column < 4; ++column) {
+        matrix[row][column] = state.world_to_projection[row][column];
+      }
+    }
+    screen_width = state.screen_width;
+    screen_height = state.screen_height;
+  }
+
+  if (screen_width <= 0.0f || screen_height <= 0.0f) {
+    return false;
+  }
+
   const auto w = (matrix[3][0] * point.x) + (matrix[3][1] * point.y) + (matrix[3][2] * point.z) + matrix[3][3];
   screen->z = 0.0f;
   if (w <= 0.001f) {
@@ -211,8 +258,8 @@ inline bool refresh_projection_state(screen_space_t screen_space)
   const auto projected_x = ((matrix[0][0] * point.x) + (matrix[0][1] * point.y) + (matrix[0][2] * point.z) + matrix[0][3]) * inv_w;
   const auto projected_y = ((matrix[1][0] * point.x) + (matrix[1][1] * point.y) + (matrix[1][2] * point.z) + matrix[1][3]) * inv_w;
 
-  const auto screen_x = (state.screen_width * 0.5f) + (projected_x * state.screen_width * 0.5f) + 0.5f;
-  const auto screen_y = (state.screen_height * 0.5f) - (projected_y * state.screen_height * 0.5f) + 0.5f;
+  const auto screen_x = (screen_width * 0.5f) + (projected_x * screen_width * 0.5f) + 0.5f;
+  const auto screen_y = (screen_height * 0.5f) - (projected_y * screen_height * 0.5f) + 0.5f;
   if (!std::isfinite(screen_x) || !std::isfinite(screen_y)) {
     return false;
   }

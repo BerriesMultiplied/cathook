@@ -21,6 +21,7 @@ V  o o  V  file: src/games/tf2/sdk/entities/player.hpp
 #include "core/entity_cache.hpp"
 #include "core/ipc/ipc_client.hpp"
 #include "core/player_manager.hpp"
+#include "core/detach.hpp"
 
 #include "entity.hpp"
 #include "weapon.hpp"
@@ -226,8 +227,8 @@ enum tf_cond {
   TF_COND_LAST
 };
 
-//Original of a hooked class function
-static bool (*in_cond_original)(void*, int);
+// Original of a hooked class function.
+extern bool (*in_cond_original)(void*, int);
 
 //TODO/NOTE: Something useful would be a network variable helper.
 //           There are a lot of magical offsets to specific structures, and those offsets have a string key associated with them.
@@ -612,11 +613,12 @@ public:
   }
   
   bool in_cond(tf_cond condition) {
-    if (!has_in_cond_original()) {
+    if (cathook::core::is_detach_pending() || !has_in_cond_original()) {
       return false;
     }
 
-    return in_cond_original(get_shared(), condition);
+    auto* const original = in_cond_original;
+    return original != nullptr && original(get_shared(), condition);
   }
   
   bool is_scoped(void) {

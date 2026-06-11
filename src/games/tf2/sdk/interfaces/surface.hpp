@@ -12,11 +12,34 @@ V  o o  V  file: src/games/tf2/sdk/interfaces/surface.hpp
 #ifndef SURFACE_HPP
 #define SURFACE_HPP
 
+#include <atomic>
 #include <wchar.h>
 
 #include "core/types.hpp"
 
 #include "features/menu/config.hpp"
+
+namespace surface_runtime
+{
+
+inline std::atomic_bool ready = false;
+
+inline bool is_ready()
+{
+  return ready.load(std::memory_order_acquire);
+}
+
+inline void mark_ready()
+{
+  ready.store(true, std::memory_order_release);
+}
+
+inline void reset_ready()
+{
+  ready.store(false, std::memory_order_release);
+}
+
+} // namespace surface_runtime
 
 class Surface {
 public:

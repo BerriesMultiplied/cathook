@@ -53,6 +53,7 @@ V  o o  V  file: src/features/visuals/esp/esp.cpp
 #include "games/tf2/sdk/interfaces/entity_list.hpp"
 #include "games/tf2/sdk/interfaces/global_vars.hpp"
 #include "games/tf2/sdk/interfaces/render_view.hpp"
+#include "games/tf2/sdk/interfaces/surface.hpp"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "games/tf2/sdk/thirdparty/stb/stb_image.h"
@@ -68,6 +69,8 @@ constexpr float cathook_corner_scale = 0.10f;
 constexpr float cathook_healthbar_width = 7.0f;
 constexpr float cathook_healthbar_fill_width = 5.0f;
 constexpr float cathook_text_padding = 4.0f;
+constexpr int cathook_surface_font_tall = 12;
+constexpr int cathook_surface_font_weight = 400;
 constexpr float cathook_head_emoji_size_base = 2500.0f;
 constexpr float cathook_head_emoji_size_bias = 15.0f;
 constexpr float cathook_head_emoji_tile_size = 64.0f;
@@ -409,6 +412,7 @@ void begin_esp_smoothing_frame()
 
   if (!esp_lerp_enabled()) {
     g_esp_smoothing_states.clear();
+    g_esp_bounds_cache.clear();
   }
 }
 
@@ -441,6 +445,10 @@ void cleanup_esp_bounds_cache()
 
 void remember_esp_bounds(Entity* entity, const esp_bounds& bounds)
 {
+  if (!esp_lerp_enabled()) {
+    return;
+  }
+
   const auto key = get_esp_entity_key(entity);
   if (!is_valid_esp_entity_key(key)) {
     return;
@@ -454,6 +462,10 @@ void remember_esp_bounds(Entity* entity, const esp_bounds& bounds)
 
 [[nodiscard]] bool get_cached_esp_bounds(Entity* entity, esp_bounds* bounds)
 {
+  if (!esp_lerp_enabled()) {
+    return false;
+  }
+
   if (entity == nullptr || bounds == nullptr) {
     return false;
   }
@@ -1483,6 +1495,51 @@ void draw_entity_trajectory(ImDrawList* draw_list, Entity* entity, const visual_
   return true;
 }
 
+[[nodiscard]] bool get_entity_amalgam_screen_bounds(Entity* entity, esp_bounds* bounds)
+{
+  if (entity == nullptr || bounds == nullptr) {
+    return false;
+  }
+
+  const Vec3 origin = get_esp_draw_origin(entity);
+  const Vec3 mins = entity->get_collideable_mins();
+  const Vec3 maxs = entity->get_collideable_maxs();
+  const float middle_z = (mins.z + maxs.z) * 0.5f;
+  const std::array<Vec3, 6> points = {{
+    origin + Vec3{0.0f, 0.0f, mins.z},
+    origin + Vec3{0.0f, 0.0f, maxs.z},
+    origin + Vec3{mins.x, mins.y, middle_z},
+    origin + Vec3{mins.x, maxs.y, middle_z},
+    origin + Vec3{maxs.x, mins.y, middle_z},
+    origin + Vec3{maxs.x, maxs.y, middle_z},
+  }};
+
+  auto current_bounds = empty_screen_bounds();
+  for (const auto& point : points) {
+    Vec3 projected{};
+    if (!overlay_projection::world_to_screen(point, &projected) || !add_projected_screen_point(projected, &current_bounds)) {
+      return false;
+    }
+  }
+
+  const auto class_id_value = entity->get_class_id();
+  if (class_id_value == class_id::PLAYER ||
+      class_id_value == class_id::SENTRY ||
+      class_id_value == class_id::DISPENSER ||
+      class_id_value == class_id::TELEPORTER) {
+    const float width = current_bounds.width();
+    current_bounds.min_x += width * 0.125f;
+    current_bounds.max_x = current_bounds.min_x + (width * 0.75f);
+  }
+
+  if (!is_reasonable_screen_bounds(current_bounds)) {
+    return false;
+  }
+
+  *bounds = current_bounds;
+  return true;
+}
+
 [[nodiscard]] Entity* get_player_resource_entity()
 {
   if (entity_list == nullptr) {
@@ -1803,6 +1860,80 @@ void draw_atlas_tile(
   auto text_color = base_color;
   text_color.a = std::clamp(text_color.a * alpha_scale, 0.0f, 1.0f);
   return to_imgui_color(text_color.to_RGBA());
+}
+
+[[nodiscard]] RGBA color_with_alpha(RGBA color, float alpha_scale)
+{
+  color.a = std::clamp(static_cast<int>(std::round(static_cast<float>(color.a) * alpha_scale)), 0, 255);
+  return color;
+}
+
+[[nodiscard]] RGBA imgui_to_rgba(ImU32 color)
+{
+  return RGBA{
+    static_cast<int>((color >> IM_COL32_R_SHIFT) & 0xFF),
+    static_cast<int>((color >> IM_COL32_G_SHIFT) & 0xFF),
+    static_cast<int>((color >> IM_COL32_B_SHIFT) & 0xFF),
+    static_cast<int>((color >> IM_COL32_A_SHIFT) & 0xFF)
+  };
+}
+
+[[nodiscard]] int surface_round(float value)
+{
+  return static_cast<int>(std::round(value));
+}
+
+[[nodiscard]] unsigned long esp_surface_font()
+{
+  static unsigned long font = 0;
+  static int last_tall = 0;
+  const int tall = std::max(8, cathook_surface_font_tall);
+  if (surface == nullptr) {
+    return 0;
+  }
+
+  if (font == 0 || last_tall != tall) {
+    font = surface->text_create_font();
+    if (font != 0) {
+      surface->text_set_font_glyph_set(font, "Verdana", tall, cathook_surface_font_weight, 0, 0, 0);
+      last_tall = tall;
+    }
+  }
+
+  return font;
+}
+
+[[nodiscard]] std::wstring widen_for_surface(const std::string& text)
+{
+  auto wide = std::wstring{};
+  wide.reserve(text.size());
+  for (const unsigned char character : text) {
+    wide.push_back(static_cast<wchar_t>(character));
+  }
+  return wide;
+}
+
+[[nodiscard]] ImVec2 surface_text_size(const std::string& text)
+{
+  const auto font = esp_surface_font();
+  if (font == 0 || text.empty() || surface == nullptr) {
+    return {};
+  }
+
+  const auto wide = widen_for_surface(text);
+  return ImVec2(
+    static_cast<float>(surface->get_string_width(font, wide.c_str())),
+    static_cast<float>(std::max(surface->get_font_height(font), cathook_surface_font_tall)));
+}
+
+[[nodiscard]] float surface_text_line_height()
+{
+  const auto font = esp_surface_font();
+  if (font == 0 || surface == nullptr) {
+    return static_cast<float>(cathook_surface_font_tall + 2);
+  }
+
+  return static_cast<float>(std::max(surface->get_font_height(font), cathook_surface_font_tall) + 2);
 }
 
 [[nodiscard]] bool get_backtrack_record_screen_bounds(const backtrack::backtrack_record& record, esp_bounds* bounds)
@@ -2144,6 +2275,229 @@ void draw_bottom_center_line(ImDrawList* draw_list, const esp_bounds& bounds, fl
 
   draw_text_centered(draw_list, ImVec2((bounds.min_x + bounds.max_x) * 0.5f, *y), color, text);
   *y += ImGui::GetTextLineHeight();
+}
+
+void surface_set_color(RGBA color)
+{
+  if (surface == nullptr) {
+    return;
+  }
+
+  surface->set_rgba(color);
+}
+
+void surface_filled_rect(float x1, float y1, float x2, float y2, RGBA color)
+{
+  if (surface == nullptr || color.a <= 0) {
+    return;
+  }
+
+  surface_set_color(color);
+  surface->draw_filled_rect(surface_round(x1), surface_round(y1), surface_round(x2), surface_round(y2));
+}
+
+void surface_line(float x1, float y1, float x2, float y2, RGBA color)
+{
+  if (surface == nullptr || color.a <= 0) {
+    return;
+  }
+
+  surface_set_color(color);
+  surface->draw_line(surface_round(x1), surface_round(y1), surface_round(x2), surface_round(y2));
+}
+
+void surface_outline_box(const esp_bounds& bounds, RGBA color, float alpha_scale)
+{
+  if (surface == nullptr) {
+    return;
+  }
+
+  const auto black = color_with_alpha(RGBA{0, 0, 0, 255}, alpha_scale);
+  surface_set_color(black);
+  surface->draw_outlined_rect(surface_round(bounds.min_x - 1.0f), surface_round(bounds.min_y - 1.0f), surface_round(bounds.max_x + 1.0f), surface_round(bounds.max_y + 1.0f));
+  surface->draw_outlined_rect(surface_round(bounds.min_x + 1.0f), surface_round(bounds.min_y + 1.0f), surface_round(bounds.max_x - 1.0f), surface_round(bounds.max_y - 1.0f));
+  surface_set_color(color);
+  surface->draw_outlined_rect(surface_round(bounds.min_x), surface_round(bounds.min_y), surface_round(bounds.max_x), surface_round(bounds.max_y));
+}
+
+void surface_corner_box(const esp_bounds& bounds, RGBA color, float alpha_scale)
+{
+  const auto black = color_with_alpha(RGBA{0, 0, 0, 255}, alpha_scale);
+  const auto height_size = std::max(4.0f, (bounds.height() - 3.0f) * cathook_corner_scale);
+  const auto width_size = std::max(4.0f, (bounds.width() - 2.0f) * cathook_corner_scale);
+
+  surface_filled_rect(bounds.min_x, bounds.min_y, bounds.min_x + width_size + 1.0f, bounds.min_y + 3.0f, black);
+  surface_filled_rect(bounds.min_x, bounds.min_y + 3.0f, bounds.min_x + 3.0f, bounds.min_y + height_size, black);
+  surface_filled_rect(bounds.max_x - width_size - 1.0f, bounds.min_y, bounds.max_x, bounds.min_y + 3.0f, black);
+  surface_filled_rect(bounds.max_x - 2.0f, bounds.min_y + 3.0f, bounds.max_x + 1.0f, bounds.min_y + height_size, black);
+  surface_filled_rect(bounds.min_x, bounds.max_y - 3.0f, bounds.min_x + width_size + 1.0f, bounds.max_y, black);
+  surface_filled_rect(bounds.min_x, bounds.max_y - height_size, bounds.min_x + 3.0f, bounds.max_y, black);
+  surface_filled_rect(bounds.max_x - width_size - 1.0f, bounds.max_y - 3.0f, bounds.max_x, bounds.max_y, black);
+  surface_filled_rect(bounds.max_x - 2.0f, bounds.max_y - height_size, bounds.max_x + 1.0f, bounds.max_y, black);
+
+  surface_line(bounds.min_x + 1.0f, bounds.min_y + 1.0f, bounds.min_x + 1.0f + width_size, bounds.min_y + 1.0f, color);
+  surface_line(bounds.min_x + 1.0f, bounds.min_y + 1.0f, bounds.min_x + 1.0f, bounds.min_y + 1.0f + height_size, color);
+  surface_line(bounds.max_x - 1.0f, bounds.min_y + 1.0f, bounds.max_x - 1.0f - width_size, bounds.min_y + 1.0f, color);
+  surface_line(bounds.max_x - 1.0f, bounds.min_y + 1.0f, bounds.max_x - 1.0f, bounds.min_y + 1.0f + height_size, color);
+  surface_line(bounds.min_x + 1.0f, bounds.max_y - 1.0f, bounds.min_x + 1.0f + width_size, bounds.max_y - 1.0f, color);
+  surface_line(bounds.min_x + 1.0f, bounds.max_y - 1.0f, bounds.min_x + 1.0f, bounds.max_y - 1.0f - height_size, color);
+  surface_line(bounds.max_x - 1.0f, bounds.max_y - 1.0f, bounds.max_x - 1.0f - width_size, bounds.max_y - 1.0f, color);
+  surface_line(bounds.max_x - 1.0f, bounds.max_y - 1.0f, bounds.max_x - 1.0f, bounds.max_y - 1.0f - height_size, color);
+}
+
+void surface_esp_box(Entity* entity, const esp_bounds& bounds, esp_box_type box_style, RGBA color, float alpha_scale)
+{
+  switch (box_style) {
+  case esp_box_type::corner:
+    surface_corner_box(bounds, color, alpha_scale);
+    break;
+  case esp_box_type::filled:
+    surface_filled_rect(bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y, color_with_alpha(color, 0.18f * alpha_scale));
+    surface_outline_box(bounds, color, alpha_scale);
+    break;
+  case esp_box_type::projected: {
+    auto box = projected_box{};
+    if (entity != nullptr && get_entity_projected_box(entity, &box)) {
+      constexpr std::array<std::pair<size_t, size_t>, 12> edges = {{
+        {0, 1}, {1, 2}, {2, 3}, {3, 0},
+        {4, 5}, {5, 6}, {6, 7}, {7, 4},
+        {0, 4}, {1, 5}, {2, 6}, {3, 7},
+      }};
+      const auto shadow = color_with_alpha(RGBA{0, 0, 0, 255}, alpha_scale);
+      for (const auto& [start, end] : edges) {
+        surface_line(box.screen_points[start].x + 1.0f, box.screen_points[start].y + 1.0f, box.screen_points[end].x + 1.0f, box.screen_points[end].y + 1.0f, shadow);
+        surface_line(box.screen_points[start].x, box.screen_points[start].y, box.screen_points[end].x, box.screen_points[end].y, color);
+      }
+      break;
+    }
+    surface_outline_box(bounds, color, alpha_scale);
+    break;
+  }
+  case esp_box_type::rounded:
+  case esp_box_type::outline:
+  default:
+    surface_outline_box(bounds, color, alpha_scale);
+    break;
+  }
+}
+
+void surface_text_at(const ImVec2& position, RGBA color, const std::string& text)
+{
+  const auto font = esp_surface_font();
+  if (surface == nullptr || font == 0 || text.empty() || color.a <= 0) {
+    return;
+  }
+
+  const auto wide = widen_for_surface(text);
+  surface->draw_set_text_font(font);
+  surface->draw_set_text_color(0, 0, 0, color.a);
+  surface->draw_set_text_pos(surface_round(position.x + 1.0f), surface_round(position.y + 1.0f));
+  surface->draw_print_text(wide.c_str(), static_cast<int>(wide.size()));
+  surface->draw_set_text_color(color);
+  surface->draw_set_text_pos(surface_round(position.x), surface_round(position.y));
+  surface->draw_print_text(wide.c_str(), static_cast<int>(wide.size()));
+}
+
+void surface_text_centered(const ImVec2& position, RGBA color, const std::string& text)
+{
+  const auto text_size = surface_text_size(text);
+  surface_text_at(ImVec2(position.x - text_size.x * 0.5f, position.y), color, text);
+}
+
+void surface_text_centered_with_background(const ImVec2& position, RGBA color, const std::string& text, uint8_t background_alpha, float alpha_scale)
+{
+  if (text.empty()) {
+    return;
+  }
+
+  const auto text_size = surface_text_size(text);
+  const auto text_pos = ImVec2(position.x - text_size.x * 0.5f, position.y);
+  const auto alpha = std::clamp(static_cast<int>(std::round(static_cast<float>(background_alpha) * alpha_scale)), 0, 255);
+  surface_filled_rect(text_pos.x - 3.0f, text_pos.y - 2.0f, text_pos.x + text_size.x + 3.0f, text_pos.y + text_size.y + 2.0f, RGBA{0, 0, 0, alpha});
+  surface_text_at(text_pos, color, text);
+}
+
+void surface_right_line(const esp_bounds& bounds, float* y, RGBA color, const std::string& text)
+{
+  if (y == nullptr || text.empty()) {
+    return;
+  }
+
+  surface_text_at(ImVec2(bounds.max_x + cathook_text_padding, *y), color, text);
+  *y += surface_text_line_height();
+}
+
+void surface_left_line(const esp_bounds& bounds, float* y, RGBA color, const std::string& text)
+{
+  if (y == nullptr || text.empty()) {
+    return;
+  }
+
+  const auto text_size = surface_text_size(text);
+  surface_text_at(ImVec2(bounds.min_x - cathook_text_padding - text_size.x, *y), color, text);
+  *y += surface_text_line_height();
+}
+
+void surface_bottom_center_line(const esp_bounds& bounds, float* y, RGBA color, const std::string& text)
+{
+  if (y == nullptr || text.empty()) {
+    return;
+  }
+
+  surface_text_centered(ImVec2((bounds.min_x + bounds.max_x) * 0.5f, *y), color, text);
+  *y += surface_text_line_height();
+}
+
+void surface_vertical_health_bar(const esp_bounds& bounds, int health, int max_health, float alpha_scale)
+{
+  if (max_health <= 0) {
+    return;
+  }
+
+  const auto border = color_with_alpha(RGBA{0, 0, 0, 255}, alpha_scale);
+  const auto fill_color = color_with_alpha(get_health_color(health, max_health), alpha_scale);
+  const auto clamped_ratio = std::clamp(static_cast<float>(health) / static_cast<float>(max_health), 0.0f, 1.0f);
+  const auto fill_height = (bounds.height() - 2.0f) * clamped_ratio;
+  surface_set_color(border);
+  if (surface != nullptr) {
+    surface->draw_outlined_rect(surface_round(bounds.min_x - cathook_healthbar_width), surface_round(bounds.min_y), surface_round(bounds.min_x), surface_round(bounds.max_y));
+  }
+
+  if (fill_height > 0.0f) {
+    surface_filled_rect(bounds.min_x - cathook_healthbar_width + 1.0f, bounds.max_y - fill_height - 1.0f, bounds.min_x - cathook_healthbar_width + 1.0f + cathook_healthbar_fill_width, bounds.max_y - 1.0f, fill_color);
+  }
+}
+
+void surface_player_bones(Player* player, RGBA color, float alpha_scale)
+{
+  if (player == nullptr) {
+    return;
+  }
+
+  constexpr std::array<std::pair<int, int>, 16> bones = {{
+    {aim_hitbox_head, aim_hitbox_spine_3}, {aim_hitbox_spine_3, aim_hitbox_spine_2},
+    {aim_hitbox_spine_2, aim_hitbox_spine_1}, {aim_hitbox_spine_1, aim_hitbox_pelvis},
+    {aim_hitbox_spine_3, aim_hitbox_left_upper_arm}, {aim_hitbox_left_upper_arm, aim_hitbox_left_forearm},
+    {aim_hitbox_left_forearm, aim_hitbox_left_hand}, {aim_hitbox_spine_3, aim_hitbox_right_upper_arm},
+    {aim_hitbox_right_upper_arm, aim_hitbox_right_forearm}, {aim_hitbox_right_forearm, aim_hitbox_right_hand},
+    {aim_hitbox_pelvis, aim_hitbox_left_thigh}, {aim_hitbox_left_thigh, aim_hitbox_left_calf},
+    {aim_hitbox_left_calf, aim_hitbox_left_foot}, {aim_hitbox_pelvis, aim_hitbox_right_thigh},
+    {aim_hitbox_right_thigh, aim_hitbox_right_calf}, {aim_hitbox_right_calf, aim_hitbox_right_foot},
+  }};
+
+  const auto shadow = color_with_alpha(RGBA{0, 0, 0, 255}, alpha_scale);
+  for (const auto& [first_hitbox, second_hitbox] : bones) {
+    Vec3 first_world{}, second_world{}, first_screen{}, second_screen{};
+    if (!player->get_hitbox_center(first_hitbox, &first_world) ||
+        !player->get_hitbox_center(second_hitbox, &second_world) ||
+        !overlay_projection::world_to_screen(first_world, &first_screen) ||
+        !overlay_projection::world_to_screen(second_world, &second_screen)) {
+      continue;
+    }
+
+    surface_line(first_screen.x + 1.0f, first_screen.y + 1.0f, second_screen.x + 1.0f, second_screen.y + 1.0f, shadow);
+    surface_line(first_screen.x, first_screen.y, second_screen.x, second_screen.y, color);
+  }
 }
 
 void draw_player_bones(ImDrawList* draw_list, Player* player, ImU32 color, float alpha_scale)
@@ -2520,7 +2874,6 @@ void draw_group_entity_esp(ImDrawList* draw_list, Entity* entity, const visual_g
   auto color = esp_color_for_entity(entity, group);
   color.a *= alpha_scale;
   const auto imgui_color = to_imgui_color(color.to_RGBA());
-  const auto text_alpha = std::clamp(static_cast<int>(std::round(255.0f * alpha_scale)), 0, 255);
   const auto neutral_text = neutral_esp_text_color(esp_color_for_entity(entity, group), alpha_scale);
 
   if ((group.esp.draw_mask & group_esp_settings::box) != 0) {

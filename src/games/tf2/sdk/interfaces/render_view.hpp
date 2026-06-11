@@ -85,9 +85,9 @@ public:
     VMatrix world_to_pixels{};
     get_matrices_for_view(local_view, &world_to_screen, &view_to_projection, &world_to_projection, &world_to_pixels);
 
-    auto screen_size = surface != nullptr ? surface->get_screen_size() : Vec2{};
+    auto screen_size = engine->get_screen_size();
     if (screen_size.x <= 0 || screen_size.y <= 0) {
-      screen_size = engine->get_screen_size();
+      screen_size = Vec2{local_view.width, local_view.height};
     }
 
     const auto w = world_to_projection[3][0] * point->x + world_to_projection[3][1] * point->y + world_to_projection[3][2] * point->z + world_to_projection[3][3];

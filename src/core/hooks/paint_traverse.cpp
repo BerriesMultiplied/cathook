@@ -68,6 +68,8 @@ void paint_traverse_hook(void* me, void* panel, bool force_repaint, bool allow_f
     return;
   }
 
+  surface_runtime::mark_ready();
+
   const bool view_matrix_updated = overlay_projection::update_view_matrix();
   (void)view_matrix_updated;
   automation::controller().on_paint();
