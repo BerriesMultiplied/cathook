@@ -893,6 +893,7 @@ bool unload_module_runtime() {
   player_model_glow::shutdown();
   automation::shutdown();
   region_selector_request_queue_for_match_original = nullptr;
+  in_cond_original = nullptr;
 
   print("Unhooking Non-VMT functions\n");
   if (funchook != nullptr) {
