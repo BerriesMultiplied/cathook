@@ -80,6 +80,7 @@ private:
   KeyValues* m_pPeer;
   KeyValues* m_pSub;
   KeyValues* m_pChain;
+  void* m_pSomething;
 };
 
 #endif
