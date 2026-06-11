@@ -88,11 +88,12 @@ inline uint32_t proj_aim_auto_hitbox_mask(Player* localplayer, Weapon* weapon, P
 
 inline uint32_t proj_aim_effective_hitbox_mask(Player* localplayer, Weapon* weapon, Player* target) {
   const uint32_t configured_mask = config.aimbot.projectile_hitboxes;
+  const uint32_t manual_mask = configured_mask & aim_hitbox_mask_all;
   if ((configured_mask & aim_hitbox_mask_auto) != 0) {
-    return proj_aim_auto_hitbox_mask(localplayer, weapon, target);
+    const uint32_t auto_mask = proj_aim_auto_hitbox_mask(localplayer, weapon, target);
+    return (auto_mask | manual_mask) & aim_hitbox_mask_all;
   }
 
-  const uint32_t manual_mask = configured_mask & aim_hitbox_mask_all;
   return manual_mask != 0 ? manual_mask : aim_hitbox_mask_default_hitscan;
 }
 

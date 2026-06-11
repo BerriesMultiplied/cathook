@@ -118,6 +118,18 @@ enum class crit_request {
   skip
 };
 
+void reset_weapon_info() {
+  current_damage = 0.0f;
+  current_cost = 0.0f;
+  available_crits = 0;
+  potential_crits = 0;
+  next_crit = 0;
+  weapon_ent_index = 0;
+  is_melee_weapon = false;
+  crit_chance = 0.0f;
+  mult_crit_chance = 1.0f;
+}
+
 inline Entity* get_player_resource_entity() {
   if (entity_list == nullptr) {
     return nullptr;
@@ -374,16 +386,18 @@ crit_request get_crit_request(user_cmd* cmd, Weapon* weapon) {
 
 } // namespace
 
-create_move_result on_create_move(user_cmd* cmd, bool aimbot_requested_shot) {
+create_move_result on_create_move(user_cmd* cmd, bool /*aimbot_requested_shot*/) {
   create_move_result result{};
 
   auto* local = entity_list->get_localplayer();
   if (!config.crithack.enabled || local == nullptr || !local->is_alive() || local->is_dormant()) {
+    reset_weapon_info();
     return result;
   }
 
   auto* weapon = local->get_weapon();
   if (weapon == nullptr || !weapon_can_crit(weapon)) {
+    reset_weapon_info();
     return result;
   }
 
@@ -429,11 +443,6 @@ create_move_result on_create_move(user_cmd* cmd, bool aimbot_requested_shot) {
   result.skip_requested = req == crit_request::skip;
 
   if (!is_crit_command(cmd->command_number, weapon, wants_crit, true, is_melee_weapon)) {
-    if (aimbot_requested_shot) {
-      result.attack_allowed = true;
-      return result;
-    }
-
     cmd->buttons &= ~IN_ATTACK;
     if (is_melee_weapon && weapon->get_weapon_id() == TF_WEAPON_FISTS) {
       cmd->buttons &= ~IN_ATTACK2;
@@ -549,6 +558,7 @@ void reset() {
   desync_damage = 0;
   crit_banned = false;
   damage_till_flip = 0.0f;
+  reset_weapon_info();
   health_history.clear();
 }
 

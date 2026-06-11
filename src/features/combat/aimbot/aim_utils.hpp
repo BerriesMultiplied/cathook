@@ -1470,11 +1470,7 @@ inline aimbot_player_skip_reason aimbot_player_skip_reason_for(Player* localplay
   if (aimbot_ignore_enabled(Aim::ignore_invulnerable) && player->is_invulnerable()) return aimbot_player_skip_reason::invulnerable;
   if (player->is_ignored()) return aimbot_player_skip_reason::ignored;
   if (aimbot_ignore_enabled(Aim::ignore_friends) && player->is_friend()) return aimbot_player_skip_reason::friend_state;
-  if (aimbot_ignore_enabled(Aim::ignore_cloaked) &&
-      (player->in_cond(TF_COND_STEALTHED) ||
-       player->in_cond(TF_COND_STEALTHED_BLINK) ||
-       player->in_cond(TF_COND_STEALTHED_USER_BUFF) ||
-       player->in_cond(TF_COND_STEALTHED_USER_BUFF_FADING))) {
+  if (aimbot_ignore_enabled(Aim::ignore_cloaked) && player->is_cloaked()) {
     return aimbot_player_skip_reason::cloaked;
   }
   player_info pinfo{};
@@ -2090,7 +2086,7 @@ inline Vec3 aimbot_apply_assistive_angles(const Vec3& source_view_angles,
   }
 
   if (!has_last_input_angles) {
-    return source_view_angles;
+    return aimbot_lerp_angles(source_view_angles, target_view_angles, strength * strength);
   }
 
   const Vec3 mouse_delta = aimbot_normalize_angle_delta(source_view_angles, last_input_angles);
@@ -2102,7 +2098,8 @@ inline Vec3 aimbot_apply_assistive_angles(const Vec3& source_view_angles,
   }
 
   const float target_delta_length = std::sqrt(target_delta_length_sq);
-  const float limited_length = std::sqrt(std::min(mouse_delta_length_sq, target_delta_length_sq));
+  const float assist_floor_length_sq = target_delta_length_sq * strength * strength;
+  const float limited_length = std::sqrt(std::min(std::max(mouse_delta_length_sq, assist_floor_length_sq), target_delta_length_sq));
   const Vec3 limited_target_delta{
     target_delta.x * (limited_length / target_delta_length),
     target_delta.y * (limited_length / target_delta_length),

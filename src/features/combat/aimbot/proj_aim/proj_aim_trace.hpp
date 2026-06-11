@@ -376,6 +376,20 @@ inline float proj_aim_direct_trace_point_tolerance(Weapon* weapon, const project
   return std::max(10.0f, hull_radius + 8.0f);
 }
 
+inline Player* proj_aim_trace_hit_player(Entity* hit_entity) {
+  if (hit_entity == nullptr || hit_entity->get_class_id() != class_id::PLAYER) {
+    return nullptr;
+  }
+
+  return static_cast<Player*>(hit_entity);
+}
+
+inline bool proj_aim_trace_hit_targetable_player(Player* localplayer, Entity* hit_entity) {
+  Player* hit_player = proj_aim_trace_hit_player(hit_entity);
+  return hit_player != nullptr &&
+    aimbot_player_skip_reason_for(localplayer, hit_player) == aimbot_player_skip_reason::none;
+}
+
 inline bool proj_aim_trace_path_segment_loop(Player* localplayer,
   Player* target,
   Weapon* weapon,
@@ -455,6 +469,9 @@ inline bool proj_aim_trace_path_segment_loop(Player* localplayer,
         }
       }
       return reaches_target;
+    }
+    if (proj_aim_trace_hit_targetable_player(localplayer, static_cast<Entity*>(trace.entity))) {
+      return true;
     }
     if (trace.fraction < 1.0f && (!reaches_target || trace.fraction + 0.001f < target_enter_fraction)) {
       return false;

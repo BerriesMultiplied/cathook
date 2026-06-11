@@ -309,11 +309,12 @@ bool melee_ready(const aimbot_run_context& ctx) {
   if (!ctx.melee) {
     return true;
   }
+  const Vec3 shot_angles = aimbot_mode_uses_visible_steering() ? ctx.applied_angles : ctx.target_angles;
   if (ctx.target.player != nullptr) {
-    return melee_aim_ready_candidate(ctx.local, ctx.weapon, ctx.target.player, ctx.target, ctx.cmd->view_angles);
+    return melee_aim_ready_candidate(ctx.local, ctx.weapon, ctx.target.player, ctx.target, shot_angles);
   }
   return ctx.target.entity != nullptr &&
-    aimbot_entity_melee_reachable(ctx.local, ctx.weapon, ctx.target.entity, ctx.cmd->view_angles);
+    aimbot_entity_melee_reachable(ctx.local, ctx.weapon, ctx.target.entity, shot_angles);
 }
 
 bool projectile_ready(const aimbot_run_context& ctx) {
@@ -323,16 +324,13 @@ bool projectile_ready(const aimbot_run_context& ctx) {
   if (!ctx.target.projectile_direct && !ctx.target.projectile_splash) {
     return true;
   }
-  if (ctx.target.projectile_direct) {
-    return aim_targeting::projectile_solution_ready(ctx.local, ctx.weapon, ctx.cmd, ctx.target, ctx.projectile_angles);
-  }
   if (!aimbot_mode_uses_visible_steering()) {
     return aim_targeting::projectile_solution_ready(ctx.local, ctx.weapon, ctx.cmd, ctx.target, ctx.projectile_angles);
   }
-  if (aimbot_calculate_fov(ctx.projectile_angles, ctx.cmd->view_angles) > aimbot_projectile_visible_settle_fov(ctx.target)) {
+  if (aimbot_calculate_fov(ctx.projectile_angles, ctx.applied_angles) > aimbot_projectile_visible_settle_fov(ctx.target)) {
     return false;
   }
-  return aim_targeting::projectile_solution_ready(ctx.local, ctx.weapon, ctx.cmd, ctx.target, ctx.projectile_angles);
+  return aim_targeting::projectile_solution_ready(ctx.local, ctx.weapon, ctx.cmd, ctx.target, ctx.applied_angles);
 }
 
 bool hitscan_settled(const aimbot_run_context& ctx) {
@@ -383,12 +381,13 @@ void compute_hitscan_fire(aimbot_run_context& ctx) {
     return;
   }
 
+  const Vec3 shot_angles = aimbot_mode_uses_visible_steering() ? ctx.applied_angles : ctx.target_angles;
   ctx.hitscan_fire = aim_spread::prepare_hitscan_fire_solution(
     ctx.local,
     ctx.weapon,
     ctx.cmd,
     ctx.target,
-    ctx.target_angles);
+    shot_angles);
 
   if (ctx.hitscan_fire.ready) {
     ctx.target.command_angles = ctx.hitscan_fire.command_angles;

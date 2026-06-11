@@ -157,8 +157,7 @@ thread_local bool g_viewmodel_model = false;
 
 [[nodiscard]] bool player_is_invisible(Player* player)
 {
-  return player != nullptr &&
-    (player->get_invisibility() > 0.05f || player->in_cond(TF_COND_STEALTHED) || player->in_cond(TF_COND_STEALTHED_BLINK));
+  return player != nullptr && player->is_cloaked();
 }
 
 [[nodiscard]] bool player_filter_matches(const visual_group& group, Player* player)

@@ -391,7 +391,7 @@ public:
   }
 
   Vec3 get_punch_angles(void) {
-    return *(Vec3*)(this + 0x74);
+    return *reinterpret_cast<Vec3*>(reinterpret_cast<std::uintptr_t>(this) + 0x74);
   }
 
   static int get_eye_pitch_offset(void) {
@@ -619,6 +619,11 @@ public:
 
     auto* const original = in_cond_original;
     return original != nullptr && original(get_shared(), condition);
+  }
+
+  bool is_cloaked(void) {
+    return get_tf_class() == tf_class::SPY &&
+      (in_cond(TF_COND_STEALTHED) || in_cond(TF_COND_STEALTHED_BLINK));
   }
   
   bool is_scoped(void) {

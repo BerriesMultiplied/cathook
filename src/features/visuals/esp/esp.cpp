@@ -1103,8 +1103,7 @@ void reset_head_emoji_atlas()
 
 [[nodiscard]] bool player_is_invisible_esp(Player* player)
 {
-  return player != nullptr &&
-    (player->get_invisibility() > 0.05f || player->in_cond(TF_COND_STEALTHED) || player->in_cond(TF_COND_STEALTHED_BLINK));
+  return player != nullptr && player->is_cloaked();
 }
 
 [[nodiscard]] float entity_distance_hu(Entity* entity, Player* localplayer)
@@ -3277,7 +3276,9 @@ void draw_projectile_debug_imgui()
     return;
   }
 
-  if (!proj_aim_last_debug_path.valid || proj_aim_last_debug_path.expire_time < global_vars->curtime) {
+  const bool path_valid = proj_aim_last_debug_path.valid && proj_aim_last_debug_path.expire_time >= global_vars->curtime;
+  const bool stats_valid = proj_aim_last_debug_stats.valid && proj_aim_last_debug_stats.expire_time >= global_vars->curtime;
+  if (!path_valid && !stats_valid) {
     return;
   }
 
@@ -3316,23 +3317,25 @@ void draw_projectile_debug_imgui()
     }
   };
 
-  std::vector<Vec3> projectile_points{};
-  projectile_points.reserve(proj_aim_last_debug_path.projectile_trace.steps.size());
-  for (const LocalPredictionProjectileStep& step : proj_aim_last_debug_path.projectile_trace.steps) {
-    projectile_points.emplace_back(step.position);
+  if (path_valid) {
+    std::vector<Vec3> projectile_points{};
+    projectile_points.reserve(proj_aim_last_debug_path.projectile_trace.steps.size());
+    for (const LocalPredictionProjectileStep& step : proj_aim_last_debug_path.projectile_trace.steps) {
+      projectile_points.emplace_back(step.position);
+    }
+
+    draw_world_path(proj_aim_last_debug_path.target_path, IM_COL32(80, 180, 255, 230));
+    draw_world_path(projectile_points, proj_aim_last_debug_path.splash ? IM_COL32(255, 170, 40, 240) : IM_COL32(80, 255, 120, 240));
+
+    Vec3 aim_screen{};
+    if (overlay_projection::world_to_screen(proj_aim_last_debug_path.aim_position, &aim_screen)) {
+      const ImU32 point_color = proj_aim_last_debug_path.splash ? IM_COL32(255, 120, 40, 245) : IM_COL32(120, 255, 120, 245);
+      draw_list->AddCircleFilled(ImVec2(aim_screen.x + 1.0f, aim_screen.y + 1.0f), 4.5f, IM_COL32(0, 0, 0, 200), 16);
+      draw_list->AddCircleFilled(ImVec2(aim_screen.x, aim_screen.y), 3.5f, point_color, 16);
+    }
   }
 
-  draw_world_path(proj_aim_last_debug_path.target_path, IM_COL32(80, 180, 255, 230));
-  draw_world_path(projectile_points, proj_aim_last_debug_path.splash ? IM_COL32(255, 170, 40, 240) : IM_COL32(80, 255, 120, 240));
-
-  Vec3 aim_screen{};
-  if (overlay_projection::world_to_screen(proj_aim_last_debug_path.aim_position, &aim_screen)) {
-    const ImU32 point_color = proj_aim_last_debug_path.splash ? IM_COL32(255, 120, 40, 245) : IM_COL32(120, 255, 120, 245);
-    draw_list->AddCircleFilled(ImVec2(aim_screen.x + 1.0f, aim_screen.y + 1.0f), 4.5f, IM_COL32(0, 0, 0, 200), 16);
-    draw_list->AddCircleFilled(ImVec2(aim_screen.x, aim_screen.y), 3.5f, point_color, 16);
-  }
-
-  if (proj_aim_last_debug_stats.valid && proj_aim_last_debug_stats.expire_time >= global_vars->curtime) {
+  if (stats_valid) {
     const auto draw_debug_line = [draw_list](const char* text, float y, ImU32 color) {
       draw_list->AddText(ImVec2(25.0f, y + 1.0f), IM_COL32(0, 0, 0, 230), text);
       draw_list->AddText(ImVec2(24.0f, y), color, text);

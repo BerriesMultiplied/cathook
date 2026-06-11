@@ -77,9 +77,6 @@ struct framecount_guard
   }
 };
 
-Weapon* saved_weapon = nullptr;
-int saved_current_seed = -1;
-
 crit_prediction_state read_crit_prediction_state(Weapon* weapon)
 {
   return {
@@ -101,7 +98,7 @@ void restore_crit_prediction_state(Weapon* weapon, const crit_prediction_state& 
   weapon->last_crit_check_frame() = state.last_crit_check_frame;
   weapon->last_rapid_fire_crit_check_time() = state.last_rapid_fire_crit_check_time;
   weapon->crit_time() = state.crit_time;
-  weapon->current_seed() = saved_weapon == weapon && saved_current_seed != -1 ? saved_current_seed : state.current_seed;
+  weapon->current_seed() = state.current_seed;
 }
 
 bool run_calc_is_attack_critical_hook(
@@ -117,10 +114,7 @@ bool run_calc_is_attack_critical_hook(
   framecount_guard frame_guard{ weapon };
 
   if (prediction == nullptr || prediction->first_time_predicted) {
-    const bool result = original(weapon);
-    saved_weapon = weapon;
-    saved_current_seed = weapon->current_seed();
-    return result;
+    return original(weapon);
   }
 
   const crit_prediction_state state = read_crit_prediction_state(weapon);

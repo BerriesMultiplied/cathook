@@ -565,7 +565,12 @@ inline void draw_crit_hack_section(ImDrawList* draw_list, const ImVec2 position)
     bar_color = IM_COL32(200, 40, 40, 255);
     progress = 1.0f;
   } else {
-    if (stats.damage > 0) {
+    if (stats.banned && !weapon->is_melee()) {
+      left_text = "DMG: " + std::to_string(std::max(0, static_cast<int>(std::ceil(stats.damage_till_flip))));
+      right_text = "BANNED";
+      bar_color = IM_COL32(200, 40, 40, 255);
+      progress = 0.2f;
+    } else if (stats.damage > 0) {
       if (local->is_crit_boosted()) {
         left_text = "Crit Boosted";
         right_text = "READY";
@@ -577,7 +582,7 @@ inline void draw_crit_hack_section(ImDrawList* draw_list, const ImVec2 position)
         right_text = "STREAMING";
         bar_color = ready_color;
         progress = crit_time_left / 2.0f;
-      } else if (!stats.banned || weapon->is_melee()) {
+      } else {
         left_text = "Crits: " + std::to_string(std::max(0, stats.available)) + " / " + std::to_string(stats.potential);
         
         if (weapon->is_rapid_fire() && (local->get_tickbase() * 0.015f) < weapon->last_rapid_fire_crit_check_time() + 1.0f) {
@@ -609,11 +614,6 @@ inline void draw_crit_hack_section(ImDrawList* draw_list, const ImVec2 position)
           const float cap = cap_cvar ? cap_cvar->get_float() : 1000.0f;
           progress = current_bucket / cap;
         }
-      } else {
-        left_text = "DMG: " + std::to_string(static_cast<int>(std::ceil(stats.damage_till_flip)));
-        right_text = "BANNED";
-        bar_color = IM_COL32(200, 40, 40, 255);
-        progress = 0.2f;
       }
     }
   }
