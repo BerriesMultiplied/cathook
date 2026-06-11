@@ -49,6 +49,7 @@ struct glow_entity
   Player* player = nullptr;
   RGBA_float color{};
   RGBA_float color_z{};
+  bool filled_body = false;
 };
 
 struct cached_glow_attachment
@@ -577,6 +578,43 @@ void begin_glow_composite_clip(RenderContext* render_context)
   render_context->set_stencil_test_mask(0xFF);
 }
 
+void render_filled_body_texture(RenderContext* render_context)
+{
+  render_context->set_stencil_enable(false);
+  render_context->push_render_target_and_viewport();
+  render_context->set_render_target(g_render_buffer_1);
+  render_context->viewport(0, 0, g_render_width, g_render_height);
+  render_context->clear_color4ub(0, 0, 0, 0);
+  render_context->clear_buffers(true, false, false);
+
+  for (const auto& entity : g_entities) {
+    if (!entity.filled_body) {
+      continue;
+    }
+
+    set_model_glow_ignore_z(true);
+    render_view->set_color_modulation(&entity.color_z);
+    render_view->set_blend(entity.color_z.a);
+    if (entity.player != nullptr) {
+      draw_player_model(entity.player);
+    } else {
+      draw_glow_entity_model(entity.entity);
+    }
+
+    set_model_glow_ignore_z(false);
+    render_view->set_color_modulation(&entity.color);
+    render_view->set_blend(entity.color.a);
+    if (entity.player != nullptr) {
+      draw_player_model(entity.player);
+    } else {
+      draw_glow_entity_model(entity.entity);
+    }
+  }
+
+  render_context->pop_render_target_and_viewport();
+  restore_screen_space_modulation();
+}
+
 void second_end(RenderContext* render_context)
 {
   render_context->pop_render_target_and_viewport();
@@ -638,6 +676,7 @@ void second_end(RenderContext* render_context)
   }
 
   if (g_filled_body) {
+    render_filled_body_texture(render_context);
     render_context->set_stencil_compare_mode(STENCILCOMPARISONFUNCTION_ALWAYS);
     render_context->set_stencil_write_mask(0x0);
     render_context->set_stencil_test_mask(0x0);
@@ -902,7 +941,7 @@ void store()
     color_z.a *= alpha;
 
     auto* player = entity->get_class_id() == class_id::PLAYER ? reinterpret_cast<Player*>(entity) : nullptr;
-    g_entities.emplace_back(glow_entity{.entity = entity, .player = player, .color = color, .color_z = color_z});
+    g_entities.emplace_back(glow_entity{.entity = entity, .player = player, .color = color, .color_z = color_z, .filled_body = group->glow.filled_body});
   }
 }
 
