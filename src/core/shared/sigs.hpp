@@ -108,6 +108,8 @@ constexpr const char* tf_gc_client_system_request_accept_match_invite =
 
 constexpr const char* load_saved_casual_criteria =
   "48 83 7F 30 00 C6 87 10 03 00 00 01 74 ? 80 7F 40 00 74 ? C6 87 30 03 00 00 01 48 8D 35 ? ? ? ? 48 81 C7 B0 01 00 00 E9 ? ? ? ?";
+constexpr const char* set_casual_criteria_map_selected =
+  "55 48 89 E5 41 56 41 55 41 89 D5 41 54 41 89 F4 53 48 89 FB 48 83 EC 50 48 8B 07 FF 50 10 48 8B 70 58 48 85 F6";
 constexpr const char* is_in_queue_for_match_group =
   "55 48 89 E5 41 54 49 89 FC 89 F7 53 89 F3 E8 ? ? ? ? 83 FB FF 41 89 C0 0F 94 C0 41 83 F0 01 41 08 C0 75 ? 41 8B 54 24 58 85 D2";
 constexpr const char* is_in_standby_queue =

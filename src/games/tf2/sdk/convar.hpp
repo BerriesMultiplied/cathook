@@ -30,6 +30,11 @@ public:
     return *field<int>(value_target(), int_value_offset);
   }
 
+  const char* get_string() {
+    auto* string_value = *field<char*>(value_target(), string_value_offset);
+    return string_value != nullptr ? string_value : "";
+  }
+
   void set_float(float value) {
     auto* target = value_target();
     *field<float>(target, float_value_offset) = value;
