@@ -15,4 +15,4 @@ if [ -z "$node_path" ]; then
 	exit 1
 fi
 
-"$node_path" app.js >"$log_path" 2>&1
+CAT_GDB_CRASH_REPORTS="${CAT_GDB_CRASH_REPORTS:-0}" "$node_path" app.js >"$log_path" 2>&1

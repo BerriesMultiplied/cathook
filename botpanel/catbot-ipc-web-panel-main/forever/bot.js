@@ -36,7 +36,8 @@ const BOT_TF2_OVERLAY_ENABLED = process.env.CAT_BOT_TF2_OVERLAY !== '0';
 const STEAM_TXTMODE_ENABLED = process.env.CAT_STEAM_TXTMODE === '1';
 const SKIP_DBUS_RUN_SESSION = process.env.CAT_SKIP_DBUS_RUN_SESSION === '1'
     || (process.env.CAT_SKIP_DBUS_RUN_SESSION !== '0' && TEXTMODE_GAME);
-const GDB_CRASH_REPORTS = process.env.CAT_GDB_CRASH_REPORTS === '1' || config.gdb_crash_reports === true;
+const GDB_CRASH_REPORTS = process.env.CAT_GDB_CRASH_REPORTS === '1'
+    || (process.env.CAT_GDB_CRASH_REPORTS !== '0' && config.gdb_crash_reports === true);
 const steam_window_options_default = VISIBLE_WINDOWS
     ? ''
     : '-silent -cef-disable-gpu -cef-disable-gpu-compositing -cef-force-occlusion'
@@ -3162,7 +3163,9 @@ class Bot extends EventEmitter {
             this.shouldRun = false;
             this.shouldRestart = false;
         }
-        const crashed = (code !== null && code !== 0) || signal !== null;
+        const requested_game_exit = this.game_kill_requested_pid === launcher_pid;
+        const crash_signal = signal !== null && !['SIGINT', 'SIGTERM', 'SIGKILL'].includes(signal);
+        const crashed = !requested_game_exit && ((code !== null && code !== 0) || crash_signal);
         if (crashed && game_pid > 0 && GDB_CRASH_REPORTS)
             this.runGdbCrashReport(game_pid, code, signal);
         else

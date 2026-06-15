@@ -14,7 +14,7 @@ function default_nonnegative_integer(value, fallback) {
 
 const default_config = {
     nodiscard: true,
-    gdb_crash_reports: true,
+    gdb_crash_reports: false,
     ban_tracker_enabled: false,
     steamwebhelper_cleanup: false,
     max_concurrent_bots: 3,

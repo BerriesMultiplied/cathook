@@ -1257,6 +1257,7 @@ start_panel() {
             CAT_STEAMWEBHELPER_CLEANUP_SECONDS="${CAT_STEAMWEBHELPER_CLEANUP_SECONDS:-10}" \
             CAT_XPRA_LOG="$xpra_log" \
             CAT_STEAM_WEB_API_KEY="${CAT_STEAM_WEB_API_KEY:-}" \
+            CAT_GDB_CRASH_REPORTS="${CAT_GDB_CRASH_REPORTS:-0}" \
             STEAM_LD_PRELOAD="${STEAM_LD_PRELOAD:-}" \
             CATHOOK_ROOT="$install_root" \
             CATHOOK_ROOT_DIR="$install_root" \
@@ -1289,6 +1290,7 @@ start_panel() {
         CAT_STEAMWEBHELPER_CLEANUP_SECONDS="${CAT_STEAMWEBHELPER_CLEANUP_SECONDS:-10}" \
         CAT_XPRA_LOG="$xpra_log" \
         CAT_STEAM_WEB_API_KEY="${CAT_STEAM_WEB_API_KEY:-}" \
+        CAT_GDB_CRASH_REPORTS="${CAT_GDB_CRASH_REPORTS:-0}" \
         STEAM_LD_PRELOAD="${STEAM_LD_PRELOAD:-}" \
         CATHOOK_ROOT="$install_root" \
         CATHOOK_ROOT_DIR="$install_root" \
