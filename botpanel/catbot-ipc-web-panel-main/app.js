@@ -94,26 +94,30 @@ var server = app.listen(PORT, function () {
 stoppable(server, 0);
 
 
-const sauce_watcher = fs.watch('/tmp', (eventType, filename) => {
-    if (filename && filename.startsWith("source_engine") && filename.endsWith(".lock") && fs.existsSync(`/tmp/${filename}`))
-    {
-        try
-        {
-            fs.unlinkSync(`/tmp/${filename}`);
-        }
-        catch (err)
-        {
+const sauce_lock_cleanup_interval_ms = 30000;
 
+function cleanup_source_engine_locks() {
+    try {
+        for (const filename of fs.readdirSync('/tmp')) {
+            if (filename.startsWith('source_engine') && filename.endsWith('.lock')) {
+                try {
+                    fs.unlinkSync(path.join('/tmp', filename));
+                } catch (err) { }
+            }
         }
+    } catch (error) {
+        log_process_error('source_engine lock cleanup error', error);
     }
-})
-sauce_watcher.on('error', (error) => {
-    log_process_error('/tmp watcher error', error);
-});
+}
+
+const sauce_lock_cleanup_timer = setInterval(cleanup_source_engine_locks, sauce_lock_cleanup_interval_ms);
+if (sauce_lock_cleanup_timer.unref)
+    sauce_lock_cleanup_timer.unref();
+cleanup_source_engine_locks();
 
 process.on("SIGINT", function () {
     server.stop();
     forever.stop();
     cc.stop();
-    sauce_watcher.close();
+    clearInterval(sauce_lock_cleanup_timer);
 });

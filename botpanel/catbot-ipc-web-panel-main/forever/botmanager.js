@@ -33,6 +33,14 @@ class BotManager {
             this.update();
         }, delay);
     }
+    update_interval_ms() {
+        const count = this.bots.length;
+        if (count > 60)
+            return 3000;
+        if (count > 30)
+            return 2000;
+        return 1000;
+    }
     rebuild_snapshots() {
         const list = {
             quota: this.quota,
@@ -151,8 +159,10 @@ class BotManager {
 
         if (!this.stopping && self.bots.length && !this.query_in_progress) {
             this.query_in_progress = true;
+            const query_process_table = process_table;
+            const query_children_by_parent = children_by_parent;
             try {
-                self.cc.command('query', {}, function (data) {
+                self.cc.command('query', { skipEmpty: true }, function (data) {
                     self.query_in_progress = false;
                     try {
                         if (!data)
@@ -160,8 +170,6 @@ class BotManager {
                         self.lastQuery = data;
                         if (data.result) {
                             const query_time = Date.now();
-                            const query_process_table = Bot.read_process_table();
-                            const query_children_by_parent = Bot.build_process_children_by_parent(query_process_table);
                             const bots_by_owned_pid = new Map();
                             const bots_by_ipc_id = new Map();
                             for (const bot of self.bots) {
@@ -216,9 +224,8 @@ class BotManager {
             }
         }
 
-        this.rebuild_snapshots();
         if (!this.stopping || self.bots.length)
-            self.schedule_update(1000);
+            self.schedule_update(this.update_interval_ms());
     }
     enforceQuota() {
         while (this.bots.length < this.quota) {

@@ -47,36 +47,69 @@ const status = {
 var last_count = 0;
 var refresh_in_progress = false;
 var state_request_in_progress = false;
+var poll_interval_ms = 1000;
+var poll_timer = null;
+var bot_rows = {};
+
+function poll_interval_for_count(count) {
+	if (count > 60)
+		return 3000;
+	if (count > 30)
+		return 2000;
+	return 1000;
+}
+
+function schedule_poll(delay) {
+	if (poll_timer)
+		clearTimeout(poll_timer);
+
+	poll_timer = setTimeout(function() {
+		poll_timer = null;
+		updateData();
+	}, delay);
+}
+
+function clear_bot_rows() {
+	bot_rows = {};
+}
 
 function updateData() {
-	if (state_request_in_progress)
+	if (state_request_in_progress) {
+		schedule_poll(250);
 		return;
+	}
 
 	state_request_in_progress = true;
 	request('api/state', function(error, r, b) {
 		state_request_in_progress = false;
-		if (request_failed(error, r)) {
-			if (r && r.statusCode === 403)
-				status.error('Not authorized; log in with the panel password');
-			else
-				status.error('Error loading bot state from server!');
-			return;
-		}
-		var data = parse_json_body(b);
-		if (!data || !data.bots) {
-			status.error('Error parsing bot state from server!');
-			return;
-		}
-		if (last_count != Object.keys(data.bots).length) {
-			refreshComplete();
-		}
-		for (var i in data.bots) {
-			try {
-				updateUserData(i, data.bots[i]);
-			} catch (error) {
-				console.log('Failed to update bot row', i, error, data.bots[i]);
-				status.error('Error updating bot ' + i);
+		try {
+			if (request_failed(error, r)) {
+				if (r && r.statusCode === 403)
+					status.error('Not authorized; log in with the panel password');
+				else
+					status.error('Error loading bot state from server!');
+				return;
 			}
+			var data = parse_json_body(b);
+			if (!data || !data.bots) {
+				status.error('Error parsing bot state from server!');
+				return;
+			}
+			if (last_count != Object.keys(data.bots).length) {
+				refreshComplete();
+			}
+			last_count = Object.keys(data.bots).length;
+			poll_interval_ms = poll_interval_for_count(last_count);
+			for (var i in data.bots) {
+				try {
+					updateUserData(i, data.bots[i]);
+				} catch (error) {
+					console.log('Failed to update bot row', i, error, data.bots[i]);
+					status.error('Error updating bot ' + i);
+				}
+			}
+		} finally {
+			schedule_poll(poll_interval_ms);
 		}
 	});
 }
@@ -420,8 +453,13 @@ function updateIPCData(row, id, data) {
 }
 
 function updateUserData(bot, data) {
-	var row = $(`tr[data-id="${bot}"]`);
-	if (!row.length) return;
+	var row = bot_rows[bot];
+	if (!row || !row.length) {
+		row = $(`tr[data-id="${bot}"]`);
+		if (!row.length)
+			return;
+		bot_rows[bot] = row;
+	}
 	row.toggleClass('stopped', data.state != 5);
 	row.find('.client-state').text(STATE[data.state]);
 	row.find('.client-restarts').text(data.restarts);
@@ -480,6 +518,7 @@ function addClientRow(botid) {
     row.append($('<td></td>').attr('class', 'client-players connected active').text('NYI'));
     row.append($('<td></td>').attr('class', 'client-bots connected active').text('NYI'));
     $('#clients').append(row);
+    bot_rows[botid] = row;
     return row;
 }
 
@@ -519,7 +558,8 @@ function refreshComplete() {
 			return;
 		}
 
-		console.log(data);
+		console.log(data.bots ? Object.keys(data.bots).length + ' bots' : data);
+		clear_bot_rows();
 		$("#clients tr").slice(1).remove();
 		for (var i in data.bots) {
 			count++;
@@ -532,7 +572,6 @@ function refreshComplete() {
 $(function() {
 	updateData();
     status.info('init done');
-	setInterval(updateData, 1000);
 	$('#console').on('keypress', function(e) {
 		if (e.keyCode === '13') {
 			runCommand();

@@ -991,7 +991,22 @@ function read_proc_nspids(pid) {
     }
 }
 
-function read_process_table() {
+const PROCESS_TABLE_CACHE_MS = Number.parseInt(process.env.CAT_PROCESS_TABLE_CACHE_MS || '750', 10);
+let cached_process_table = null;
+let cached_process_table_time = 0;
+let cached_children_by_parent = null;
+
+function invalidate_process_table_cache() {
+    cached_process_table = null;
+    cached_process_table_time = 0;
+    cached_children_by_parent = null;
+}
+
+function read_process_table(force_refresh) {
+    const now = Date.now();
+    if (!force_refresh && cached_process_table && (now - cached_process_table_time) < PROCESS_TABLE_CACHE_MS)
+        return cached_process_table;
+
     const processes = new Map();
     try {
         for (const entry of fs.readdirSync('/proc')) {
@@ -1005,6 +1020,9 @@ function read_process_table() {
         }
     } catch (error) { }
 
+    cached_process_table = processes;
+    cached_process_table_time = now;
+    cached_children_by_parent = null;
     return processes;
 }
 
@@ -1053,12 +1071,19 @@ function collect_descendant_pids(root_pid, processes) {
 }
 
 function build_process_children_by_parent(processes) {
+    if (processes === cached_process_table && cached_children_by_parent)
+        return cached_children_by_parent;
+
     const children_by_parent = new Map();
     for (const info of processes.values()) {
         if (!children_by_parent.has(info.ppid))
             children_by_parent.set(info.ppid, []);
         children_by_parent.get(info.ppid).push(info.pid);
     }
+
+    if (processes === cached_process_table)
+        cached_children_by_parent = children_by_parent;
+
     return children_by_parent;
 }
 
@@ -3958,6 +3983,7 @@ module.exports.lastStartTime = 0;
 module.exports.lastSteamBootTime = 0;
 module.exports.read_process_table = read_process_table;
 module.exports.build_process_children_by_parent = build_process_children_by_parent;
+module.exports.invalidate_process_table_cache = invalidate_process_table_cache;
 module.exports.states = STATE;
 Object.defineProperty(module.exports, 'MAX_CONCURRENT_BOTS', {
     get: function() { return max_concurrent_bots(); },
