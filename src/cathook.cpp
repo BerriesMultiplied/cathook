@@ -1399,14 +1399,15 @@ bool initialize_game_runtime() {
     print("Client::CreateMove hooked\n");
   }
   
-  override_view_original = (void (*)(void*, view_setup*))client_mode_vtable[17];  
+#if !defined(CATHOOK_TEXTMODE) || !CATHOOK_TEXTMODE
+  override_view_original = (void (*)(void*, view_setup*))client_mode_vtable[17];
   if (!write_to_table(client_mode_vtable, 17, (void*)override_view_hook)) {
     print("OverrideView hook failed\n");
   } else {
     print("OverrideView hooked\n");
   }
 
-  draw_view_model_original = (bool (*)(void*))client_mode_vtable[25];  
+  draw_view_model_original = (bool (*)(void*))client_mode_vtable[25];
   if (!write_to_table(client_mode_vtable, 25, (void*)draw_view_model_hook)) {
     print("ShouldDrawViewModel hook failed\n");
   } else {
@@ -1419,16 +1420,20 @@ bool initialize_game_runtime() {
   } else {
     print("DoPostScreenSpaceEffects hooked\n");
   }
+#endif
   
   vgui_vtable = *(void ***)vgui;
+#if !defined(CATHOOK_TEXTMODE) || !CATHOOK_TEXTMODE
   paint_traverse_original = (void (*)(void*, void*, bool, bool))vgui_vtable[42];  
   if (!write_to_table(vgui_vtable, 42, (void*)paint_traverse_hook)) {
     print("PaintTraverse hook failed\n");
   } else {
     print("PaintTraverse hooked\n");
   }
+#endif
 
   model_render_vtable = *(void ***)model_render;    
+#if !defined(CATHOOK_TEXTMODE) || !CATHOOK_TEXTMODE
   forced_material_override_original = (void (*)(void*, Material*, OverrideType))model_render_vtable[1];
   if (!write_to_table(model_render_vtable, 1, (void*)forced_material_override_hook)) {
     print("ForcedMaterialOverride hook failed\n");
@@ -1442,6 +1447,7 @@ bool initialize_game_runtime() {
   } else {
     print("DrawModelExecute hooked\n");
   }
+#endif
   
   game_event_manager_vtable = *(void***)game_event_manager;
   fire_event_client_side_original = (bool (*)(void*, GameEvent*))game_event_manager_vtable[9];
@@ -1468,12 +1474,14 @@ bool initialize_game_runtime() {
 
   render_view_vtable = *(void***)render_view;
 
+#if !defined(CATHOOK_TEXTMODE) || !CATHOOK_TEXTMODE
   scene_end_original = (void (*)(void*, void*))render_view_vtable[9];
   if (!write_to_table(render_view_vtable, 9, (void*)scene_end_hook)) {
     print("SceneEnd hook failed\n");
   } else {
     print("SceneEnd hooked\n");
   }  
+#endif
   
   
   // Non-VMT Function hooks
@@ -1494,11 +1502,13 @@ bool initialize_game_runtime() {
   inspect_target_check_original = (std::int64_t (*)(void*, void*))sigscan_module("client.so", sigs::inspect_target_check);
   error_assert(inspect_target_check_original == nullptr, "Failed to find inspect target check");
 
+#if !defined(CATHOOK_TEXTMODE) || !CATHOOK_TEXTMODE
   should_draw_local_player_original = (bool (*)(void*))sigscan_module("client.so", sigs::should_draw_local_player);
 
   should_draw_this_player_original = (bool (*)(void*))sigscan_module("client.so", sigs::should_draw_this_player);
 
   draw_view_models_original = (void (*)(void*, view_setup*, bool))sigscan_module("client.so", sigs::draw_view_models);
+#endif
 
   attribute_hook_value_float_original = (float (*)(float, const char*, Entity*, void*, bool))sigscan_module("client.so", sigs::attribute_hook_value_float);
 
@@ -1586,8 +1596,10 @@ bool initialize_game_runtime() {
   rv = funchook_prepare(funchook, (void**)&in_cond_original, (void*)in_cond_hook);
   error_assert(rv != 0, "Failed to prepare InCond hook\n");
 
+#if !defined(CATHOOK_TEXTMODE) || !CATHOOK_TEXTMODE
   rv = funchook_prepare(funchook, (void**)&load_white_list_original, (void*)load_white_list_hook);
   error_assert(rv != 0, "Failed to prepare LoadWhiteList hook\n");
+#endif
 
   rv = funchook_prepare(funchook, (void**)&item_definition_lookup_original, (void*)item_definition_lookup_hook);
   error_assert(rv != 0, "Failed to prepare item definition lookup hook\n");
@@ -1598,6 +1610,7 @@ bool initialize_game_runtime() {
   rv = funchook_prepare(funchook, (void**)&inspect_target_check_original, (void*)inspect_target_check_hook);
   error_assert(rv != 0, "Failed to prepare inspect target check hook\n");
 
+#if !defined(CATHOOK_TEXTMODE) || !CATHOOK_TEXTMODE
   rv = funchook_prepare(funchook, (void**)&should_draw_local_player_original, (void*)should_draw_local_player_hook);
   error_assert(rv != 0, "Failed to prepare ShouldDrawLocalPlayer hook\n");
 
@@ -1606,6 +1619,7 @@ bool initialize_game_runtime() {
 
   rv = funchook_prepare(funchook, (void**)&draw_view_models_original, (void*)draw_view_models_hook);
   error_assert(rv != 0, "Failed to prepare DrawViewModels hook\n");
+#endif
 
   rv = funchook_prepare(funchook, (void**)&intro_menu_on_tick_original, (void*)intro_menu_on_tick_hook);
   error_assert(rv != 0, "Failed to prepare CTFIntroMenu::OnTick hook\n");
@@ -1637,11 +1651,13 @@ bool initialize_game_runtime() {
   }
 
   if (host_is_secure_server_allowed_original != nullptr) {
+#if !defined(CATHOOK_TEXTMODE) || !CATHOOK_TEXTMODE
     rv = funchook_prepare(
       funchook,
       (void**)&host_is_secure_server_allowed_original,
       (void*)host_is_secure_server_allowed_hook);
     error_assert(rv != 0, "Failed to prepare Host_IsSecureServerAllowed hook\n");
+#endif
   }
 
   if (tf_gc_client_system_so_event_original != nullptr) {

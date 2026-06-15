@@ -95,7 +95,7 @@ function game_port_options(botid) {
 
 const LAUNCH_OPTIONS_STEAM = `firejail --dns=1.1.1.1 %NETWORK% --noprofile --private="%HOME%" --private-tmp --private-dev --read-write=/opt/cathook/ipc --name=%JAILNAME% --env=PULSE_SERVER="unix:/tmp/pulse.sock" --env=DISPLAY=%DISPLAY% --env=XAUTHORITY=%XAUTHORITY% --env=TMPDIR=/tmp --env=TMP=/tmp --env=TEMP=/tmp --env=XDG_RUNTIME_DIR=/tmp/xdg-runtime --env=CAT_SKIP_DBUS_RUN_SESSION=${SKIP_DBUS_RUN_SESSION ? '1' : '0'} ${HEADLESS_STEAM_GRAPHICS_FIREJAIL_ENV} --env=LD_LIBRARY_PATH=%STEAM_LD_LIBRARY_PATH% --env=LD_PRELOAD=%LD_PRELOAD% --env=CAT_STM_STEAM_LOOP_SLEEP=%CAT_STM_STEAM_LOOP_SLEEP% --env=CAT_STM_STEAM_LOOP_SLEEP_US=%CAT_STM_STEAM_LOOP_SLEEP_US% sh -lc 'mkdir -p "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"; if [ "$CAT_SKIP_DBUS_RUN_SESSION" = 1 ]; then exec "$@"; elif command -v dbus-run-session >/dev/null 2>&1; then exec dbus-run-session -- "$@"; else exec "$@"; fi' steam-session %STEAM% ${steam_window_options} -login %LOGIN% %PASSWORD%`
 const LAUNCH_OPTIONS_STEAM_RESET = 'firejail --net=none --noprofile --private="%HOME%" --private-dev --read-write=/opt/cathook/ipc --env=LD_LIBRARY_PATH=%STEAM_LD_LIBRARY_PATH% %STEAM% --reset'
-const LAUNCH_OPTIONS_GAME = `firejail --join=%JAILNAME% bash -c 'cd "%GAMEPATH%" && %RUNTIME_PREFIX% ${HEADLESS_STEAM_GRAPHICS_ASSIGNMENTS} ${textmode_allocator_assignments} SteamAppId=440 SteamGameId=440 SteamOverlayGameId=440 SteamEnv=1 CATHOOK_ROOT="%CATHOOK_ROOT%" CATHOOK_ROOT_DIR="%CATHOOK_ROOT%" CATHOOK_AUTO_ATTACH=1 CATHOOK_ATTACH_DELAY_SECONDS=%CATHOOK_ATTACH_DELAY_SECONDS% CAT_BOT_ID="%BOT_ID%" CAT_BOT_NAME="%BOT_NAME%" CAT_STEAMID32=%STEAMID32% DBUS_SESSION_BUS_ADDRESS="unix:path=/tmp/cat-disabled-dbus" LD_PRELOAD=%LD_PRELOAD% DISPLAY=%DISPLAY% XAUTHORITY="%XAUTHORITY%" PULSE_SERVER="unix:/tmp/pulse.sock" %GAME_BINARY% -steam -game tf ${GAME_WINDOW_OPTIONS} -novid -nojoy -nomessagebox -nominidumps -nohltv -nobreakpad -noquicktime -precachefontchars -particles 1 -snoforceformat -softparticlesdefaultoff ${GAME_MODE_OPTIONS} -forcenovsync +volume 0 -noqueuedpacketprocessing -limitvsconst -nocrashdialog -noipx -threads 1 %GAME_PORT_OPTIONS% -nosteamcontroller -low -insecure +fps_max 30'`
+const LAUNCH_OPTIONS_GAME = `firejail --join=%JAILNAME% bash -c 'cd "%GAMEPATH%" && %RUNTIME_PREFIX% ${HEADLESS_STEAM_GRAPHICS_ASSIGNMENTS} ${textmode_allocator_assignments} SteamAppId=440 SteamGameId=440 SteamOverlayGameId=440 SteamEnv=1 CATHOOK_ROOT="%CATHOOK_ROOT%" CATHOOK_ROOT_DIR="%CATHOOK_ROOT%" CATHOOK_AUTO_ATTACH=1 CATHOOK_ATTACH_DELAY_SECONDS=%CATHOOK_ATTACH_DELAY_SECONDS% CAT_BOT_ID="%BOT_ID%" CAT_BOT_NAME="%BOT_NAME%" CAT_STEAMID32=%STEAMID32% DBUS_SESSION_BUS_ADDRESS="unix:path=/tmp/cat-disabled-dbus" LD_PRELOAD=%LD_PRELOAD% DISPLAY=%DISPLAY% XAUTHORITY="%XAUTHORITY%" PULSE_SERVER="unix:/tmp/pulse.sock" %GAME_BINARY% -steam -game tf ${GAME_WINDOW_OPTIONS} -novid -nojoy -nomessagebox -nominidumps -nohltv -nobreakpad -noquicktime -precachefontchars -particles 1 -snoforceformat -softparticlesdefaultoff ${GAME_MODE_OPTIONS} -forcenovsync +volume 0 -noqueuedpacketprocessing -limitvsconst -nocrashdialog -noipx -threads 1 %GAME_PORT_OPTIONS% -nosteamcontroller -low +fps_max 30'`
 const LAUNCH_OPTIONS_GAME_STEAM = `firejail --join=%JAILNAME% bash -c '${HEADLESS_STEAM_GRAPHICS_ASSIGNMENTS} DISPLAY=%DISPLAY% XAUTHORITY="%XAUTHORITY%" PULSE_SERVER="unix:/tmp/pulse.sock" %STEAM% -applaunch 440'`
 const GAME_LIBRARY_PATH = './bin:./bin/linux64:./tf/bin:./tf/bin/linux64:./platform:./platform/bin:./platform/bin/linux64:.';
 
@@ -1471,6 +1471,8 @@ class Bot extends EventEmitter {
         this.steamClientInitialized = false;
         this.game_kill_generation = 0;
         this.steam_kill_generation = 0;
+        this.game_kill_requested_pid = 0;
+        this.steam_kill_requested_pid = 0;
         this.lastRestartReason = '';
         this.lastGameKillReason = '';
         this.terminal_auth_state = 0;
@@ -3003,7 +3005,7 @@ class Bot extends EventEmitter {
                 `LD_PRELOAD="${bash_double_quote_escape(game_preload)}"`,
                 textmode_allocator_assignments,
                 `%command%`,
-                `-steam -game tf ${GAME_WINDOW_OPTIONS} -novid -nojoy -noipx -nomessagebox -nominidumps -nohltv -nobreakpad -reuse -noquicktime -precachefontchars -particles 1 -snoforceformat -softparticlesdefaultoff ${GAME_MODE_OPTIONS} -forcenovsync -insecure +fps_max 30 ${game_port_launch_options}`
+                `-steam -game tf ${GAME_WINDOW_OPTIONS} -novid -nojoy -noipx -nomessagebox -nominidumps -nohltv -nobreakpad -reuse -noquicktime -precachefontchars -particles 1 -snoforceformat -softparticlesdefaultoff ${GAME_MODE_OPTIONS} -forcenovsync +fps_max 30 ${game_port_launch_options}`
             ].join(' ');
 
             if (!self.setSteamTf2LaunchOptions(steamid32, steam_tf2_launch_options)) {
@@ -3111,6 +3113,7 @@ class Bot extends EventEmitter {
         this.steamwebhelper_frozen_pid = -1;
 
         delete this.procFirejailSteam;
+        this.steam_kill_requested_pid = 0;
     }
     handleGameExit(code, signal) {
         const game_process = this.procFirejailGame;
@@ -3146,6 +3149,7 @@ class Bot extends EventEmitter {
         if (this.shouldRun && this.procFirejailSteam)
             this.state = STATE.STARTING;
         delete this.procFirejailGame;
+        this.game_kill_requested_pid = 0;
     }
 
     clear_ipc_state() {
@@ -3222,6 +3226,8 @@ class Bot extends EventEmitter {
         this.steam_quick_exit_count = 0;
         this.steamwebhelper_cleanup_done = false;
         this.steamwebhelper_frozen_pid = -1;
+        this.game_kill_requested_pid = 0;
+        this.steam_kill_requested_pid = 0;
         this.lastRestartReason = '';
         this.lastGameKillReason = '';
         this.terminal_auth_state = 0;
@@ -3261,11 +3267,13 @@ class Bot extends EventEmitter {
     }
 
     killSteam() {
-        this.log('Killing steam');
-        this.resume_steamwebhelper();
-        // Firejail will handle smooth termination
         if (this.procFirejailSteam) {
             const pid = this.procFirejailSteam.pid;
+            if (this.steam_kill_requested_pid === pid)
+                return;
+            this.steam_kill_requested_pid = pid;
+            this.log('Killing steam');
+            this.resume_steamwebhelper();
             const generation = ++this.steam_kill_generation;
             try {
                 this.procFirejailSteam.kill("SIGINT");
@@ -3274,10 +3282,13 @@ class Bot extends EventEmitter {
         }
     }
     killGame(reason) {
-        this.lastGameKillReason = reason || this.lastRestartReason || 'panel requested game kill';
-        this.log(`Killing game: ${this.lastGameKillReason}`);
         if (this.procFirejailGame) {
             const pid = this.procFirejailGame.pid;
+            if (this.game_kill_requested_pid === pid)
+                return;
+            this.game_kill_requested_pid = pid;
+            this.lastGameKillReason = reason || this.lastRestartReason || 'panel requested game kill';
+            this.log(`Killing game: ${this.lastGameKillReason}`);
             const generation = ++this.game_kill_generation;
             try {
                 this.procFirejailGame.kill("SIGINT");

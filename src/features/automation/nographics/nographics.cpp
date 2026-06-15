@@ -100,15 +100,10 @@ void write_studio_render_identity_matrix(double* output_matrix)
   std::memcpy(output_matrix, studio_render_identity_matrix, sizeof(studio_render_identity_matrix));
 }
 
-bool env_flag_disabled(const char* name)
-{
-  const char* value = std::getenv(name);
-  return value != nullptr && std::strcmp(value, "0") == 0;
-}
-
 bool tf2_textmode_cpu_patches_enabled()
 {
-  return !env_flag_disabled("CAT_NOGRAPHICS_TF2_CPU_PATCHES");
+  const char* value = std::getenv("CAT_NOGRAPHICS_TF2_CPU_PATCHES");
+  return value != nullptr && std::strcmp(value, "1") == 0;
 }
 
 using find_first_fn = const char* (*)(void*, const char*, file_find_handle_t*);
@@ -1324,6 +1319,13 @@ bool apply_optional_patch(byte_patch& patch, const char* patch_name)
 
 bool apply_optional_render_patches()
 {
+  const char* disable_optional_patches = std::getenv("CATHOOK_DISABLE_OPTIONAL_RENDER_PATCHES");
+  if (disable_optional_patches != nullptr && std::strcmp(disable_optional_patches, "0") != 0)
+  {
+    restore_optional_render_patches();
+    return false;
+  }
+
   initialize_optional_render_patches();
 
   bool applied_any_patch = false;
@@ -2221,7 +2223,10 @@ void resolve_material_system_interface()
 
 void resolve_studio_render_interface()
 {
-  install_studio_render_crash_guards_internal();
+  if (tf2_textmode_cpu_patches_enabled())
+  {
+    install_studio_render_crash_guards_internal();
+  }
 
   if (studio_render_interface != nullptr || !module_is_loaded("studiorender.so"))
   {
@@ -2245,6 +2250,11 @@ void resolve_mdl_cache_interface()
 
 void try_install_studio_render_crash_guard()
 {
+  if (!tf2_textmode_cpu_patches_enabled())
+  {
+    return;
+  }
+
   install_studio_render_crash_guards_internal();
 }
 
@@ -2275,6 +2285,11 @@ void prepare_startup_patches()
 {
   if constexpr (textmode_build)
   {
+    if (!tf2_textmode_cpu_patches_enabled())
+    {
+      return;
+    }
+
     if (startup_patch_running.exchange(true, std::memory_order_acq_rel))
     {
       return;
