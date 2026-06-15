@@ -140,24 +140,6 @@ glow_resource_status g_last_resource_status = glow_resource_status::ready;
 void draw_glow_entity_model(Entity* entity);
 void draw_player_model(Player* player);
 
-[[nodiscard]] bool can_draw_glow_model(Entity* entity)
-{
-  if (entity == nullptr) {
-    return false;
-  }
-  if (entity->is_dormant()) {
-    return false;
-  }
-  if (entity->get_renderable() == nullptr) {
-    return false;
-  }
-  if (entity->get_model() == nullptr) {
-    return false;
-  }
-
-  return entity->should_draw();
-}
-
 scoped_rendering_flag::scoped_rendering_flag()
   : previous(g_rendering)
 {
@@ -777,12 +759,10 @@ void remember_glow_attachment(drawn_glow_attachments& drawn, Entity* attachment)
 
 void draw_glow_entity_model(Entity* entity)
 {
-  if (!can_draw_glow_model(entity)) {
-    return;
+  if (entity != nullptr) {
+    const auto rendering = scoped_rendering_flag();
+    entity->draw_model(glow_attachment_draw_flags);
   }
-
-  const auto rendering = scoped_rendering_flag();
-  entity->draw_model(glow_attachment_draw_flags);
 }
 
 void draw_glow_attachment_model(Entity* attachment, drawn_glow_attachments& drawn)
@@ -800,8 +780,11 @@ void draw_glow_attachment_model(Entity* attachment, drawn_glow_attachments& draw
   if (attachment == nullptr || owner_entity == nullptr || attachment == owner_entity) {
     return false;
   }
+  if (attachment->is_dormant() || !attachment->should_draw() || attachment->get_model() == nullptr) {
+    return false;
+  }
 
-  return can_draw_glow_model(attachment);
+  return true;
 }
 
 [[nodiscard]] bool should_draw_owned_player_attachment(Entity* attachment, Entity* owner_entity)
@@ -828,7 +811,7 @@ void draw_glow_attachment_model(Entity* attachment, drawn_glow_attachments& draw
     return false;
   }
 
-  return can_draw_glow_model(attachment);
+  return !attachment->is_dormant();
 }
 
 void draw_cached_glow_attachments(Player* owner, Entity* owner_entity, drawn_glow_attachments& drawn)
