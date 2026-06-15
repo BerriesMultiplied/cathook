@@ -1485,6 +1485,7 @@ class Bot extends EventEmitter {
         this.ipcState = null;
         this.ipcLastHeartbeat = 0;
         this.ipcID = -1;
+        this.ipcObservedAt = 0;
         this.time_ipc_identity_missing = 0;
         this.time_ipc_peer_missing = 0;
         this.ipc_peer_restart_deferred = false;
@@ -1547,6 +1548,7 @@ class Bot extends EventEmitter {
                 self.log(`Assigned IPC ID ${id}`);
                 self.schedule_steamwebhelper_cleanup();
             }
+            self.ipcObservedAt = Date.now();
             self.ipcState = data;
         });
 
@@ -3186,6 +3188,7 @@ class Bot extends EventEmitter {
         this.ipcState = null;
         this.ipcID = -1;
         this.ipcLastHeartbeat = 0;
+        this.ipcObservedAt = 0;
         this.time_ipc_identity_missing = 0;
         this.time_ipc_peer_missing = 0;
     }
@@ -3268,7 +3271,8 @@ class Bot extends EventEmitter {
             !this.terminal_auth_state &&
             this.state === STATE.RUNNING &&
             this.procFirejailGame &&
-            this.ipcState);
+            this.ipcState &&
+            (!this.manager || this.manager.can_auto_restart_bot(this)));
     }
 
     auto_restart(reason) {
@@ -3791,6 +3795,7 @@ class Bot extends EventEmitter {
                 this.schedule_steamwebhelper_cleanup();
             }
             this.ipcLastHeartbeat = data.heartbeat || 0;
+            this.ipcObservedAt = Date.now();
             this.ipcState = data;
             return;
         }

@@ -99,6 +99,25 @@ class BotManager {
         return Math.max(4, Math.ceil(this.bots.length / 8));
     }
 
+    startup_pressure_active() {
+        return this.count_active_starts() > 0 ||
+            this.count_active_steam_boots() > 0 ||
+            this.start_lane.length > 0;
+    }
+
+    can_auto_restart_bot(bot) {
+        if (!bot)
+            return false;
+
+        if (!this.ipc_queries_healthy())
+            return false;
+
+        if (this.startup_pressure_active())
+            return false;
+
+        return true;
+    }
+
     allow_restart(bot, reason) {
         const now = Date.now();
         if (now - this.restart_window_start > 60000) {
@@ -286,6 +305,7 @@ class BotManager {
             const steamid64 = steamid32 ? steam_id.account_id32_to_steamid64(steamid32) : null;
             state.bots[bot.name] = {
                 ipc: bot.ipcState,
+                ipc_observed_at: bot.ipcObservedAt || 0,
                 restarts: bot.restarts,
                 ipcID: bot.ipcID,
                 state: bot.state,

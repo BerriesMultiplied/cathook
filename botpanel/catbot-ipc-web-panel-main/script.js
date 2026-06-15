@@ -381,7 +381,7 @@ function update_ban_tracker_data(row, data) {
 		.text(text);
 }
 
-function updateIPCData(row, id, data, state) {
+function updateIPCData(row, id, data, state, ipc_observed_at) {
 	if (!data) {
 		return;
 	}
@@ -389,8 +389,12 @@ function updateIPCData(row, id, data, state) {
 	var ingame = data.ingame || {};
 	var heartbeat = Number(data.heartbeat);
 	var ts_injected = Number(data.ts_injected);
+	var observed_at = Number(ipc_observed_at);
+	var observed_age = observed_at ? Math.floor((Date.now() - observed_at) / 1000) : 0;
 	var time = Number.isFinite(heartbeat) ? Math.floor(Date.now() / 1000 - heartbeat) : 0;
-	if (!data.heartbeat || time < 4) {
+	if (observed_age > 30) {
+		row.find('.client-status').removeClass('error').addClass('warning').text('Query stale ' + observed_age);
+	} else if (!data.heartbeat || time < 4) {
 		row.find('.client-status').removeClass('error warning').text('OK ' + time);
 	} else if (time < 45) {
 		row.find('.client-status').removeClass('error').addClass('warning').text('Warning ' + time);
@@ -480,7 +484,7 @@ function updateUserData(bot, data) {
 		row.find('.active').text('N/A');
 	}
 	update_ban_tracker_data(row, data.ban_tracker);
-	updateIPCData(row, data.ipcID, data.ipc, data.state);
+	updateIPCData(row, data.ipcID, data.ipc, data.state, data.ipc_observed_at);
 }
 
 function addClientRow(botid) {
