@@ -170,10 +170,10 @@ void material_queued_call_noop(void*)
 }
 
 void* material_queued_call_noop_vtable[] = {
-  nullptr,
   reinterpret_cast<void*>(material_queued_call_noop),
-  nullptr,
-  nullptr,
+  reinterpret_cast<void*>(material_queued_call_noop),
+  reinterpret_cast<void*>(material_queued_call_noop),
+  reinterpret_cast<void*>(material_queued_call_noop),
   reinterpret_cast<void*>(material_queued_call_noop),
 };
 
@@ -219,7 +219,11 @@ std::int64_t material_queued_call_drain_hook(void* queue, char release)
   for (int index = 0; node != nullptr && index < max_queued_call_scan_count; ++index) {
     std::uint8_t* node_bytes = reinterpret_cast<std::uint8_t*>(node);
     void*** queued_call = reinterpret_cast<void***>(node_bytes + queued_call_object_offset);
-    if (*queued_call == nullptr || **queued_call == nullptr) {
+    void** queued_call_vtable = *queued_call != nullptr ? *reinterpret_cast<void***>(*queued_call) : nullptr;
+    if (*queued_call == nullptr ||
+        queued_call_vtable == nullptr ||
+        queued_call_vtable[1] == nullptr ||
+        queued_call_vtable[4] == nullptr) {
       *queued_call = reinterpret_cast<void**>(&material_queued_call_noop_object);
     }
     node = *reinterpret_cast<void**>(node_bytes + queued_call_next_offset);
