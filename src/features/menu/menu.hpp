@@ -292,18 +292,35 @@ inline bool slider_scalar_compact(const char* label, T* value, T minimum, T maxi
   const float track_min_x = field_bb.Min.x + scaled(4.0f);
   const float track_max_x = ImMax(track_min_x + scaled(1.0f), value_bb.Min.x - scaled(5.0f));
   const float track_center_y = field_bb.GetCenter().y;
+  const ImRect slider_bb(
+    ImVec2(track_min_x, field_bb.Min.y),
+    ImVec2(track_max_x, field_bb.Max.y));
   const ImRect track_bb(
     ImVec2(track_min_x, track_center_y - scaled(1.0f)),
     ImVec2(track_max_x, track_center_y + scaled(1.0f)));
 
   const bool hovered = ImGui::ItemHoverable(field_bb, id, ImGuiItemFlags_None);
   const bool value_hovered = ImGui::IsMouseHoveringRect(value_bb.Min, value_bb.Max, true);
+  bool temp_input_is_active = ImGui::TempInputIsActive(id);
+  if (!temp_input_is_active) {
+    const bool slider_hovered = ImGui::IsMouseHoveringRect(slider_bb.Min, slider_bb.Max, true);
+    const bool clicked = slider_hovered && !value_hovered && ImGui::IsMouseClicked(0, ImGuiInputFlags_None, id);
+    const bool make_active = (clicked || g.NavActivateId == id);
+    if (make_active && clicked) {
+      ImGui::SetKeyOwner(ImGuiKey_MouseLeft, id);
+    }
+    if (make_active && !temp_input_is_active) {
+      ImGui::SetActiveID(id, window);
+      ImGui::SetFocusID(id, window);
+      ImGui::FocusWindow(window);
+      g.ActiveIdUsingNavDirMask |= (1 << ImGuiDir_Left) | (1 << ImGuiDir_Right);
+    }
+  }
   const float value_min_f = static_cast<float>(minimum);
   const float value_max_f = static_cast<float>(maximum);
   const float value_current_f = static_cast<float>(*value);
   const float value_range_f = value_max_f - value_min_f;
   const float value_ratio = value_range_f != 0.0f ? ImSaturate((value_current_f - value_min_f) / value_range_f) : 0.0f;
-  bool temp_input_is_active = ImGui::TempInputIsActive(id);
   if (!temp_input_is_active && value_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
     ImGui::SetKeyOwner(ImGuiKey_MouseLeft, id);
     temp_input_is_active = true;
@@ -328,7 +345,7 @@ inline bool slider_scalar_compact(const char* label, T* value, T minimum, T maxi
     return changed;
   }
 
-  const bool changed = ImGui::SliderBehavior(track_bb, id, data_type, value, &minimum, &maximum, format, ImGuiSliderFlags_None, &grab_bb);
+  const bool changed = ImGui::SliderBehavior(slider_bb, id, data_type, value, &minimum, &maximum, format, ImGuiSliderFlags_None, &grab_bb);
   if (changed) ImGui::MarkItemEdited(id);
 
   const float hover_anim = storage_anim(id, "slider_hover", hovered ? 1.0f : 0.0f, 12.0f);
@@ -344,7 +361,8 @@ inline bool slider_scalar_compact(const char* label, T* value, T minimum, T maxi
   window->DrawList->AddRectFilled(track_bb.Min, track_bb.Max, ImGui::GetColorU32(with_alpha(k_text_soft, 0.12f)), 0.0f);
   window->DrawList->AddRectFilled(track_bb.Min, fill_max, ImGui::GetColorU32(k_accent), 0.0f);
   window->DrawList->AddRectFilled(value_bb.Min, value_bb.Max, ImGui::GetColorU32(with_alpha(k_bg_panel, 0.92f)), 0.0f);
-  window->DrawList->AddLine(ImVec2(value_bb.Min.x, value_bb.Min.y + scaled(1.0f)), ImVec2(value_bb.Min.x, value_bb.Max.y - scaled(1.0f)), ImGui::GetColorU32(with_alpha(k_line, 0.85f)), scale);
+  window->DrawList->AddLine(ImVec2(value_bb.Min.x, field_bb.Min.y), ImVec2(value_bb.Min.x, field_bb.Max.y), ImGui::GetColorU32(with_alpha(k_line, 0.85f)), scale);
+  window->DrawList->AddLine(ImVec2(value_bb.Max.x - scaled(1.0f), field_bb.Min.y), ImVec2(value_bb.Max.x - scaled(1.0f), field_bb.Max.y), ImGui::GetColorU32(with_alpha(k_line, 0.85f)), scale);
   window->DrawList->AddRectFilled(knob_bb.Min, knob_bb.Max, ImGui::GetColorU32(lerp_color(k_text_muted, k_text, active_anim * 0.7f + hover_anim * 0.3f)), 0.0f);
   window->DrawList->AddText(font_regular(), font_regular()->LegacySize, ImVec2(value_bb.GetCenter().x - (value_size.x * 0.5f), value_bb.GetCenter().y - (value_size.y * 0.5f)), ImGui::GetColorU32(active_anim > 0.0f ? k_text : k_text_muted), value_buffer);
   return changed;
