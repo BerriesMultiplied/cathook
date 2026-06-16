@@ -18,6 +18,7 @@ V  o o  V  file: src/features/combat/aimbot/melee_aim.hpp
 #include "aim_utils.hpp"
 #include "core/entity_cache.hpp"
 #include "features/movement/local_prediction/move_sim.hpp"
+#include "resolver.hpp"
 
 namespace melee_aim_detail {
 
@@ -26,7 +27,7 @@ constexpr float k_swing_time_cap = 0.35f;
 constexpr float k_behind_dot_required = 0.0031f;
 constexpr float k_facing_dot_required = 0.5f;
 constexpr float k_facestab_dot_min = -0.3f;
-constexpr float k_planar_min_distance = 0.30f;
+constexpr float k_planar_min_distance = 0.0884f;
 
 inline bool is_knife(Weapon* weapon) {
   if (weapon == nullptr) {
@@ -141,6 +142,12 @@ inline bool razorback_blocks_backstab(Player* target) {
   if (target == nullptr || !config.aimbot.melee_ignore_razorback) {
     return false;
   }
+
+  if (attribute_manager != nullptr &&
+      attribute_manager->attrib_hook_value(0.0f, "set_blockbackstab_once", target->to_entity()) != 0.0f) {
+    return true;
+  }
+
   const auto& wearables = entity_cache_entities(class_id::WEARABLE_RAZORBACK);
   for (Entity* wearable : wearables) {
     if (wearable == nullptr) {
@@ -153,10 +160,29 @@ inline bool razorback_blocks_backstab(Player* target) {
   return false;
 }
 
+inline float backstab_target_yaw(Player* target) {
+  if (target == nullptr) {
+    return 0.0f;
+  }
+
+  const float eye_yaw = target->get_eye_angles().y;
+  if (!config.aimbot.melee_account_ping) {
+    return eye_yaw;
+  }
+
+  const resolver::resolver_debug_info info = resolver::debug_for_player(target);
+  if (info.active && std::isfinite(info.yaw)) {
+    return info.yaw;
+  }
+
+  return eye_yaw;
+}
+
 inline bool backstab_geometry_ok(Player* target,
   const Vec3& predicted_target_origin,
   const Vec3& eye_pos,
-  const Vec3& aim_angles) {
+  const Vec3& aim_angles,
+  float target_yaw) {
   if (target == nullptr) {
     return false;
   }
@@ -176,8 +202,7 @@ inline bool backstab_geometry_ok(Player* target,
   const float view_dot_min = k_facestab_dot_min + k_behind_dot_required;
 
   const Vec3 owner_forward = forward_xy(aim_angles);
-  const Vec3 target_eye = target->get_eye_angles();
-  const Vec3 target_forward = forward_xy(Vec3{0.0f, target_eye.y, 0.0f});
+  const Vec3 target_forward = forward_xy(Vec3{0.0f, target_yaw, 0.0f});
 
   const float pos_vs_target = (to_target.x * target_forward.x) + (to_target.y * target_forward.y);
   const float pos_vs_owner = (to_target.x * owner_forward.x) + (to_target.y * owner_forward.y);
@@ -373,7 +398,8 @@ inline attempt_result try_aim_point(Player* localplayer,
   if (!validate_reach(localplayer, weapon, target, sample.origin, swing_start, angles)) {
     return r;
   }
-  if (require_backstab && !backstab_geometry_ok(target, sample.origin, swing_start, angles)) {
+  if (require_backstab &&
+      !backstab_geometry_ok(target, sample.origin, swing_start, angles, backstab_target_yaw(target))) {
     return r;
   }
 
@@ -411,7 +437,12 @@ inline bool melee_aim_trace_candidate(Player* localplayer,
     if (melee_aim_detail::razorback_blocks_backstab(target)) {
       return false;
     }
-    if (!melee_aim_detail::backstab_geometry_ok(target, target_origin, swing_start, aim_angles)) {
+    if (!melee_aim_detail::backstab_geometry_ok(
+          target,
+          target_origin,
+          swing_start,
+          aim_angles,
+          melee_aim_detail::backstab_target_yaw(target))) {
       return false;
     }
   }

@@ -7,6 +7,9 @@
 #include "features/combat/aimbot/projectile/projectile_trace.hpp"
 #include "features/combat/aimbot/proj_aim/proj_aim_budget.hpp"
 #include "features/menu/config.hpp"
+
+inline void projectile_sim_limit_horizon(projectile_sim_profile* profile, float max_time);
+
 inline bool local_prediction_flip_projectile_offset_y() {
   static Convar* cl_flipviewmodels = nullptr;
   if (cl_flipviewmodels == nullptr && convar_system != nullptr) {
@@ -647,7 +650,7 @@ inline projectile_sim_profile projectile_sim_profile_for_weapon(Player* localpla
 
   const float configured_horizon = static_cast<float>(std::clamp(config.aimbot.projectile_prediction_ticks, 8, 420)) *
     static_cast<float>(TICK_INTERVAL);
-  profile.params.max_time = std::min(profile.params.max_time, configured_horizon);
+  projectile_sim_limit_horizon(&profile, configured_horizon);
   profile.params.time_step = std::max(profile.params.time_step, static_cast<float>(TICK_INTERVAL));
   profile.offset = local_prediction_projectile_offset_for_weapon(localplayer, weapon);
   if (local_prediction_flip_projectile_offset_y()) {
@@ -655,7 +658,6 @@ inline projectile_sim_profile projectile_sim_profile_for_weapon(Player* localpla
   }
   profile.hull = projectile_sim_hull_for_weapon(weapon);
   profile.hull_trace = profile.hull.x > 0.0f || profile.hull.y > 0.0f || profile.hull.z > 0.0f;
-  profile.lifetime = profile.params.max_time;
   profile.initial_lift = projectile_sim_is_grenade_like_weapon(weapon) ? 200.0f : 0.0f;
   profile.drag = projectile_sim_drag_for_weapon(weapon, profile.params.speed);
   if (weapon->is_flamethrower()) {
@@ -792,6 +794,15 @@ inline projectile_sim_launch projectile_sim_build_launch(Player* localplayer,
   }
 
   return projectile_sim_build_launch_from_angles(localplayer, weapon, user_cmd->view_angles, profile);
+}
+
+inline void projectile_sim_limit_horizon(projectile_sim_profile* profile, float max_time) {
+  if (profile == nullptr) {
+    return;
+  }
+
+  profile->params.max_time = std::min(profile->params.max_time, max_time);
+  profile->lifetime = profile->params.max_time;
 }
 
 inline Vec3 projectile_sim_initial_velocity(const projectile_sim_launch& launch, const projectile_sim_profile& profile) {
@@ -1656,8 +1667,7 @@ inline LocalPredictionInterceptResult local_prediction_find_projectile_intercept
 
   projectile_sim_profile profile = projectile_sim_profile_for_weapon(localplayer, weapon);
   if (!profile.valid || profile.params.speed <= 0.0f) return result;
-  profile.params.max_time = std::min(profile.params.max_time, horizon_seconds);
-  profile.lifetime = profile.params.max_time;
+  projectile_sim_limit_horizon(&profile, horizon_seconds);
 
   float best_error = FLT_MAX;
   float best_time = 0.0f;
@@ -1806,8 +1816,7 @@ inline LocalPredictionInterceptResult local_prediction_find_static_projectile_in
 
   projectile_sim_profile profile = projectile_sim_profile_for_weapon(localplayer, weapon);
   if (!profile.valid || profile.params.speed <= 0.0f) return result;
-  profile.params.max_time = std::min(profile.params.max_time, horizon_seconds);
-  profile.lifetime = profile.params.max_time;
+  projectile_sim_limit_horizon(&profile, horizon_seconds);
 
   float best_score = FLT_MAX;
   float best_time = 0.0f;
@@ -1902,8 +1911,7 @@ inline LocalPredictionInterceptResult local_prediction_find_projectile_intercept
 
   projectile_sim_profile profile = projectile_sim_profile_for_weapon(localplayer, weapon);
   if (!profile.valid || profile.params.speed <= 0.0f) return result;
-  profile.params.max_time = std::min(profile.params.max_time, horizon_seconds);
-  profile.lifetime = profile.params.max_time;
+  projectile_sim_limit_horizon(&profile, horizon_seconds);
 
   float best_error = FLT_MAX;
   float best_time = 0.0f;

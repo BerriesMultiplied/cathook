@@ -1432,6 +1432,7 @@ static void draw_aimbot_content() {
   cat_menu::flow_panel("Projectile", 1, 196.0f, [&]() {
     cat_menu::combo("Projectile mode", (int*)&config.aimbot.projectile_mode, projectile_mode_items, IM_ARRAYSIZE(projectile_mode_items));
     cat_menu::slider_float("Splash radius scale", &config.aimbot.projectile_splash_radius_scale, 0.50f, 1.50f, "%.2fx");
+    cat_menu::checkbox("Auto detonate", &config.aimbot.auto_detonate);
     cat_menu::slider_int("Prediction ticks", &config.aimbot.projectile_prediction_ticks, 8, 420);
     cat_menu::slider_int("Projectile max targets", &config.aimbot.projectile_max_targets, 1, 12);
     cat_menu::checkbox("Projectile debug", &config.aimbot.projectile_debug);

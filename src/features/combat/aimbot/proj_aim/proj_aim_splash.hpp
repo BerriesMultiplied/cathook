@@ -11,9 +11,10 @@ V  o o  V  file: src/features/combat/aimbot/proj_aim/proj_aim_splash.hpp
 #ifndef PROJ_AIM_SPLASH_HPP
 #define PROJ_AIM_SPLASH_HPP
 
+#include "../aimbot.hpp"
+#include "../aim_utils.hpp"
 #include "proj_aim_budget.hpp"
 #include "proj_aim_trace.hpp"
-#include "../aimbot.hpp"
 
 inline std::vector<proj_aim_path_sample> proj_aim_limited_path_samples(const LocalPredictionEntityPath& target_path) {
   std::vector<proj_aim_path_sample> samples{};
@@ -253,35 +254,7 @@ inline bool proj_aim_direct_candidate_confident(const proj_aim_weapon_profile& p
 }
 
 inline bool proj_aim_splash_candidate_better(const aimbot_candidate& candidate, const aimbot_candidate& best) {
-  if (candidate.entity == nullptr) {
-    return false;
-  }
-  if (best.entity == nullptr) {
-    return true;
-  }
-
-  if (aimbot_candidate_better(candidate, best)) {
-    return true;
-  }
-  if (aimbot_candidate_better(best, candidate)) {
-    return false;
-  }
-
-  if (candidate.projectile_splash && best.projectile_splash && candidate.player == best.player) {
-    constexpr float miss_epsilon = 1.0f;
-    if (candidate.projectile_miss_distance + miss_epsilon < best.projectile_miss_distance) {
-      return true;
-    }
-    if (best.projectile_miss_distance + miss_epsilon < candidate.projectile_miss_distance) {
-      return false;
-    }
-    if (std::fabs(candidate.fov - best.fov) > 0.01f) {
-      return candidate.fov < best.fov;
-    }
-    return candidate.distance < best.distance;
-  }
-
-  return false;
+  return proj_aim_projectile_candidate_better(candidate, 0, best, 0);
 }
 
 inline aimbot_candidate proj_aim_find_splash_candidate(Player* localplayer,
@@ -330,6 +303,8 @@ inline aimbot_candidate proj_aim_find_splash_candidate(Player* localplayer,
   }
 
   bool splash_budget_exhausted = false;
+  constexpr int splash_candidate_priority = INT_MAX;
+  int best_priority = INT_MAX;
   for (const proj_aim_path_sample& predicted_sample : predicted_samples) {
     const int remaining_solves = splash_solve_budget - splash_solves;
     const int remaining_budget = proj_aim_budget_remaining_splash_candidates();
@@ -401,14 +376,19 @@ inline aimbot_candidate proj_aim_find_splash_candidate(Player* localplayer,
       }
 
       const Vec3 impact_target_origin = local_prediction_path_position_at_time(target_path, intercept.intercept_time);
+      const float effective_splash_radius = proj_aim_splash_radius_for_target(
+        weapon,
+        splash_radius,
+        intercept.intercept_time,
+        !player->is_on_ground());
       const float time_error = std::fabs(intercept.intercept_time - predicted_sample.time);
       if (time_error > std::max(profile.params.time_step * 4.0f, 0.08f) &&
-          distance_3d(impact_target_origin, predicted_origin) > splash_radius * 0.55f) {
+          distance_3d(impact_target_origin, predicted_origin) > effective_splash_radius * 0.55f) {
         continue;
       }
 
       Vec3 explosion_origin{};
-      if (!proj_aim_trace_splash_path(localplayer, player, weapon, intercept, splash_radius, hitbox_mask, &explosion_origin, &impact_target_origin, false)) {
+      if (!proj_aim_trace_splash_path(localplayer, player, weapon, intercept, effective_splash_radius, hitbox_mask, &explosion_origin, &impact_target_origin, false)) {
         if (config.aimbot.projectile_debug) {
           ++proj_aim_current_debug_stats.splash_trace_rejects;
         }
@@ -436,7 +416,7 @@ inline aimbot_candidate proj_aim_find_splash_candidate(Player* localplayer,
           explosion_origin,
           impact_target_origin,
           hitbox_samples,
-          splash_radius,
+          effective_splash_radius,
           &best_hitbox,
           &best_studio_hitbox,
           &best_bone,
@@ -447,33 +427,31 @@ inline aimbot_candidate proj_aim_find_splash_candidate(Player* localplayer,
         continue;
       }
 
-      aimbot_candidate splash_candidate{};
-      splash_candidate.entity = player;
-      splash_candidate.player = player;
-      splash_candidate.preferred = aimbot::has_preference(player);
-      splash_candidate.bone = best_bone;
-      splash_candidate.hitbox = best_hitbox;
-      splash_candidate.studio_hitbox = best_studio_hitbox;
-      splash_candidate.aim_position = splash_point;
-      splash_candidate.aim_angles = intercept.aim_angles;
-      splash_candidate.fov = intercept_fov;
-      splash_candidate.distance = intercept.intercept_distance + 24.0f;
-      splash_candidate.health = player->get_health();
-      splash_candidate.visible = true;
-      splash_candidate.projectile_splash = true;
-      splash_candidate.projectile_has_target_base_origin = true;
-      splash_candidate.projectile_intercept_time = intercept.intercept_time;
-      splash_candidate.projectile_miss_distance = best_point_distance;
-      splash_candidate.projectile_splash_radius = splash_radius;
-      splash_candidate.projectile_target_base_origin = impact_target_origin;
-      splash_candidate.projectile_target_offset = Vec3{};
-      splash_candidate.projectile_target_velocity = intercept.target_velocity;
+      proj_aim_direct_point splash_point_sample{};
+      splash_point_sample.hitbox = best_hitbox;
+      splash_point_sample.studio_hitbox = best_studio_hitbox;
+      splash_point_sample.bone = best_bone;
+      splash_point_sample.priority = splash_candidate_priority;
+      splash_point_sample.offset = Vec3{};
+
+      proj_aim_projectile_candidate_input splash_candidate_input{};
+      splash_candidate_input.point = &splash_point_sample;
+      splash_candidate_input.splash = true;
+      splash_candidate_input.aim_position = splash_point;
+      splash_candidate_input.target_base_origin = impact_target_origin;
+      splash_candidate_input.target_offset = Vec3{};
+      splash_candidate_input.target_velocity = intercept.target_velocity;
+      splash_candidate_input.distance = intercept.intercept_distance + 24.0f;
+      splash_candidate_input.fov = intercept_fov;
+      splash_candidate_input.miss_distance = best_point_distance;
+      splash_candidate_input.splash_radius = effective_splash_radius;
+      aimbot_candidate splash_candidate = proj_aim_build_projectile_candidate(player, splash_candidate_input, intercept);
 
       if (config.aimbot.projectile_debug) {
         ++proj_aim_current_debug_stats.splash_candidates;
       }
-      if (proj_aim_splash_candidate_better(splash_candidate, best_candidate)) {
-        proj_aim_store_debug_path(target_path, intercept, splash_candidate);
+      if (proj_aim_projectile_candidate_better(splash_candidate, splash_candidate_priority, best_candidate, best_priority)) {
+        proj_aim_store_debug_path(target_path, intercept, splash_candidate.projectile_splash, splash_candidate.aim_position);
         if (config.aimbot.projectile_debug) {
           proj_aim_current_debug_stats.best_splash = true;
           proj_aim_current_debug_stats.best_time = intercept.intercept_time;
@@ -481,6 +459,7 @@ inline aimbot_candidate proj_aim_find_splash_candidate(Player* localplayer,
           proj_aim_current_debug_stats.best_splash_miss = best_point_distance;
         }
         best_candidate = splash_candidate;
+        best_priority = splash_candidate_priority;
       }
     }
 
@@ -490,7 +469,7 @@ inline aimbot_candidate proj_aim_find_splash_candidate(Player* localplayer,
   }
 
   if (config.aimbot.projectile_debug) {
-    proj_aim_last_splash_history = std::move(splash_history);
+    proj_aim_finalize_debug_capture(std::vector<proj_aim_direct_history>{}, std::move(splash_history));
   }
   return best_candidate;
 }

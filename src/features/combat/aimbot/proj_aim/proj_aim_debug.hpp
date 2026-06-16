@@ -210,6 +210,8 @@ inline void proj_aim_reset_debug_stats(Weapon* weapon,
   proj_aim_current_debug_stats.effective_hitbox_mask = effective_hitbox_mask;
   proj_aim_current_debug_stats.auto_hitbox = (configured_hitbox_mask & aim_hitbox_mask_auto) != 0;
   proj_aim_current_debug_path = {};
+  proj_aim_last_direct_history.clear();
+  proj_aim_last_splash_history.clear();
 }
 
 inline void proj_aim_commit_debug_stats() {
@@ -251,19 +253,35 @@ inline void proj_aim_set_scan_debug_stats(int scan_targets, int scan_attempts, i
 
 inline void proj_aim_store_debug_path(const LocalPredictionEntityPath& target_path,
   const LocalPredictionInterceptResult& intercept,
-  const aimbot_candidate& candidate) {
+  bool projectile_splash,
+  const Vec3& aim_position) {
   if (!config.aimbot.projectile_debug || global_vars == nullptr || !intercept.valid) {
     return;
   }
 
   proj_aim_current_debug_path = {};
   proj_aim_current_debug_path.valid = true;
-  proj_aim_current_debug_path.splash = candidate.projectile_splash;
+  proj_aim_current_debug_path.splash = projectile_splash;
   proj_aim_current_debug_path.expire_time = global_vars->curtime + 0.25f;
-  proj_aim_current_debug_path.aim_position = candidate.aim_position;
-  proj_aim_current_debug_path.explosion_origin = candidate.projectile_splash ? candidate.aim_position : Vec3{};
+  proj_aim_current_debug_path.aim_position = aim_position;
+  proj_aim_current_debug_path.explosion_origin = projectile_splash ? aim_position : Vec3{};
   proj_aim_current_debug_path.projectile_trace = intercept.trace;
   proj_aim_current_debug_path.target_path = target_path.positions;
+}
+
+inline void proj_aim_finalize_debug_capture(std::vector<proj_aim_direct_history>&& direct_history,
+  std::vector<proj_aim_splash_history>&& splash_history) {
+  if (!config.aimbot.projectile_debug) {
+    return;
+  }
+
+  if (!direct_history.empty()) {
+    proj_aim_last_direct_history = std::move(direct_history);
+  }
+  if (!splash_history.empty()) {
+    proj_aim_last_splash_history = std::move(splash_history);
+  }
+  proj_aim_commit_debug_stats();
 }
 
 #endif

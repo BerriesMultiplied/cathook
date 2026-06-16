@@ -1,6 +1,7 @@
 #include "features/combat/backtrack/backtrack.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <cmath>
 #include <cstdio>
 #include <cstdint>
@@ -149,6 +150,11 @@ send_datagram_fn g_send_datagram_original = nullptr;
   return g_latency_ramp * std::clamp(requested, 0.0f, available);
 }
 
+[[nodiscard]] float round_to_tick_seconds(float seconds)
+{
+  return local_prediction_ticks_to_time(local_prediction_time_to_ticks(seconds));
+}
+
 [[nodiscard]] std::uint32_t configured_hitbox_mask()
 {
   const std::uint32_t mask = config.aimbot.hitscan_hitboxes & aim_hitbox_mask_all;
@@ -183,7 +189,7 @@ send_datagram_fn g_send_datagram_original = nullptr;
   }
 
   timing.correct = std::clamp(
-    timing.outgoing_latency + timing.incoming_latency + timing.fake_latency + timing.fake_interp,
+    timing.outgoing_latency + timing.incoming_latency + round_to_tick_seconds(timing.fake_interp),
     0.0f,
     timing.max_unlag);
   timing.valid = true;
@@ -223,6 +229,18 @@ send_datagram_fn g_send_datagram_original = nullptr;
   }
 
   return true;
+}
+
+[[nodiscard]] bool record_valid_for_fallback(const backtrack_record& record, Player* player)
+{
+  return record.valid &&
+    !record.invalid &&
+    !record.teleport &&
+    record.player == player &&
+    record.ent_index > 0 &&
+    record.hitbox_count > 0 &&
+    record.bone_count > 0 &&
+    std::isfinite(record.sim_time);
 }
 
 [[nodiscard]] bool world_clear(const Vec3& start_pos, const Vec3& end_pos)
@@ -677,16 +695,35 @@ backtrack_record_view valid_records(Player* player)
 
   const backtrack_timing timing = build_timing();
   const float current_sim_time = player != nullptr ? player->get_simulation_time() : 0.0f;
+  const backtrack_record* best_fallback_record = nullptr;
+  float best_fallback_delta = std::numeric_limits<float>::max();
+
   for (int index = 0; index < history->record_count && view.count < max_records; ++index) {
     const backtrack_record& record = history->records[index];
-    if (!record_valid_for_timing(record, player, timing)) {
-      continue;
-    }
-    if (std::fabs(record.sim_time - current_sim_time) <= 0.0001f) {
+    if (record_valid_for_timing(record, player, timing)) {
+      if (std::fabs(record.sim_time - current_sim_time) <= 0.0001f) {
+        continue;
+      }
+
+      view.records[view.count++] = &record;
       continue;
     }
 
-    view.records[view.count++] = &record;
+    if (!record_valid_for_fallback(record, player)) {
+      continue;
+    }
+
+    const float delta = record_delta(timing, record);
+    if (!std::isfinite(delta) || delta >= best_fallback_delta) {
+      continue;
+    }
+
+    best_fallback_delta = delta;
+    best_fallback_record = &record;
+  }
+
+  if (view.count <= 0 && best_fallback_record != nullptr) {
+    view.records[view.count++] = best_fallback_record;
   }
 
   std::sort(view.records.begin(), view.records.begin() + view.count, [&](const backtrack_record* left, const backtrack_record* right) {

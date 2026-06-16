@@ -127,6 +127,7 @@ struct Aim {
   ProjectileMode projectile_mode = ProjectileMode::DIRECT_THEN_SPLASH;
   uint32_t projectile_hitboxes = aim_hitbox_mask_auto;
   float projectile_splash_radius_scale = 1.0f;
+  bool auto_detonate = false;
   int projectile_prediction_ticks = 240;
   int projectile_max_targets = 4;
   bool projectile_debug = false;

@@ -113,6 +113,84 @@ struct LocalPredictionSnapshot {
   LocalPredictionGlobalSnapshot globals{};
 };
 
+inline bool local_prediction_capture(Player* localplayer, LocalPredictionSnapshot* snapshot);
+inline bool local_prediction_restore(Player* localplayer, const LocalPredictionSnapshot& snapshot);
+
+struct local_prediction_bool_guard {
+  bool* value = nullptr;
+  bool previous = false;
+  bool active = false;
+
+  explicit local_prediction_bool_guard(bool* value_in, bool next_value)
+    : value(value_in) {
+    if (value == nullptr) {
+      return;
+    }
+
+    previous = *value;
+    *value = next_value;
+    active = true;
+  }
+
+  ~local_prediction_bool_guard() {
+    if (active && value != nullptr) {
+      *value = previous;
+    }
+  }
+
+  local_prediction_bool_guard(const local_prediction_bool_guard&) = delete;
+  local_prediction_bool_guard& operator=(const local_prediction_bool_guard&) = delete;
+};
+
+struct local_prediction_restore_guard {
+  Player* player = nullptr;
+  LocalPredictionSnapshot snapshot{};
+  bool valid = false;
+  bool restored = false;
+
+  explicit local_prediction_restore_guard(Player* localplayer)
+    : player(localplayer) {
+    valid = local_prediction_capture(player, &snapshot);
+  }
+
+  ~local_prediction_restore_guard() {
+    if (valid && !restored) {
+      local_prediction_restore(player, snapshot);
+    }
+  }
+
+  bool restore_now() {
+    if (!valid || restored) {
+      return valid;
+    }
+
+    restored = local_prediction_restore(player, snapshot);
+    return restored;
+  }
+
+  local_prediction_restore_guard(const local_prediction_restore_guard&) = delete;
+  local_prediction_restore_guard& operator=(const local_prediction_restore_guard&) = delete;
+};
+
+struct local_prediction_host_guard {
+  MoveHelper* helper = nullptr;
+
+  explicit local_prediction_host_guard(MoveHelper* move_helper_in, Player* host) : helper(move_helper_in) {
+    if (helper != nullptr) {
+      helper->set_host(host);
+    }
+  }
+
+  ~local_prediction_host_guard() {
+    if (helper != nullptr) {
+      helper->set_host(nullptr);
+    }
+  }
+
+  local_prediction_host_guard(const local_prediction_host_guard&) = delete;
+  local_prediction_host_guard& operator=(const local_prediction_host_guard&) = delete;
+};
+
 inline bool local_prediction_capture(Player* localplayer, LocalPredictionSnapshot* snapshot) {
   if (localplayer == nullptr || snapshot == nullptr || global_vars == nullptr || prediction == nullptr) return false;
 
@@ -186,26 +264,26 @@ inline bool local_prediction_run(Player* localplayer, const LocalPredictionReque
     return false;
   }
 
-  LocalPredictionSnapshot snapshot{};
-  if (!local_prediction_capture(localplayer, &snapshot)) {
+  local_prediction_restore_guard restore_guard(localplayer);
+  if (!restore_guard.valid) {
     local_prediction_debug.last_failure_stage = 3;
     return false;
   }
 
-  local_prediction_active = true;
+  local_prediction_bool_guard active_guard(&local_prediction_active, true);
 
   for (size_t tick_index = 0; tick_index < request.ticks.size(); ++tick_index) {
     const LocalPredictionTick& step = request.ticks[tick_index];
     user_cmd cmd = step.cmd;
     if (cmd.command_number == 0) {
-      cmd.command_number = snapshot.globals.tickcount + static_cast<int>(tick_index) + 1;
+      cmd.command_number = restore_guard.snapshot.globals.tickcount + static_cast<int>(tick_index) + 1;
     }
     if (cmd.tick_count <= 0) {
-      cmd.tick_count = snapshot.globals.tickcount + static_cast<int>(tick_index) + 1;
+      cmd.tick_count = restore_guard.snapshot.globals.tickcount + static_cast<int>(tick_index) + 1;
     }
     cmd.has_been_predicted = false;
 
-    localplayer->set_tickbase(snapshot.player.tickbase + static_cast<int>(tick_index));
+    localplayer->set_tickbase(restore_guard.snapshot.player.tickbase + static_cast<int>(tick_index));
     localplayer->set_current_cmd(&cmd);
     if (random_seed != nullptr) {
       *random_seed = MD5_PseudoRandom(static_cast<unsigned int>(cmd.command_number)) & INT_MAX;
@@ -234,8 +312,7 @@ inline bool local_prediction_run(Player* localplayer, const LocalPredictionReque
   }
 
   local_prediction_debug.last_simulated_ticks = static_cast<int>(request.ticks.size());
-  local_prediction_debug.last_restore_ok = local_prediction_restore(localplayer, snapshot);
-  local_prediction_active = false;
+  local_prediction_debug.last_restore_ok = restore_guard.restore_now();
   if (result != nullptr) {
     result->success = local_prediction_debug.last_restore_ok;
     result->restored = local_prediction_debug.last_restore_ok;
@@ -839,18 +916,19 @@ inline bool local_prediction_simulate_player_path(Player* player,
     return false;
   }
 
-  LocalPredictionSnapshot snapshot{};
-  if (!local_prediction_capture(player, &snapshot)) {
+  local_prediction_restore_guard restore_guard(player);
+  if (!restore_guard.valid) {
     return false;
   }
 
-  Vec3 initial_velocity = snapshot.player.velocity;
+  local_prediction_bool_guard active_guard(&movement_sim_active, true);
+
+  Vec3 initial_velocity = restore_guard.snapshot.player.velocity;
   const bool is_local_player = entity_list != nullptr && player == entity_list->get_localplayer();
   if (!is_local_player) {
     initial_velocity = local_prediction_player_path_seed_velocity(player);
   }
 
-  movement_sim_active = true;
   *path_out = {};
   path_out->time_step = TICK_INTERVAL;
   path_out->start_time = local_prediction_ticks_to_time(lead_ticks);
@@ -861,14 +939,14 @@ inline bool local_prediction_simulate_player_path(Player* player,
   tick_count = std::clamp(tick_count, 1, requested_tick_count);
   path_out->positions.reserve(static_cast<size_t>(tick_count) + 1);
   if (lead_ticks <= 0) {
-    path_out->positions.push_back(snapshot.player.origin);
+    path_out->positions.push_back(restore_guard.snapshot.player.origin);
   }
 
   MoveData move{};
   move.m_bFirstRunOfFunctions = false;
   move.m_bGameCodeMovedPlayer = false;
   move.m_nPlayerHandle = player->get_ref_handle();
-  move.SetAbsOrigin(snapshot.player.origin);
+  move.SetAbsOrigin(restore_guard.snapshot.player.origin);
   move.m_vecVelocity = initial_velocity;
 
   player->set_velocity(initial_velocity);
@@ -883,7 +961,7 @@ inline bool local_prediction_simulate_player_path(Player* player,
 
   if (!is_local_player) {
     player->set_base_velocity(Vec3{});
-    if (snapshot.player.flags & FL_ONGROUND) {
+    if (restore_guard.snapshot.player.flags & FL_ONGROUND) {
       move.m_vecVelocity.z = std::min(move.m_vecVelocity.z, 0.0f);
       player->set_velocity(move.m_vecVelocity);
     } else {
@@ -909,7 +987,7 @@ inline bool local_prediction_simulate_player_path(Player* player,
   move.m_vecOldAngles = move.m_vecViewAngles;
   move.m_nButtons = player->get_buttons();
   move.m_nOldButtons = player->get_last_buttons();
-  if (snapshot.player.ducked || player->get_ducked()) {
+  if (restore_guard.snapshot.player.ducked || player->get_ducked()) {
     move.m_nButtons |= IN_DUCK;
   }
   local_prediction_fill_move_from_velocity(&move, initial_velocity, view_yaw, max_speed);
@@ -921,21 +999,21 @@ inline bool local_prediction_simulate_player_path(Player* player,
   move.m_flConstraintSpeedFactor = player->get_constraint_speed_factor();
 
   user_cmd dummy_cmd{};
-  dummy_cmd.command_number = snapshot.globals.tickcount + 1;
-  dummy_cmd.tick_count = snapshot.globals.tickcount + 1;
+  dummy_cmd.command_number = restore_guard.snapshot.globals.tickcount + 1;
+  dummy_cmd.tick_count = restore_guard.snapshot.globals.tickcount + 1;
   dummy_cmd.buttons = move.m_nButtons;
 
-  move_helper->set_host(player);
+  local_prediction_host_guard host_guard(move_helper, player);
   player->set_current_cmd(&dummy_cmd);
 
   bool movement_ok = true;
   for (int tick = 0; tick < tick_count + lead_ticks; ++tick) {
-    global_vars->curtime = (snapshot.player.tickbase + tick) * TICK_INTERVAL;
+    global_vars->curtime = (restore_guard.snapshot.player.tickbase + tick) * TICK_INTERVAL;
     if (!is_local_player) {
-      global_vars->curtime = snapshot.globals.curtime + (static_cast<float>(tick) * static_cast<float>(TICK_INTERVAL));
+      global_vars->curtime = restore_guard.snapshot.globals.curtime + (static_cast<float>(tick) * static_cast<float>(TICK_INTERVAL));
     }
     global_vars->frametime = prediction->engine_paused ? 0.0f : TICK_INTERVAL;
-    global_vars->tickcount = snapshot.globals.tickcount + tick;
+    global_vars->tickcount = restore_guard.snapshot.globals.tickcount + tick;
     prediction->first_time_predicted = false;
     prediction->in_prediction = true;
 
@@ -954,8 +1032,8 @@ inline bool local_prediction_simulate_player_path(Player* player,
     move.m_vecOldAngles = move.m_vecViewAngles;
     dummy_cmd.view_angles = move.m_vecViewAngles;
     dummy_cmd.buttons = move.m_nButtons;
-    dummy_cmd.command_number = snapshot.globals.tickcount + tick + 1;
-    dummy_cmd.tick_count = snapshot.globals.tickcount + tick + 1;
+    dummy_cmd.command_number = restore_guard.snapshot.globals.tickcount + tick + 1;
+    dummy_cmd.tick_count = restore_guard.snapshot.globals.tickcount + tick + 1;
 
     const float old_client_max_speed = move.m_flClientMaxSpeed;
     if (player->get_ducked() && player->is_on_ground() && player->get_water_level() <= 1) {
@@ -980,9 +1058,7 @@ inline bool local_prediction_simulate_player_path(Player* player,
   path_out->final_velocity = move.m_vecVelocity;
   path_out->valid = movement_ok && path_out->positions.size() > 1;
 
-  move_helper->set_host(nullptr);
-  local_prediction_restore(player, snapshot);
-  movement_sim_active = false;
+  restore_guard.restore_now();
   return path_out->valid;
 }
 

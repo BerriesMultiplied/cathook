@@ -14,6 +14,8 @@ V  o o  V  file: src/features/combat/aimbot/proj_aim/proj_aim_weapon.hpp
 #include "features/combat/aimbot/projectile/projectile_live_data.hpp"
 #include "proj_aim_debug.hpp"
 
+inline bool proj_aim_is_stickybomb_launcher(Weapon* weapon);
+
 inline bool proj_aim_mode_allows_direct(Weapon* weapon) {
   if (!proj_aim_supports_splash(weapon)) {
     return true;
@@ -86,6 +88,45 @@ inline float proj_aim_splash_radius_for_weapon(Weapon* weapon) {
 
   radius *= std::clamp(config.aimbot.projectile_splash_radius_scale, 0.25f, 2.0f);
   return radius;
+}
+
+inline float proj_aim_splash_radius_for_target(Weapon* weapon,
+  float splash_radius,
+  float intercept_time,
+  bool target_airborne) {
+  if (weapon == nullptr || splash_radius <= 0.0f) {
+    return 0.0f;
+  }
+
+  if (!proj_aim_is_stickybomb_launcher(weapon) || !target_airborne) {
+    return splash_radius;
+  }
+
+  static Convar* tf_grenadelauncher_livetime = nullptr;
+  static Convar* tf_sticky_radius_ramp_time = nullptr;
+  static Convar* tf_sticky_airdet_radius = nullptr;
+  if (convar_system != nullptr) {
+    if (tf_grenadelauncher_livetime == nullptr) {
+      tf_grenadelauncher_livetime = convar_system->find_var("tf_grenadelauncher_livetime");
+    }
+    if (tf_sticky_radius_ramp_time == nullptr) {
+      tf_sticky_radius_ramp_time = convar_system->find_var("tf_sticky_radius_ramp_time");
+    }
+    if (tf_sticky_airdet_radius == nullptr) {
+      tf_sticky_airdet_radius = convar_system->find_var("tf_sticky_airdet_radius");
+    }
+  }
+
+  const float live_time = tf_grenadelauncher_livetime != nullptr ? tf_grenadelauncher_livetime->get_float() : 0.8f;
+  const float ramp_time = tf_sticky_radius_ramp_time != nullptr ? tf_sticky_radius_ramp_time->get_float() : 0.0f;
+  const float airdet_radius = tf_sticky_airdet_radius != nullptr ? tf_sticky_airdet_radius->get_float() : 1.0f;
+  if (ramp_time <= 0.0f) {
+    return splash_radius * std::clamp(airdet_radius, 0.0f, 1.0f);
+  }
+
+  const float progress = std::clamp((intercept_time - live_time) / ramp_time, 0.0f, 1.0f);
+  const float radius_scale = airdet_radius + ((1.0f - airdet_radius) * progress);
+  return splash_radius * std::clamp(radius_scale, 0.0f, 1.0f);
 }
 
 inline float proj_aim_hull_radius_for_weapon(Weapon* weapon) {

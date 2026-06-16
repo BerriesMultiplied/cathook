@@ -18,7 +18,6 @@ V  o o  V  file: src/features/combat/aimbot/proj_aim/proj_aim_types.hpp
 #include <utility>
 #include <vector>
 
-#include "features/combat/aimbot/aim_utils.hpp"
 #include "features/combat/aimbot/projectile/projectile_types.hpp"
 #include "features/combat/aimbot/projectile/splash_trace_cache.hpp"
 #include "core/shared/sigs.hpp"
@@ -104,6 +103,19 @@ struct proj_aim_solution {
   float fov = FLT_MAX;
   float distance = FLT_MAX;
   float intercept_time = 0.0f;
+  float splash_radius = 0.0f;
+};
+
+struct proj_aim_projectile_candidate_input {
+  const proj_aim_direct_point* point = nullptr;
+  bool splash = false;
+  Vec3 aim_position{};
+  Vec3 target_base_origin{};
+  Vec3 target_offset{};
+  Vec3 target_velocity{};
+  float distance = FLT_MAX;
+  float fov = FLT_MAX;
+  float miss_distance = FLT_MAX;
   float splash_radius = 0.0f;
 };
 

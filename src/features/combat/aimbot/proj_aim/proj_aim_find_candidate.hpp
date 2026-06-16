@@ -15,6 +15,8 @@ V  o o  V  file: src/features/combat/aimbot/proj_aim/proj_aim_find_candidate.hpp
 #include <array>
 #include <cstddef>
 
+#include "../aimbot.hpp"
+#include "../aim_utils.hpp"
 #include "proj_aim_budget.hpp"
 #include "proj_aim_splash.hpp"
 
@@ -191,32 +193,29 @@ inline aimbot_candidate proj_aim_find_flamethrower_candidate(Player* localplayer
       continue;
     }
 
-    aimbot_candidate point_candidate{};
-    point_candidate.entity = player;
-    point_candidate.player = player;
-    point_candidate.preferred = aimbot::has_preference(player);
-    point_candidate.bone = sample.bone;
-    point_candidate.hitbox = sample.hitbox;
-    point_candidate.studio_hitbox = sample.studio_hitbox;
-    point_candidate.aim_position = predicted_target;
-    point_candidate.aim_angles = aim_angles;
-    point_candidate.fov = fov;
-    point_candidate.distance = launch_distance;
-    point_candidate.health = player->get_health();
-    point_candidate.visible = true;
-    point_candidate.projectile_direct = true;
-    point_candidate.projectile_has_target_base_origin = true;
-    point_candidate.projectile_intercept_time = travel_time;
-    point_candidate.projectile_miss_distance = 0.0f;
-    point_candidate.projectile_target_base_origin = predicted_base;
-    point_candidate.projectile_target_offset = sample.offset;
-    point_candidate.projectile_target_velocity = target_velocity;
+    LocalPredictionInterceptResult intercept{};
+    intercept.valid = true;
+    intercept.aim_angles = aim_angles;
+    intercept.has_target_base_origin = true;
+    intercept.intercept_time = travel_time;
+    intercept.target_origin = predicted_target;
+    intercept.target_base_origin = predicted_base;
+    intercept.target_offset = sample.offset;
+    intercept.target_velocity = target_velocity;
+    intercept.miss_distance = 0.0f;
 
-    if (candidate.entity == nullptr ||
-        sample.priority < best_priority ||
-        (sample.priority == best_priority && point_candidate.fov < candidate.fov) ||
-        (sample.priority == best_priority && std::fabs(point_candidate.fov - candidate.fov) <= 0.01f &&
-          point_candidate.distance < candidate.distance)) {
+    proj_aim_projectile_candidate_input point_candidate_input{};
+    point_candidate_input.point = &sample;
+    point_candidate_input.aim_position = predicted_target;
+    point_candidate_input.target_base_origin = predicted_base;
+    point_candidate_input.target_offset = sample.offset;
+    point_candidate_input.target_velocity = target_velocity;
+    point_candidate_input.distance = launch_distance;
+    point_candidate_input.fov = fov;
+    point_candidate_input.miss_distance = 0.0f;
+    aimbot_candidate point_candidate = proj_aim_build_projectile_candidate(player, point_candidate_input, intercept);
+
+    if (proj_aim_projectile_candidate_better(point_candidate, sample.priority, candidate, best_priority)) {
       best_priority = sample.priority;
       candidate = point_candidate;
     }
@@ -241,8 +240,7 @@ inline LocalPredictionInterceptResult proj_aim_simple_projectile_intercept(Playe
     return result;
   }
 
-  sim_profile.params.max_time = std::min(sim_profile.params.max_time, weapon_profile.params.max_time);
-  sim_profile.lifetime = sim_profile.params.max_time;
+  projectile_sim_limit_horizon(&sim_profile, weapon_profile.params.max_time);
 
   const Vec3 initial_target = target_base_origin + target_offset;
   const Vec3 shoot_pos = localplayer->get_shoot_pos();
@@ -387,8 +385,6 @@ inline aimbot_candidate proj_aim_find_simple_candidate(Player* localplayer,
     debug_path = proj_aim_simple_debug_path(player, target_base_origin, target_velocity, profile.params.max_time);
     proj_aim_reset_debug_stats(weapon, player, debug_path, configured_hitbox_mask, hitbox_mask);
     proj_aim_current_debug_stats.direct_points = static_cast<int>(direct_point_count);
-    proj_aim_last_direct_history.clear();
-    proj_aim_last_splash_history.clear();
   }
 
   aimbot_candidate direct_candidate{};
@@ -425,38 +421,21 @@ inline aimbot_candidate proj_aim_find_simple_candidate(Player* localplayer,
       continue;
     }
 
-    aimbot_candidate point_candidate{};
-    point_candidate.entity = player;
-    point_candidate.player = player;
-    point_candidate.preferred = aimbot::has_preference(player);
-    point_candidate.bone = sample.bone;
-    point_candidate.hitbox = sample.hitbox;
-    point_candidate.studio_hitbox = sample.studio_hitbox;
-    point_candidate.aim_position = intercept.target_origin;
-    point_candidate.aim_angles = intercept.aim_angles;
-    point_candidate.fov = direct_fov;
-    point_candidate.distance = intercept.intercept_distance;
-    point_candidate.health = player->get_health();
-    point_candidate.visible = true;
-    point_candidate.projectile_direct = true;
-    point_candidate.projectile_has_target_base_origin = intercept.has_target_base_origin;
-    point_candidate.projectile_intercept_time = intercept.intercept_time;
-    point_candidate.projectile_miss_distance = intercept.miss_distance;
-    point_candidate.projectile_target_base_origin = intercept.target_base_origin;
-    point_candidate.projectile_target_offset = intercept.target_offset;
-    point_candidate.projectile_target_velocity = intercept.target_velocity;
+    proj_aim_projectile_candidate_input point_candidate_input{};
+    point_candidate_input.point = &sample;
+    point_candidate_input.aim_position = intercept.target_origin;
+    point_candidate_input.target_base_origin = intercept.target_base_origin;
+    point_candidate_input.target_offset = intercept.target_offset;
+    point_candidate_input.target_velocity = intercept.target_velocity;
+    point_candidate_input.distance = intercept.intercept_distance;
+    point_candidate_input.fov = direct_fov;
+    point_candidate_input.miss_distance = intercept.miss_distance;
+    aimbot_candidate point_candidate = proj_aim_build_projectile_candidate(player, point_candidate_input, intercept);
 
-    const int point_priority = sample.priority;
-    if (direct_candidate.entity == nullptr ||
-        point_priority < direct_candidate_priority ||
-        (point_priority == direct_candidate_priority && point_candidate.projectile_miss_distance + 1.0f < direct_candidate.projectile_miss_distance) ||
-        (point_priority == direct_candidate_priority && std::fabs(point_candidate.projectile_miss_distance - direct_candidate.projectile_miss_distance) <= 1.0f &&
-         point_candidate.fov < direct_candidate.fov) ||
-        (point_priority == direct_candidate_priority && std::fabs(point_candidate.fov - direct_candidate.fov) <= 0.01f &&
-         point_candidate.distance < direct_candidate.distance)) {
-      direct_candidate_priority = point_priority;
+    if (proj_aim_projectile_candidate_better(point_candidate, sample.priority, direct_candidate, direct_candidate_priority)) {
+      direct_candidate_priority = sample.priority;
       if (config.aimbot.projectile_debug) {
-        proj_aim_store_debug_path(debug_path, intercept, point_candidate);
+        proj_aim_store_debug_path(debug_path, intercept, point_candidate.projectile_splash, point_candidate.aim_position);
         ++proj_aim_current_debug_stats.direct_candidates;
         proj_aim_current_debug_stats.best_direct = true;
         proj_aim_current_debug_stats.best_time = intercept.intercept_time;
@@ -468,7 +447,7 @@ inline aimbot_candidate proj_aim_find_simple_candidate(Player* localplayer,
   }
 
   if (config.aimbot.projectile_debug) {
-    proj_aim_commit_debug_stats();
+    proj_aim_finalize_debug_capture(std::vector<proj_aim_direct_history>{}, std::vector<proj_aim_splash_history>{});
   }
   return direct_candidate;
 }
@@ -609,38 +588,20 @@ inline aimbot_candidate proj_aim_find_candidate(Player* localplayer, Weapon* wea
         });
       }
 
-      aimbot_candidate point_candidate{};
-      point_candidate.entity = player;
-      point_candidate.player = player;
-      point_candidate.preferred = aimbot::has_preference(player);
-      point_candidate.bone = sample.bone;
-      point_candidate.hitbox = sample.hitbox;
-      point_candidate.studio_hitbox = sample.studio_hitbox;
-      point_candidate.aim_position = intercept.target_origin;
-      point_candidate.aim_angles = intercept.aim_angles;
-      point_candidate.fov = direct_fov;
-      point_candidate.distance = intercept.intercept_distance;
-      point_candidate.health = player->get_health();
-      point_candidate.visible = true;
-      point_candidate.projectile_direct = true;
-      point_candidate.projectile_has_target_base_origin = intercept.has_target_base_origin;
-      point_candidate.projectile_intercept_time = intercept.intercept_time;
-      point_candidate.projectile_miss_distance = intercept.miss_distance;
-      point_candidate.projectile_target_base_origin = intercept.target_base_origin;
-      point_candidate.projectile_target_offset = intercept.target_offset;
-      point_candidate.projectile_target_velocity = intercept.target_velocity;
+      proj_aim_projectile_candidate_input point_candidate_input{};
+      point_candidate_input.point = &sample;
+      point_candidate_input.aim_position = intercept.target_origin;
+      point_candidate_input.target_base_origin = intercept.target_base_origin;
+      point_candidate_input.target_offset = intercept.target_offset;
+      point_candidate_input.target_velocity = intercept.target_velocity;
+      point_candidate_input.distance = intercept.intercept_distance;
+      point_candidate_input.fov = direct_fov;
+      point_candidate_input.miss_distance = intercept.miss_distance;
+      aimbot_candidate point_candidate = proj_aim_build_projectile_candidate(player, point_candidate_input, intercept);
 
-      const int point_priority = sample.priority;
-
-      if (direct_candidate.entity == nullptr ||
-          point_priority < direct_candidate_priority ||
-          (point_priority == direct_candidate_priority && point_candidate.projectile_miss_distance + 1.0f < direct_candidate.projectile_miss_distance) ||
-          (point_priority == direct_candidate_priority && std::fabs(point_candidate.projectile_miss_distance - direct_candidate.projectile_miss_distance) <= 1.0f &&
-           point_candidate.fov < direct_candidate.fov) ||
-          (point_priority == direct_candidate_priority && std::fabs(point_candidate.fov - direct_candidate.fov) <= 0.01f &&
-           point_candidate.distance < direct_candidate.distance)) {
-        proj_aim_store_debug_path(target_path, intercept, point_candidate);
-        direct_candidate_priority = point_priority;
+      if (proj_aim_projectile_candidate_better(point_candidate, sample.priority, direct_candidate, direct_candidate_priority)) {
+        proj_aim_store_debug_path(target_path, intercept, point_candidate.projectile_splash, point_candidate.aim_position);
+        direct_candidate_priority = sample.priority;
         if (config.aimbot.projectile_debug) {
           ++proj_aim_current_debug_stats.direct_candidates;
           proj_aim_current_debug_stats.best_direct = true;
@@ -654,27 +615,15 @@ inline aimbot_candidate proj_aim_find_candidate(Player* localplayer, Weapon* wea
   }
 
   const bool direct_confident = proj_aim_direct_candidate_confident(profile, direct_candidate);
-  if (config.aimbot.projectile_mode == Aim::ProjectileMode::DIRECT_THEN_SPLASH && direct_candidate.player != nullptr) {
-    if (config.aimbot.projectile_debug) {
-      proj_aim_last_direct_history = std::move(direct_history);
-      proj_aim_last_splash_history.clear();
-      proj_aim_commit_debug_stats();
-    }
-    return direct_candidate;
-  }
   if (config.aimbot.projectile_mode == Aim::ProjectileMode::DIRECT_THEN_SPLASH && direct_confident) {
     if (config.aimbot.projectile_debug) {
-      proj_aim_last_direct_history = std::move(direct_history);
-      proj_aim_last_splash_history.clear();
-      proj_aim_commit_debug_stats();
+      proj_aim_finalize_debug_capture(std::move(direct_history), std::vector<proj_aim_splash_history>{});
     }
     return direct_candidate;
   }
   if (direct_only) {
     if (config.aimbot.projectile_debug) {
-      proj_aim_last_direct_history = std::move(direct_history);
-      proj_aim_last_splash_history.clear();
-      proj_aim_commit_debug_stats();
+      proj_aim_finalize_debug_capture(std::move(direct_history), std::vector<proj_aim_splash_history>{});
     }
     return direct_candidate;
   }
@@ -691,7 +640,7 @@ inline aimbot_candidate proj_aim_find_candidate(Player* localplayer, Weapon* wea
   }
 
   if (config.aimbot.projectile_debug) {
-    proj_aim_last_direct_history = std::move(direct_history);
+    proj_aim_finalize_debug_capture(std::move(direct_history), std::vector<proj_aim_splash_history>{});
   }
 
   aimbot_candidate result{};
@@ -717,9 +666,6 @@ inline aimbot_candidate proj_aim_find_candidate(Player* localplayer, Weapon* wea
     break;
   }
 
-  if (config.aimbot.projectile_debug) {
-    proj_aim_commit_debug_stats();
-  }
   return result;
 }
 

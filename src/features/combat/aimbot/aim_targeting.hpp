@@ -63,6 +63,25 @@ inline void consider_non_player_target(Player* localplayer,
   }
 }
 
+inline bool hitscan_fast_head_backtrack_better(const aimbot_candidate& candidate, const aimbot_candidate& best) {
+  if (!candidate.backtrack ||
+      best.entity == nullptr ||
+      best.backtrack ||
+      candidate.player == nullptr ||
+      candidate.player != best.player ||
+      candidate.hitbox != aim_hitbox_head ||
+      best.hitbox != aim_hitbox_head) {
+    return false;
+  }
+
+  const float target_speed = aimbot_candidate_target_speed(candidate);
+  return target_speed >= 360.0f && candidate.fov <= best.fov + 1.5f;
+}
+
+inline bool hitscan_ready_candidate_better(const aimbot_candidate& candidate, const aimbot_candidate& best) {
+  return hitscan_fast_head_backtrack_better(candidate, best) || aimbot_candidate_better(candidate, best);
+}
+
 inline aimbot_candidate find_best_non_player_candidate(Player* localplayer, Weapon* weapon, const Vec3& original_view_angles) {
   aimbot_candidate best_candidate{};
 
@@ -367,7 +386,7 @@ inline aimbot_candidate find_best_candidate(Player* localplayer, Weapon* weapon,
 
       if (hitscan_ready_selection &&
           aim_spread::hitscan_candidate_ready_for_selection(localplayer, weapon, user_cmd, candidate) &&
-          aimbot_candidate_better(candidate, best_ready_hitscan_candidate)) {
+          hitscan_ready_candidate_better(candidate, best_ready_hitscan_candidate)) {
         best_ready_hitscan_candidate = candidate;
       }
     }
@@ -379,7 +398,9 @@ inline aimbot_candidate find_best_candidate(Player* localplayer, Weapon* weapon,
   }
 
   if (best_ready_hitscan_candidate.entity != nullptr &&
-      !aim_spread::hitscan_candidate_ready_for_selection(localplayer, weapon, user_cmd, best_candidate)) {
+      best_candidate.player != nullptr &&
+      (!aim_spread::hitscan_candidate_ready_for_selection(localplayer, weapon, user_cmd, best_candidate) ||
+        hitscan_fast_head_backtrack_better(best_ready_hitscan_candidate, best_candidate))) {
     best_candidate = best_ready_hitscan_candidate;
   }
 

@@ -215,6 +215,7 @@ void config_store::import_config(const Config& config)
     set_int("aimbot.projectile_mode", static_cast<int>(config.aimbot.projectile_mode));
     set_int("aimbot.projectile_hitboxes", static_cast<int>(config.aimbot.projectile_hitboxes));
     set_float("aimbot.projectile_splash_radius_scale", config.aimbot.projectile_splash_radius_scale);
+    set_bool("aimbot.auto_detonate", config.aimbot.auto_detonate);
     set_int("aimbot.projectile_prediction_ticks", config.aimbot.projectile_prediction_ticks);
     set_int("aimbot.projectile_max_targets", config.aimbot.projectile_max_targets);
     set_bool("aimbot.projectile_debug", config.aimbot.projectile_debug);
@@ -582,6 +583,7 @@ void config_store::export_config(Config& config) const
         3));
     config.aimbot.projectile_hitboxes = static_cast<uint32_t>(get_int("aimbot.projectile_hitboxes", static_cast<int>(config.aimbot.projectile_hitboxes)));
     config.aimbot.projectile_splash_radius_scale = get_float("aimbot.projectile_splash_radius_scale", config.aimbot.projectile_splash_radius_scale);
+    config.aimbot.auto_detonate = get_bool("aimbot.auto_detonate", config.aimbot.auto_detonate);
     config.aimbot.projectile_prediction_ticks = std::clamp(
         get_int("aimbot.projectile_prediction_ticks", config.aimbot.projectile_prediction_ticks),
         8,

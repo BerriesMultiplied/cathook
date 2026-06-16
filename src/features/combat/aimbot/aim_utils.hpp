@@ -1996,6 +1996,8 @@ inline bool aimbot_candidate_better(const aimbot_candidate& candidate, const aim
   }
 }
 
+#include "features/combat/aimbot/proj_aim/proj_aim_projectile_candidate.hpp"
+
 inline float aimbot_candidate_target_speed(const aimbot_candidate& candidate) {
   if (candidate.player == nullptr) {
     return 0.0f;
