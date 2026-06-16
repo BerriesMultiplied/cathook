@@ -754,8 +754,7 @@ bool request_match_queue(void* party_client, unsigned int queue_mode)
     return false;
   }
 
-  if (queue_mode == casual_match_group_default &&
-      g_party_client_api.load_saved_casual_criteria != nullptr)
+  if (g_party_client_api.load_saved_casual_criteria != nullptr)
   {
     g_party_client_api.load_saved_casual_criteria(party_client);
   }
