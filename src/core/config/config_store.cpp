@@ -413,6 +413,7 @@ void config_store::import_config(const Config& config)
     set_float("misc.exploits.keybind_indicator_y", config.visuals.indicators.keybinds_y);
     set_bool("misc.menu.use_custom_font", config.misc.menu.use_custom_font);
     set_string("misc.menu.custom_font", config.misc.menu.custom_font);
+    set_int("misc.menu.dpi_scale", config.misc.menu.dpi_scale);
     set_bool("misc.automation.auto_class_select", config.misc.automation.auto_class_select);
     set_int("misc.automation.class_selected", static_cast<int>(config.misc.automation.class_selected));
     set_bool("misc.automation.auto_class_dont_join_during_warmup", config.misc.automation.auto_class_dont_join_during_warmup);
@@ -930,6 +931,7 @@ void config_store::export_config(Config& config) const
     config.misc.exploits.keybind_indicator_y = config.visuals.indicators.keybinds_y;
     config.misc.menu.use_custom_font = get_bool("misc.menu.use_custom_font", config.misc.menu.use_custom_font);
     config.misc.menu.custom_font = get_string("misc.menu.custom_font", config.misc.menu.custom_font);
+    config.misc.menu.dpi_scale = std::clamp(get_int("misc.menu.dpi_scale", config.misc.menu.dpi_scale), 0, 4);
     config.misc.automation.auto_class_select = get_bool("misc.automation.auto_class_select", config.misc.automation.auto_class_select);
     config.misc.automation.class_selected = static_cast<tf_class>(std::clamp(
         get_int("misc.automation.class_selected", static_cast<int>(config.misc.automation.class_selected)),

@@ -767,6 +767,7 @@ struct Misc {
     std::string text = "I Use Arch BTW!!!";
     bool use_custom_font = false;
     std::string custom_font = "Verdana.ttf";
+    int dpi_scale = 2; // 60%, 75%, 100%, 120%, 150%
   } menu;
 };
 

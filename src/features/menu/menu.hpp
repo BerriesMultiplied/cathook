@@ -105,6 +105,11 @@ constexpr float k_panel_padding_x{ 14.0f };
 constexpr float k_panel_padding_y{ 8.0f };
 constexpr float k_content_padding{ 5.0f };
 constexpr float k_content_height{ 531.0f };
+constexpr std::array<const char*, 5> k_dpi_scale_labels{ "60%", "75%", "100%", "120%", "150%" };
+constexpr std::array<float, 5> k_dpi_scale_values{ 0.60f, 0.75f, 1.00f, 1.20f, 1.50f };
+inline std::array<ImFont*, k_dpi_scale_values.size()> menu_font_regular_scales{};
+inline std::array<ImFont*, k_dpi_scale_values.size()> menu_font_bold_small_scales{};
+inline std::array<ImFont*, k_dpi_scale_values.size()> menu_font_regular_large_scales{};
 
 constexpr ImVec4 k_bg_outer{ 0.114f, 0.184f, 0.251f, 0.985f };
 constexpr ImVec4 k_bg_nav{ 0.114f, 0.184f, 0.251f, 0.985f };
@@ -113,6 +118,8 @@ constexpr ImVec4 k_bg_panel{ 0.114f, 0.184f, 0.251f, 0.975f };
 constexpr ImVec4 k_bg_panel_header{ 0.114f, 0.184f, 0.251f, 1.000f };
 constexpr ImVec4 k_frame{ 0.114f, 0.184f, 0.251f, 1.000f };
 constexpr ImVec4 k_frame_hover{ 0.160f, 0.230f, 0.320f, 1.000f };
+constexpr ImVec4 k_combo_bg{ 0.132f, 0.205f, 0.283f, 1.000f };
+constexpr ImVec4 k_combo_bg_hover{ 0.152f, 0.232f, 0.318f, 1.000f };
 constexpr ImVec4 k_line{ 0.267f, 0.392f, 0.596f, 1.000f };
 constexpr ImVec4 k_text{ 1.000f, 1.000f, 1.000f, 1.000f };
 constexpr ImVec4 k_text_muted{ 0.800f, 0.800f, 0.800f, 1.000f };
@@ -120,6 +127,37 @@ constexpr ImVec4 k_text_soft{ 0.667f, 0.667f, 0.667f, 1.000f };
 constexpr ImVec4 k_accent{ 0.259f, 0.737f, 0.600f, 1.000f };
 constexpr ImVec4 k_accent_soft{ 0.267f, 0.392f, 0.596f, 1.000f };
 constexpr ImVec4 k_danger{ 0.84f, 0.30f, 0.32f, 1.0f };
+
+inline int dpi_scale_index() {
+  return std::clamp(config.misc.menu.dpi_scale, 0, static_cast<int>(k_dpi_scale_values.size()) - 1);
+}
+
+inline float ui_scale() {
+  return k_dpi_scale_values[static_cast<size_t>(dpi_scale_index())];
+}
+
+inline float scaled(float value) {
+  return value * ui_scale();
+}
+
+inline ImVec2 scaled(const ImVec2& value) {
+  return ImVec2(value.x * ui_scale(), value.y * ui_scale());
+}
+
+inline void preload_menu_font_ascii(ImFont* font, float size) {
+  if (font == nullptr) {
+    return;
+  }
+
+  ImFontBaked* baked = font->GetFontBaked(size);
+  if (baked == nullptr) {
+    return;
+  }
+
+  for (ImWchar c = 32; c <= 126; ++c) {
+    baked->FindGlyph(c);
+  }
+}
 
 enum tab_id
 {
@@ -195,7 +233,7 @@ inline float slider_value_box_width(const char* format, float minimum, float max
   const float text_width = ImMax(
     ImGui::CalcTextSize(min_buffer).x,
     ImMax(ImGui::CalcTextSize(max_buffer).x, ImGui::CalcTextSize(value_buffer).x));
-  return ImMax(64.0f, text_width + 18.0f);
+  return ImMax(scaled(46.0f), text_width + scaled(12.0f));
 }
 
 inline float slider_value_box_width(const char* format, int minimum, int maximum, int value) {
@@ -209,14 +247,107 @@ inline float slider_value_box_width(const char* format, int minimum, int maximum
   const float text_width = ImMax(
     ImGui::CalcTextSize(min_buffer).x,
     ImMax(ImGui::CalcTextSize(max_buffer).x, ImGui::CalcTextSize(value_buffer).x));
-  return ImMax(64.0f, text_width + 18.0f);
+  return ImMax(scaled(46.0f), text_width + scaled(12.0f));
 }
 
 inline void field_label(const char* label) {
   ImGui::PushStyleColor(ImGuiCol_Text, k_text_soft);
   ImGui::TextUnformatted(label);
   ImGui::PopStyleColor();
-  ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 6.0f);
+  ImGui::SetCursorPosY(ImGui::GetCursorPosY() - scaled(6.0f));
+}
+
+inline ImFont* font_regular();
+
+template <typename T>
+inline bool slider_scalar_compact(const char* label, T* value, T minimum, T maximum, const char* format, ImGuiDataType data_type) {
+  ImGuiWindow* window = ImGui::GetCurrentWindow();
+  if (window == nullptr || window->SkipItems || label == nullptr || value == nullptr || format == nullptr) return false;
+
+  ImGuiContext& g = *GImGui;
+  field_label(label);
+  const float scale = ui_scale();
+  ImGui::SetCursorPosY(ImGui::GetCursorPosY() + scaled(3.0f));
+
+  const ImGuiID id = window->GetID(label);
+  const ImVec2 pos = window->DC.CursorPos;
+  const float available_width = ImGui::CalcItemWidth();
+  const float field_width = ImMax(scaled(100.0f), available_width);
+  const float field_height = scaled(18.0f);
+  const ImRect field_bb(pos, ImVec2(pos.x + field_width, pos.y + field_height));
+  const ImRect total_bb(field_bb.Min, field_bb.Max);
+  ImRect grab_bb{};
+
+  ImGui::ItemSize(total_bb);
+  if (!ImGui::ItemAdd(total_bb, id, &field_bb, ImGuiItemFlags_Inputable)) return false;
+
+  char value_buffer[32]{};
+  ImFormatString(value_buffer, IM_ARRAYSIZE(value_buffer), format, *value);
+  const ImVec2 value_size = ImGui::CalcTextSize(value_buffer);
+  const float value_width = slider_value_box_width(format, minimum, maximum, *value);
+  const ImRect value_bb(
+    ImVec2(field_bb.Max.x - value_width, field_bb.Min.y + scaled(1.0f)),
+    ImVec2(field_bb.Max.x, field_bb.Max.y - scaled(1.0f)));
+
+  const float track_min_x = field_bb.Min.x + scaled(4.0f);
+  const float track_max_x = ImMax(track_min_x + scaled(1.0f), value_bb.Min.x - scaled(5.0f));
+  const float track_center_y = field_bb.GetCenter().y;
+  const ImRect track_bb(
+    ImVec2(track_min_x, track_center_y - scaled(1.0f)),
+    ImVec2(track_max_x, track_center_y + scaled(1.0f)));
+
+  const bool hovered = ImGui::ItemHoverable(field_bb, id, ImGuiItemFlags_None);
+  const bool value_hovered = ImGui::IsMouseHoveringRect(value_bb.Min, value_bb.Max, true);
+  const float value_min_f = static_cast<float>(minimum);
+  const float value_max_f = static_cast<float>(maximum);
+  const float value_current_f = static_cast<float>(*value);
+  const float value_range_f = value_max_f - value_min_f;
+  const float value_ratio = value_range_f != 0.0f ? ImSaturate((value_current_f - value_min_f) / value_range_f) : 0.0f;
+  bool temp_input_is_active = ImGui::TempInputIsActive(id);
+  if (!temp_input_is_active && value_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+    ImGui::SetKeyOwner(ImGuiKey_MouseLeft, id);
+    temp_input_is_active = true;
+  }
+
+  if (temp_input_is_active) {
+    const float hover_anim = storage_anim(id, "slider_hover", hovered ? 1.0f : 0.0f, 12.0f);
+    const float active_anim = storage_anim(id, "slider_active", 1.0f, 12.0f);
+    const ImVec4 field_color = lerp_color(k_frame, k_frame_hover, hover_anim * 0.45f + active_anim * 0.18f);
+    const ImVec4 border_color = lerp_color(k_line, k_accent, hover_anim * 0.25f + active_anim * 0.55f);
+    const float fill_x = ImLerp(track_bb.Min.x, track_bb.Max.x, value_ratio);
+    const ImVec2 fill_max(fill_x, track_bb.Max.y);
+
+    window->DrawList->AddRectFilled(field_bb.Min, field_bb.Max, ImGui::GetColorU32(field_color), 0.0f);
+    window->DrawList->AddRect(field_bb.Min, field_bb.Max, ImGui::GetColorU32(border_color), 0.0f, 0, 1.0f);
+    window->DrawList->AddRectFilled(track_bb.Min, track_bb.Max, ImGui::GetColorU32(with_alpha(k_text_soft, 0.12f)), 0.0f);
+    window->DrawList->AddRectFilled(track_bb.Min, fill_max, ImGui::GetColorU32(k_accent), 0.0f);
+
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, scaled(ImVec2(4.0f, 1.0f)));
+    const bool changed = ImGui::TempInputScalar(value_bb, id, label, data_type, value, format, &minimum, &maximum);
+    ImGui::PopStyleVar();
+    return changed;
+  }
+
+  const bool changed = ImGui::SliderBehavior(track_bb, id, data_type, value, &minimum, &maximum, format, ImGuiSliderFlags_None, &grab_bb);
+  if (changed) ImGui::MarkItemEdited(id);
+
+  const float hover_anim = storage_anim(id, "slider_hover", hovered ? 1.0f : 0.0f, 12.0f);
+  const float active_anim = storage_anim(id, "slider_active", g.ActiveId == id ? 1.0f : 0.0f, 12.0f);
+  const ImVec4 field_color = lerp_color(k_frame, k_frame_hover, hover_anim * 0.45f + active_anim * 0.18f);
+  const ImVec4 border_color = lerp_color(k_line, k_accent, hover_anim * 0.25f + active_anim * 0.55f);
+  const float fill_x = ImLerp(track_bb.Min.x, track_bb.Max.x, value_ratio);
+  const ImVec2 fill_max(fill_x, track_bb.Max.y);
+  const ImRect knob_bb(ImVec2(fill_x - scaled(1.0f), track_bb.Min.y - scaled(4.0f)), ImVec2(fill_x + scaled(1.0f), track_bb.Max.y + scaled(4.0f)));
+
+  window->DrawList->AddRectFilled(field_bb.Min, field_bb.Max, ImGui::GetColorU32(field_color), 0.0f);
+  window->DrawList->AddRect(field_bb.Min, field_bb.Max, ImGui::GetColorU32(border_color), 0.0f, 0, 1.0f);
+  window->DrawList->AddRectFilled(track_bb.Min, track_bb.Max, ImGui::GetColorU32(with_alpha(k_text_soft, 0.12f)), 0.0f);
+  window->DrawList->AddRectFilled(track_bb.Min, fill_max, ImGui::GetColorU32(k_accent), 0.0f);
+  window->DrawList->AddRectFilled(value_bb.Min, value_bb.Max, ImGui::GetColorU32(with_alpha(k_bg_panel, 0.92f)), 0.0f);
+  window->DrawList->AddLine(ImVec2(value_bb.Min.x, value_bb.Min.y + scaled(1.0f)), ImVec2(value_bb.Min.x, value_bb.Max.y - scaled(1.0f)), ImGui::GetColorU32(with_alpha(k_line, 0.85f)), scale);
+  window->DrawList->AddRectFilled(knob_bb.Min, knob_bb.Max, ImGui::GetColorU32(lerp_color(k_text_muted, k_text, active_anim * 0.7f + hover_anim * 0.3f)), 0.0f);
+  window->DrawList->AddText(font_regular(), font_regular()->LegacySize, ImVec2(value_bb.GetCenter().x - (value_size.x * 0.5f), value_bb.GetCenter().y - (value_size.y * 0.5f)), ImGui::GetColorU32(active_anim > 0.0f ? k_text : k_text_muted), value_buffer);
+  return changed;
 }
 
 inline ImFont* font_regular() {
@@ -288,64 +419,105 @@ inline void ensure_fonts() {
   ImGuiIO& io = ImGui::GetIO();
   static bool loaded_custom_font = false;
   static std::string loaded_font_name{};
+  static float loaded_scale = 0.0f;
+  const float scale = ui_scale();
+  const int scale_index = dpi_scale_index();
   const bool wants_custom_font = config.misc.menu.use_custom_font && !config.misc.menu.custom_font.empty();
   const std::string wanted_font_name = wants_custom_font ? config.misc.menu.custom_font : std::string{};
 
-  if (menu_font_regular != nullptr && menu_font_bold_small != nullptr && menu_font_regular_large != nullptr &&
-      loaded_custom_font == wants_custom_font && loaded_font_name == wanted_font_name) {
+  const bool font_selection_changed = loaded_custom_font != wants_custom_font || loaded_font_name != wanted_font_name ||
+    menu_font_regular_scales[static_cast<size_t>(scale_index)] == nullptr ||
+    menu_font_bold_small_scales[static_cast<size_t>(scale_index)] == nullptr ||
+    menu_font_regular_large_scales[static_cast<size_t>(scale_index)] == nullptr;
+
+  if (!font_selection_changed && loaded_scale == scale) {
+    menu_font_regular = menu_font_regular_scales[static_cast<size_t>(scale_index)];
+    menu_font_bold_small = menu_font_bold_small_scales[static_cast<size_t>(scale_index)];
+    menu_font_regular_large = menu_font_regular_large_scales[static_cast<size_t>(scale_index)];
+    io.FontDefault = menu_font_regular;
     return;
   }
 
-  menu_font_regular = nullptr;
-  menu_font_bold_small = nullptr;
-  menu_font_regular_large = nullptr;
+  if (font_selection_changed) {
+    menu_font_regular_scales.fill(nullptr);
+    menu_font_bold_small_scales.fill(nullptr);
+    menu_font_regular_large_scales.fill(nullptr);
+    menu_font_regular = nullptr;
+    menu_font_bold_small = nullptr;
+    menu_font_regular_large = nullptr;
 
-  io.Fonts->Clear();
+    io.Fonts->Clear();
 
-  ImFontConfig font_config{};
-  font_config.FontDataOwnedByAtlas = false;
-  font_config.OversampleH = 4;
-  font_config.OversampleV = 4;
-  font_config.PixelSnapH = false;
+    ImFontConfig font_config{};
+    font_config.FontDataOwnedByAtlas = false;
+    font_config.OversampleH = 4;
+    font_config.OversampleV = 4;
+    font_config.PixelSnapH = false;
 
-  if (wants_custom_font) {
-    const std::filesystem::path font_path = assets_font_directory() / std::filesystem::path{ config.misc.menu.custom_font }.filename();
-    const std::string font_path_string = font_path.string();
-    ImFontConfig file_font_config = font_config;
-    file_font_config.FontDataOwnedByAtlas = true;
-    file_font_config.Flags |= ImFontFlags_NoLoadError;
-    menu_font_regular = io.Fonts->AddFontFromFileTTF(font_path_string.c_str(), 14.0f, &file_font_config);
-    menu_font_bold_small = io.Fonts->AddFontFromFileTTF(font_path_string.c_str(), 14.0f, &file_font_config);
-    menu_font_regular_large = io.Fonts->AddFontFromFileTTF(font_path_string.c_str(), 16.0f, &file_font_config);
+    const std::filesystem::path custom_font_path = assets_font_directory() / std::filesystem::path{ config.misc.menu.custom_font }.filename();
+    const std::string custom_font_path_string = custom_font_path.string();
+    bool logged_custom_font_error = false;
 
-    if (menu_font_regular == nullptr) {
-      cathook::core::log_raw("failed to load menu font: %s\n", font_path_string.c_str());
+    for (size_t index = 0; index < k_dpi_scale_values.size(); ++index) {
+      const float preset_scale = k_dpi_scale_values[index];
+
+      ImFont* regular = nullptr;
+      ImFont* bold_small = nullptr;
+      ImFont* regular_large = nullptr;
+
+      if (wants_custom_font) {
+        ImFontConfig file_font_config = font_config;
+        file_font_config.FontDataOwnedByAtlas = true;
+        file_font_config.Flags |= ImFontFlags_NoLoadError;
+        regular = io.Fonts->AddFontFromFileTTF(custom_font_path_string.c_str(), 14.0f * preset_scale, &file_font_config);
+        bold_small = io.Fonts->AddFontFromFileTTF(custom_font_path_string.c_str(), 14.0f * preset_scale, &file_font_config);
+        regular_large = io.Fonts->AddFontFromFileTTF(custom_font_path_string.c_str(), 16.0f * preset_scale, &file_font_config);
+
+        if (regular == nullptr && !logged_custom_font_error) {
+          cathook::core::log_raw("failed to load menu font: %s\n", custom_font_path_string.c_str());
+          logged_custom_font_error = true;
+        }
+      }
+
+      if (regular == nullptr) {
+        regular = io.Fonts->AddFontFromMemoryTTF(font_medium_bin, sizeof(font_medium_bin), 14.0f * preset_scale, &font_config);
+      }
+      if (bold_small == nullptr) {
+        bold_small = io.Fonts->AddFontFromMemoryTTF(font_bold_bin, sizeof(font_bold_bin), 14.0f * preset_scale, &font_config);
+      }
+      if (regular_large == nullptr) {
+        regular_large = io.Fonts->AddFontFromMemoryTTF(font_bold_bin, sizeof(font_bold_bin), 16.0f * preset_scale, &font_config);
+      }
+
+      if (!regular) {
+        regular = io.Fonts->AddFontDefault();
+      }
+      if (!bold_small) {
+        bold_small = regular;
+      }
+      if (!regular_large) {
+        regular_large = regular;
+      }
+
+      preload_menu_font_ascii(regular, 14.0f * preset_scale);
+      preload_menu_font_ascii(bold_small, 14.0f * preset_scale);
+      preload_menu_font_ascii(regular_large, 16.0f * preset_scale);
+
+      menu_font_regular_scales[index] = regular;
+      menu_font_bold_small_scales[index] = bold_small;
+      menu_font_regular_large_scales[index] = regular_large;
     }
+
+    loaded_custom_font = wants_custom_font;
+    loaded_font_name = wanted_font_name;
   }
 
-  if (menu_font_regular == nullptr) {
-    menu_font_regular = io.Fonts->AddFontFromMemoryTTF(font_medium_bin, sizeof(font_medium_bin), 14.0f, &font_config);
-  }
-  if (menu_font_bold_small == nullptr) {
-    menu_font_bold_small = io.Fonts->AddFontFromMemoryTTF(font_bold_bin, sizeof(font_bold_bin), 14.0f, &font_config);
-  }
-  if (menu_font_regular_large == nullptr) {
-    menu_font_regular_large = io.Fonts->AddFontFromMemoryTTF(font_bold_bin, sizeof(font_bold_bin), 16.0f, &font_config);
-  }
-
-  if (!menu_font_regular) {
-    menu_font_regular = io.Fonts->AddFontDefault();
-  }
-  if (!menu_font_bold_small) {
-    menu_font_bold_small = menu_font_regular;
-  }
-  if (!menu_font_regular_large) {
-    menu_font_regular_large = menu_font_regular;
-  }
+  menu_font_regular = menu_font_regular_scales[static_cast<size_t>(scale_index)];
+  menu_font_bold_small = menu_font_bold_small_scales[static_cast<size_t>(scale_index)];
+  menu_font_regular_large = menu_font_regular_large_scales[static_cast<size_t>(scale_index)];
 
   io.FontDefault = menu_font_regular;
-  loaded_custom_font = wants_custom_font;
-  loaded_font_name = wanted_font_name;
+  loaded_scale = scale;
 }
 
 enum class chrome_icon {
@@ -359,9 +531,10 @@ inline bool chrome_icon_button(const char* id_str, chrome_icon icon, const ImVec
 
   const ImGuiID id = window->GetID(id_str);
   const ImVec2 pos = window->DC.CursorPos;
-  const ImRect bb(pos, ImVec2(pos.x + size.x, pos.y + size.y));
+  const ImVec2 scaled_size = scaled(size);
+  const ImRect bb(pos, ImVec2(pos.x + scaled_size.x, pos.y + scaled_size.y));
 
-  ImGui::ItemSize(size, 0.0f);
+  ImGui::ItemSize(scaled_size, 0.0f);
   if (!ImGui::ItemAdd(bb, id)) return false;
 
   bool hovered = false, held = false;
@@ -378,14 +551,14 @@ inline bool chrome_icon_button(const char* id_str, chrome_icon icon, const ImVec
   dl->AddRect(bb.Min, bb.Max, ImGui::GetColorU32(border), 0.0f, 0, 1.0f);
 
   const ImVec2 c = bb.GetCenter();
-  const float pad = 4.0f;
+  const float pad = scaled(4.0f);
   switch (icon) {
     case chrome_icon::minimize:
-      dl->AddLine(ImVec2(bb.Min.x + pad, bb.Max.y - pad), ImVec2(bb.Max.x - pad, bb.Max.y - pad), glyph_color, 1.4f);
+      dl->AddLine(ImVec2(bb.Min.x + pad, bb.Max.y - pad), ImVec2(bb.Max.x - pad, bb.Max.y - pad), glyph_color, scaled(1.4f));
       break;
     case chrome_icon::close:
-      dl->AddLine(ImVec2(bb.Min.x + pad, bb.Min.y + pad), ImVec2(bb.Max.x - pad, bb.Max.y - pad), glyph_color, 1.4f);
-      dl->AddLine(ImVec2(bb.Max.x - pad, bb.Min.y + pad), ImVec2(bb.Min.x + pad, bb.Max.y - pad), glyph_color, 1.4f);
+      dl->AddLine(ImVec2(bb.Min.x + pad, bb.Min.y + pad), ImVec2(bb.Max.x - pad, bb.Max.y - pad), glyph_color, scaled(1.4f));
+      dl->AddLine(ImVec2(bb.Max.x - pad, bb.Min.y + pad), ImVec2(bb.Min.x + pad, bb.Max.y - pad), glyph_color, scaled(1.4f));
       break;
   }
   (void)c;
@@ -436,11 +609,12 @@ inline bool list_row(const char* label, bool selected, const ImVec2& size = ImVe
   const ImGuiID id = window->GetID(label);
   const ImVec2 label_size = ImGui::CalcTextSize(label, nullptr, true);
   const ImVec2 pos = window->DC.CursorPos;
-  const float row_width = ImMax(0.0f, ImGui::GetContentRegionAvail().x - 10.0f);
-  const ImVec2 row_size = ImGui::CalcItemSize(size, row_width, 24.0f);
+  const float scale = ui_scale();
+  const float row_width = ImMax(0.0f, ImGui::GetContentRegionAvail().x - scaled(10.0f));
+  const ImVec2 row_size = ImGui::CalcItemSize(ImVec2(size.x * scale, size.y * scale), row_width, scaled(24.0f));
   const ImRect bb(pos, ImVec2(pos.x + row_size.x, pos.y + row_size.y));
 
-  ImGui::ItemSize(row_size, 2.0f);
+  ImGui::ItemSize(row_size, scaled(2.0f));
   if (!ImGui::ItemAdd(bb, id)) return false;
 
   bool hovered = false, held = false;
@@ -455,11 +629,11 @@ inline bool list_row(const char* label, bool selected, const ImVec2& size = ImVe
   window->DrawList->AddRectFilled(bb.Min, bb.Max, ImGui::GetColorU32(fill), 0.0f);
   window->DrawList->AddRect(bb.Min, bb.Max, ImGui::GetColorU32(border), 0.0f, 0, 1.0f);
   if (selected) {
-    window->DrawList->AddRectFilled(bb.Min, ImVec2(bb.Min.x + 3.0f, bb.Max.y), ImGui::GetColorU32(k_accent), 0.0f);
+    window->DrawList->AddRectFilled(bb.Min, ImVec2(bb.Min.x + scaled(3.0f), bb.Max.y), ImGui::GetColorU32(k_accent), 0.0f);
   }
   const std::string preview = ellipsize_text(label, row_size.x - 16.0f);
   const ImVec2 preview_size = ImGui::CalcTextSize(preview.c_str());
-  window->DrawList->AddText(font_regular(), font_regular()->LegacySize, ImVec2(bb.Min.x + 8.0f, bb.GetCenter().y - (preview_size.y * 0.5f)), ImGui::GetColorU32(text_color), preview.c_str());
+  window->DrawList->AddText(font_regular(), font_regular()->LegacySize, ImVec2(bb.Min.x + scaled(8.0f), bb.GetCenter().y - (preview_size.y * 0.5f)), ImGui::GetColorU32(text_color), preview.c_str());
   return pressed;
 }
 
@@ -472,17 +646,17 @@ inline void begin_panel(const char* name, const ImVec2& size) {
   ImVec2 max = ImVec2(pos.x + panel_size.x, pos.y + panel_size.y);
 
   const ImVec2 text_size = font_regular()->CalcTextSizeA(font_regular()->LegacySize, FLT_MAX, 0.0f, name);
-  const float title_y = pos.y + 1.0f;
-  const float border_inset = 6.0f;
-  const float title_padding_x = 4.0f;
-  const float title_start = pos.x + 8.0f;
+  const float title_y = pos.y + scaled(1.0f);
+  const float border_inset = scaled(6.0f);
+  const float title_padding_x = scaled(4.0f);
+  const float title_start = pos.x + scaled(8.0f);
   const ImVec2 title_bg_min(title_start - title_padding_x, title_y);
   const ImVec2 title_bg_max(title_start + text_size.x + title_padding_x, title_y + text_size.y);
 
   current_panel_layout_stack().push_back({
-    .header_height = text_size.y + 8.0f,
+    .header_height = text_size.y + scaled(8.0f),
     .border_min = ImVec2(pos.x + border_inset, title_bg_min.y + (text_size.y * 0.5f)),
-    .border_max = ImVec2(max.x - border_inset, max.y - 3.0f),
+    .border_max = ImVec2(max.x - border_inset, max.y - scaled(3.0f)),
     .title_bg_min = title_bg_min,
     .title_bg_max = title_bg_max,
     .title_pos = ImVec2(title_start, title_y),
@@ -491,9 +665,9 @@ inline void begin_panel(const char* name, const ImVec2& size) {
 
   draw_list->AddRectFilled(pos, max, ImGui::GetColorU32(k_bg_panel), 0.0f);
 
-  ImGui::SetCursorPos(ImVec2(11.0f, text_size.y + 8.0f));
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(k_panel_padding_x, k_panel_padding_y));
-  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(7.0f, 5.0f));
+  ImGui::SetCursorPos(ImVec2(scaled(11.0f), text_size.y + scaled(8.0f)));
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, scaled(ImVec2(k_panel_padding_x, k_panel_padding_y)));
+  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, scaled(ImVec2(7.0f, 5.0f)));
   ImGui::BeginChild(name, ImVec2(-1.0f, -1.0f), false, ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 }
 
@@ -522,13 +696,14 @@ inline flow_layout_state& current_flow_layout() {
 inline void begin_flow_layout(const char* id, int column_count) {
   auto& state = current_flow_layout();
   state.origin = ImGui::GetCursorPos();
+  const float gap = scaled(k_gap);
   if (column_count <= 1) {
     state.column_width = ImGui::GetContentRegionAvail().x;
   } else {
     state.column_width =
-      (ImGui::GetContentRegionAvail().x - (k_gap * static_cast<float>(column_count - 1))) / static_cast<float>(column_count);
+      (ImGui::GetContentRegionAvail().x - (gap * static_cast<float>(column_count - 1))) / static_cast<float>(column_count);
   }
-  state.total_width = (state.column_width * static_cast<float>(column_count)) + (k_gap * static_cast<float>(column_count - 1));
+  state.total_width = (state.column_width * static_cast<float>(column_count)) + (gap * static_cast<float>(column_count - 1));
   state.column_offsets.assign(column_count, 0.0f);
   state.active = true;
   ImGui::PushID(id);
@@ -543,9 +718,11 @@ inline void flow_panel(const char* name, int column_index, float height, draw_fn
 
   ImGuiStorage* storage = ImGui::GetStateStorage();
   const ImGuiID height_key = ImHashStr("flow_panel_height", 0, ImGui::GetID(name));
-  const float panel_height = auto_fit ? ImMax(height, storage->GetFloat(height_key, height)) : height;
+  const float scaled_height = scaled(height);
+  const float panel_height = auto_fit ? ImMax(scaled_height, storage->GetFloat(height_key, scaled_height)) : scaled_height;
+  const float gap = scaled(k_gap);
   const ImVec2 position(
-    state.origin.x + (static_cast<float>(column_index) * (state.column_width + k_gap)),
+    state.origin.x + (static_cast<float>(column_index) * (state.column_width + gap)),
     state.origin.y + state.column_offsets[static_cast<size_t>(column_index)]);
 
   ImGui::SetCursorPos(position);
@@ -554,10 +731,10 @@ inline void flow_panel(const char* name, int column_index, float height, draw_fn
   draw_fn();
   cat_bind::pop_panel_label();
   const float required_height = end_panel_ex();
-  const float next_panel_height = auto_fit ? ImMax(height, ImCeil(required_height)) : height;
+  const float next_panel_height = auto_fit ? ImMax(scaled_height, ImCeil(required_height)) : scaled_height;
   storage->SetFloat(height_key, next_panel_height);
 
-  state.column_offsets[static_cast<size_t>(column_index)] += panel_height + k_gap;
+  state.column_offsets[static_cast<size_t>(column_index)] += panel_height + gap;
 }
 
 inline void end_flow_layout() {
@@ -568,7 +745,7 @@ inline void end_flow_layout() {
   }
 
   if (height > 0.0f) {
-    height -= k_gap;
+    height -= scaled(k_gap);
   }
 
   ImGui::SetCursorPos(state.origin);
@@ -646,15 +823,16 @@ inline int& current_tab_strip_button_index() {
 }
 
 inline void begin_tab_strip(const char* id, float height, bool draw_top_border, bool draw_bottom_border, float padding_x, bool apply_outer_inset = true) {
+  const float scale = ui_scale();
   const float available_width = ImGui::GetContentRegionAvail().x;
   const float outer_inset = apply_outer_inset ? k_strip_inset_x : 0.0f;
   const float strip_width = ImMax(0.0f, available_width - (outer_inset * 2.0f));
 
   ImGui::SetCursorPosX(ImGui::GetCursorPosX() + outer_inset);
-  ImGui::BeginChild(id, ImVec2(strip_width, height), false, ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+  ImGui::BeginChild(id, ImVec2(strip_width, height * scale), false, ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
   draw_tab_strip_frame(ImGui::GetWindowPos(), ImGui::GetWindowSize(), draw_top_border, draw_bottom_border);
   current_tab_strip_button_index() = 0;
-  ImGui::SetCursorPos(ImVec2(padding_x, 0.0f));
+  ImGui::SetCursorPos(ImVec2(padding_x * scale, 0.0f));
 }
 
 inline void end_tab_strip() {
@@ -680,13 +858,14 @@ inline bool tab_button_shared(const char* label, bool selected, float height, fl
   ImGuiWindow* window = ImGui::GetCurrentWindow();
   if (window == nullptr || window->SkipItems || label == nullptr) return false;
 
+  const float scale = ui_scale();
   const int tab_index = current_tab_strip_button_index()++;
   ImGuiID id = window->GetID(label);
   ImVec2 pos = window->DC.CursorPos;
   const ImVec2 text_size = font_regular()->CalcTextSizeA(font_regular()->LegacySize, FLT_MAX, 0.0f, label);
   const float max_width = ImMax(1.0f, window->WorkRect.Max.x - pos.x);
-  const float desired_width = text_size.x + width_padding;
-  ImVec2 size = ImGui::CalcItemSize(ImVec2(ImMin(desired_width, max_width), height), ImMin(desired_width, max_width), height);
+  const float desired_width = text_size.x + (width_padding * scale);
+  ImVec2 size = ImGui::CalcItemSize(ImVec2(ImMin(desired_width, max_width), height * scale), ImMin(desired_width, max_width), height * scale);
   ImRect bb(pos, ImVec2(pos.x + size.x, pos.y + size.y));
 
   ImGui::ItemSize(size, 0.0f);
@@ -699,9 +878,9 @@ inline bool tab_button_shared(const char* label, bool selected, float height, fl
   const ImVec4 text_color = selected ? k_text : hovered ? k_text : k_text_muted;
   window->DrawList->AddRectFilled(bb.Min, bb.Max, ImGui::GetColorU32(fill), 0.0f);
   if (selected) {
-    window->DrawList->AddLine(ImVec2(bb.Min.x + 6.0f, bb.Max.y - 3.0f), ImVec2(bb.Max.x - 6.0f, bb.Max.y - 3.0f), ImGui::GetColorU32(k_line), 1.0f);
+    window->DrawList->AddLine(ImVec2(bb.Min.x + scaled(6.0f), bb.Max.y - scaled(3.0f)), ImVec2(bb.Max.x - scaled(6.0f), bb.Max.y - scaled(3.0f)), ImGui::GetColorU32(k_line), scale);
   } else if (hovered) {
-    window->DrawList->AddLine(ImVec2(bb.Min.x + 6.0f, bb.Max.y - 3.0f), ImVec2(bb.Max.x - 6.0f, bb.Max.y - 3.0f), ImGui::GetColorU32(k_line), 1.0f);
+    window->DrawList->AddLine(ImVec2(bb.Min.x + scaled(6.0f), bb.Max.y - scaled(3.0f)), ImVec2(bb.Max.x - scaled(6.0f), bb.Max.y - scaled(3.0f)), ImGui::GetColorU32(k_line), scale);
   }
   window->DrawList->AddText(font_regular(), font_regular()->LegacySize, ImVec2(bb.GetCenter().x - (text_size.x * 0.5f), bb.GetCenter().y - (text_size.y * 0.5f)), ImGui::GetColorU32(text_color), label);
 
@@ -724,7 +903,7 @@ inline bool checkbox(const char* label, bool* value) {
   const char* label_end = ImGui::FindRenderedTextEnd(label);
   const ImVec2 label_size = ImGui::CalcTextSize(label, nullptr, true);
   const ImVec2 pos = window->DC.CursorPos;
-  constexpr float square_size = 14.0f;
+  const float square_size = scaled(14.0f);
   const ImRect box_bb(pos, ImVec2(pos.x + square_size, pos.y + square_size));
   const ImRect total_bb(pos, ImVec2(pos.x + square_size + ImGui::GetStyle().ItemInnerSpacing.x + label_size.x, pos.y + square_size));
 
@@ -770,11 +949,11 @@ inline bool combo(const char* label, int* value, const char* const items[], cons
   if (window == nullptr || window->SkipItems) return false;
 
   field_label(label);
-  ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 4.0f);
+  ImGui::SetCursorPosY(ImGui::GetCursorPosY() + scaled(3.0f));
 
   const ImGuiID id = window->GetID(label);
   const ImVec2 pos = window->DC.CursorPos;
-  const ImVec2 size = ImGui::CalcItemSize(ImVec2(ImGui::CalcItemWidth(), 18.0f), 72.0f, 18.0f);
+  const ImVec2 size = ImGui::CalcItemSize(ImVec2(ImGui::CalcItemWidth(), scaled(16.0f)), scaled(58.0f), scaled(16.0f));
   const ImRect bb(pos, ImVec2(pos.x + size.x, pos.y + size.y));
   const ImGuiID popup_id = ImHashStr("combo_popup", 0, id);
 
@@ -784,40 +963,37 @@ inline bool combo(const char* label, int* value, const char* const items[], cons
   bool hovered = false, held = false;
   const bool pressed = ImGui::ButtonBehavior(bb, id, &hovered, &held);
   const float hover_anim = storage_anim(id, "combo_hover", hovered ? 1.0f : 0.0f, 12.0f);
-  const ImVec4 frame_color = lerp_color(k_frame, k_frame_hover, hover_anim);
+  const ImVec4 frame_color = lerp_color(k_combo_bg, k_combo_bg_hover, hover_anim);
   const char* preview = (*value >= 0 && *value < item_count && items[*value] != nullptr) ? items[*value] : "None";
 
   if (pressed) ImGui::OpenPopupEx(popup_id, ImGuiPopupFlags_None);
 
   const bool is_open = ImGui::IsPopupOpen(popup_id, ImGuiPopupFlags_None);
-  const float active_anim = storage_anim(id, "combo_active", is_open ? 1.0f : 0.0f, 12.0f);
-  const ImVec4 border_color = lerp_color(k_line, k_accent, (hover_anim * 0.35f) + (active_anim * 0.55f));
+  window->DrawList->AddRectFilled(bb.Min, bb.Max, ImGui::GetColorU32(frame_color), 0.0f);
+  window->DrawList->AddText(font_regular(), font_regular()->LegacySize, ImVec2(bb.Min.x + scaled(4.0f), bb.GetCenter().y - (ImGui::GetTextLineHeight() * 0.5f)), ImGui::GetColorU32(k_text), preview);
 
-  window->DrawList->AddRect(bb.Min, bb.Max, ImGui::GetColorU32(border_color), 0.0f, 0, 1.0f);
-  window->DrawList->AddText(font_regular(), font_regular()->LegacySize, ImVec2(bb.Min.x + 4.0f, bb.GetCenter().y - (ImGui::GetTextLineHeight() * 0.5f)), ImGui::GetColorU32(k_text), preview);
-
-  const ImVec2 arrow_center(bb.Max.x - 10.0f, bb.GetCenter().y + 1.0f);
+  const ImVec2 arrow_center(bb.Max.x - scaled(10.0f), bb.GetCenter().y + scaled(1.0f));
   window->DrawList->AddTriangleFilled(
-    is_open ? ImVec2(arrow_center.x - 5.0f, arrow_center.y + 2.5f) : ImVec2(arrow_center.x - 5.0f, arrow_center.y - 2.5f),
-    is_open ? ImVec2(arrow_center.x + 5.0f, arrow_center.y + 2.5f) : ImVec2(arrow_center.x + 5.0f, arrow_center.y - 2.5f),
-    is_open ? ImVec2(arrow_center.x, arrow_center.y - 4.5f) : ImVec2(arrow_center.x, arrow_center.y + 4.5f),
+    is_open ? ImVec2(arrow_center.x - scaled(5.0f), arrow_center.y + scaled(2.5f)) : ImVec2(arrow_center.x - scaled(5.0f), arrow_center.y - scaled(2.5f)),
+    is_open ? ImVec2(arrow_center.x + scaled(5.0f), arrow_center.y + scaled(2.5f)) : ImVec2(arrow_center.x + scaled(5.0f), arrow_center.y - scaled(2.5f)),
+    is_open ? ImVec2(arrow_center.x, arrow_center.y - scaled(4.5f)) : ImVec2(arrow_center.x, arrow_center.y + scaled(4.5f)),
     ImGui::GetColorU32(k_text_soft));
 
   bool changed = false;
-  ImGui::SetNextWindowPos(ImVec2(bb.Min.x, bb.Max.y + 1.0f), ImGuiCond_Appearing);
+  ImGui::SetNextWindowPos(ImVec2(bb.Min.x, bb.Max.y + scaled(1.0f)), ImGuiCond_Appearing);
   ImGui::SetNextWindowSize(ImVec2(bb.GetWidth(), 0.0f), ImGuiCond_Appearing);
-  ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 6.0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(6.0f, 6.0f));
-  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 4.0f));
+  ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 0.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, scaled(ImVec2(4.0f, 4.0f)));
+  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, scaled(ImVec2(0.0f, 2.0f)));
   ImGui::PushStyleColor(ImGuiCol_PopupBg, k_bg_panel);
-  ImGui::PushStyleColor(ImGuiCol_Border, k_line);
+  ImGui::PushStyleColor(ImGuiCol_Border, with_alpha(k_line, 0.0f));
 
   if (ImGui::BeginPopupEx(popup_id, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize)) {
     for (int index = 0; index < item_count; ++index) {
       const char* item_label = items[index] != nullptr ? items[index] : "";
       ImGui::PushID(index);
       const ImVec2 item_pos = ImGui::GetCursorScreenPos();
-      const ImVec2 item_size(bb.GetWidth() - 4.0f, 20.0f);
+      const ImVec2 item_size(bb.GetWidth() - scaled(4.0f), scaled(18.0f));
       const ImRect item_bb(item_pos, ImVec2(item_pos.x + item_size.x, item_pos.y + item_size.y));
       const bool selected = *value == index;
       const bool item_clicked = ImGui::InvisibleButton("##combo_item", item_size);
@@ -825,7 +1001,7 @@ inline bool combo(const char* label, int* value, const char* const items[], cons
       const ImVec4 item_color = selected ? with_alpha(k_accent, 0.16f) : item_hovered ? with_alpha(k_accent, 0.08f) : k_bg_panel;
 
       ImGui::GetWindowDrawList()->AddRectFilled(item_bb.Min, item_bb.Max, ImGui::GetColorU32(item_color), 0.0f);
-      ImGui::GetWindowDrawList()->AddText(font_regular(), font_regular()->LegacySize, ImVec2(item_bb.Min.x + 4.0f, item_bb.GetCenter().y - (ImGui::GetTextLineHeight() * 0.5f)), ImGui::GetColorU32(k_text), item_label);
+      ImGui::GetWindowDrawList()->AddText(font_regular(), font_regular()->LegacySize, ImVec2(item_bb.Min.x + scaled(4.0f), item_bb.GetCenter().y - (ImGui::GetTextLineHeight() * 0.5f)), ImGui::GetColorU32(k_text), item_label);
 
       if (item_clicked) {
         *value = index;
@@ -852,7 +1028,7 @@ inline bool multi_select_combo(const char* label, uint32_t* value_mask, const ch
   if (window == nullptr || window->SkipItems) return false;
 
   field_label(label);
-  ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 4.0f);
+  ImGui::SetCursorPosY(ImGui::GetCursorPosY() + scaled(3.0f));
 
   std::string preview{};
   int selected_count = 0;
@@ -876,7 +1052,7 @@ inline bool multi_select_combo(const char* label, uint32_t* value_mask, const ch
 
   const ImGuiID id = window->GetID(label);
   const ImVec2 pos = window->DC.CursorPos;
-  const ImVec2 size = ImGui::CalcItemSize(ImVec2(ImGui::CalcItemWidth(), 18.0f), 72.0f, 18.0f);
+  const ImVec2 size = ImGui::CalcItemSize(ImVec2(ImGui::CalcItemWidth(), scaled(16.0f)), scaled(58.0f), scaled(16.0f));
   const ImRect bb(pos, ImVec2(pos.x + size.x, pos.y + size.y));
   const ImGuiID popup_id = ImHashStr("multi_combo_popup", 0, id);
 
@@ -886,41 +1062,38 @@ inline bool multi_select_combo(const char* label, uint32_t* value_mask, const ch
   bool hovered = false, held = false;
   const bool pressed = ImGui::ButtonBehavior(bb, id, &hovered, &held);
   const float hover_anim = storage_anim(id, "multi_combo_hover", hovered ? 1.0f : 0.0f, 12.0f);
-  const ImVec4 frame_color = lerp_color(k_frame, k_frame_hover, hover_anim);
+  const ImVec4 frame_color = lerp_color(k_combo_bg, k_combo_bg_hover, hover_anim);
 
   if (pressed) ImGui::OpenPopupEx(popup_id, ImGuiPopupFlags_None);
 
   const bool is_open = ImGui::IsPopupOpen(popup_id, ImGuiPopupFlags_None);
-  const float active_anim = storage_anim(id, "multi_combo_active", is_open ? 1.0f : 0.0f, 12.0f);
-  const ImVec4 border_color = lerp_color(k_line, k_accent, (hover_anim * 0.35f) + (active_anim * 0.55f));
-
-  window->DrawList->AddRect(bb.Min, bb.Max, ImGui::GetColorU32(border_color), 0.0f, 0, 1.0f);
+  window->DrawList->AddRectFilled(bb.Min, bb.Max, ImGui::GetColorU32(frame_color), 0.0f);
 
   const std::string clipped_preview = ellipsize_text(preview.c_str(), ImMax(1.0f, bb.GetWidth() - 38.0f));
-  window->DrawList->AddText(font_regular(), font_regular()->LegacySize, ImVec2(bb.Min.x + 4.0f, bb.GetCenter().y - (ImGui::GetTextLineHeight() * 0.5f)), ImGui::GetColorU32(k_text), clipped_preview.c_str());
+  window->DrawList->AddText(font_regular(), font_regular()->LegacySize, ImVec2(bb.Min.x + scaled(4.0f), bb.GetCenter().y - (ImGui::GetTextLineHeight() * 0.5f)), ImGui::GetColorU32(k_text), clipped_preview.c_str());
 
-  const ImVec2 arrow_center(bb.Max.x - 10.0f, bb.GetCenter().y + 1.0f);
+  const ImVec2 arrow_center(bb.Max.x - scaled(10.0f), bb.GetCenter().y + scaled(1.0f));
   window->DrawList->AddTriangleFilled(
-    is_open ? ImVec2(arrow_center.x - 5.0f, arrow_center.y + 2.5f) : ImVec2(arrow_center.x - 5.0f, arrow_center.y - 2.5f),
-    is_open ? ImVec2(arrow_center.x + 5.0f, arrow_center.y + 2.5f) : ImVec2(arrow_center.x + 5.0f, arrow_center.y - 2.5f),
-    is_open ? ImVec2(arrow_center.x, arrow_center.y - 4.5f) : ImVec2(arrow_center.x, arrow_center.y + 4.5f),
+    is_open ? ImVec2(arrow_center.x - scaled(5.0f), arrow_center.y + scaled(2.5f)) : ImVec2(arrow_center.x - scaled(5.0f), arrow_center.y - scaled(2.5f)),
+    is_open ? ImVec2(arrow_center.x + scaled(5.0f), arrow_center.y + scaled(2.5f)) : ImVec2(arrow_center.x + scaled(5.0f), arrow_center.y - scaled(2.5f)),
+    is_open ? ImVec2(arrow_center.x, arrow_center.y - scaled(4.5f)) : ImVec2(arrow_center.x, arrow_center.y + scaled(4.5f)),
     ImGui::GetColorU32(k_text_soft));
 
   bool changed = false;
-  ImGui::SetNextWindowPos(ImVec2(bb.Min.x, bb.Max.y + 3.0f), ImGuiCond_Appearing);
+  ImGui::SetNextWindowPos(ImVec2(bb.Min.x, bb.Max.y + scaled(1.0f)), ImGuiCond_Appearing);
   ImGui::SetNextWindowSize(ImVec2(bb.GetWidth(), 0.0f), ImGuiCond_Appearing);
-  ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 6.0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(6.0f, 6.0f));
-  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 4.0f));
+  ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 0.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, scaled(ImVec2(4.0f, 4.0f)));
+  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, scaled(ImVec2(0.0f, 2.0f)));
   ImGui::PushStyleColor(ImGuiCol_PopupBg, k_bg_panel);
-  ImGui::PushStyleColor(ImGuiCol_Border, k_line);
+  ImGui::PushStyleColor(ImGuiCol_Border, with_alpha(k_line, 0.0f));
 
   if (ImGui::BeginPopupEx(popup_id, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize)) {
     for (int index = 0; index < item_count; ++index) {
       const char* item_label = items[index] != nullptr ? items[index] : "";
       ImGui::PushID(index);
       const ImVec2 item_pos = ImGui::GetCursorScreenPos();
-      const ImVec2 item_size(bb.GetWidth() - 4.0f, 20.0f);
+      const ImVec2 item_size(bb.GetWidth() - scaled(4.0f), scaled(18.0f));
       const ImRect item_bb(item_pos, ImVec2(item_pos.x + item_size.x, item_pos.y + item_size.y));
       const bool selected = (*value_mask & item_bits[index]) != 0;
       const bool item_clicked = ImGui::InvisibleButton("##multi_combo_item", item_size);
@@ -928,7 +1101,7 @@ inline bool multi_select_combo(const char* label, uint32_t* value_mask, const ch
       const ImVec4 item_color = selected ? with_alpha(k_accent, 0.16f) : item_hovered ? with_alpha(k_accent, 0.08f) : k_bg_panel;
 
       ImGui::GetWindowDrawList()->AddRectFilled(item_bb.Min, item_bb.Max, ImGui::GetColorU32(item_color), 0.0f);
-      ImGui::GetWindowDrawList()->AddText(font_regular(), font_regular()->LegacySize, ImVec2(item_bb.Min.x + 4.0f, item_bb.GetCenter().y - (ImGui::GetTextLineHeight() * 0.5f)), ImGui::GetColorU32(k_text), item_label);
+      ImGui::GetWindowDrawList()->AddText(font_regular(), font_regular()->LegacySize, ImVec2(item_bb.Min.x + scaled(4.0f), item_bb.GetCenter().y - (ImGui::GetTextLineHeight() * 0.5f)), ImGui::GetColorU32(k_text), item_label);
 
       if (item_clicked) {
         *value_mask ^= item_bits[index];
@@ -949,117 +1122,13 @@ inline bool multi_select_combo(const char* label, uint32_t* value_mask, const ch
 }
 
 inline bool slider_float(const char* label, float* value, float minimum, float maximum, const char* format) {
-  ImGuiWindow* window = ImGui::GetCurrentWindow();
-  if (window == nullptr || window->SkipItems || label == nullptr || value == nullptr || format == nullptr) return false;
-
-  ImGuiContext& g = *GImGui;
-  field_label(label);
-  ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 4.0f);
-  const ImGuiID id = window->GetID(label);
-  const ImVec2 pos = window->DC.CursorPos;
-  const float available_width = ImGui::CalcItemWidth();
-  const float track_width = ImMax(120.0f, available_width);
-  const ImRect field_bb(pos, ImVec2(pos.x + track_width, pos.y + 24.0f));
-  const ImRect total_bb(pos, field_bb.Max);
-  ImRect grab_bb{};
-
-  ImGui::ItemSize(total_bb);
-  if (!ImGui::ItemAdd(total_bb, id)) return false;
-
-  char value_buffer[32]{};
-  ImFormatString(value_buffer, IM_ARRAYSIZE(value_buffer), format, *value);
-  const ImVec2 value_size = ImGui::CalcTextSize(value_buffer);
-  const float value_width = slider_value_box_width(format, minimum, maximum, *value);
-  const ImRect value_bb(ImVec2(field_bb.Max.x - value_width - 4.0f, field_bb.Min.y + 3.0f), ImVec2(field_bb.Max.x - 4.0f, field_bb.Max.y - 3.0f));
-  const ImRect track_bb(ImVec2(field_bb.Min.x + 8.0f, field_bb.Min.y + 11.0f), ImVec2(value_bb.Min.x - 8.0f, field_bb.Min.y + 13.0f));
-
-  const bool hovered = ImGui::ItemHoverable(field_bb, id, ImGuiItemFlags_None);
-  const bool clicked = hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
-  if (clicked || g.NavActivateId == id) {
-    if (clicked) ImGui::SetKeyOwner(ImGuiKey_MouseLeft, id);
-    ImGui::SetActiveID(id, window);
-    ImGui::SetFocusID(id, window);
-    ImGui::FocusWindow(window);
-    g.ActiveIdUsingNavDirMask |= (1 << ImGuiDir_Left) | (1 << ImGuiDir_Right);
-  }
-
-  const bool changed = ImGui::SliderBehavior(track_bb, id, ImGuiDataType_Float, value, &minimum, &maximum, format, ImGuiSliderFlags_None, &grab_bb);
-  if (changed) ImGui::MarkItemEdited(id);
-
-  const float hover_anim = storage_anim(id, "slider_hover", hovered ? 1.0f : 0.0f, 12.0f);
-  const float active_anim = storage_anim(id, "slider_active", g.ActiveId == id ? 1.0f : 0.0f, 12.0f);
-  const ImVec4 field_color = lerp_color(k_frame, k_frame_hover, hover_anim * 0.6f);
-  const ImVec4 border_color = lerp_color(k_line, k_accent, (hover_anim * 0.35f) + (active_anim * 0.55f));
-  const float fill_x = grab_bb.Max.x > track_bb.Min.x ? grab_bb.GetCenter().x : track_bb.Min.x;
-  const ImVec2 fill_max(fill_x, track_bb.Max.y);
-  const ImRect knob_bb(ImVec2(fill_x - 1.0f, track_bb.Min.y - 5.0f), ImVec2(fill_x + 1.0f, track_bb.Max.y + 5.0f));
-
-  window->DrawList->AddRectFilled(field_bb.Min, field_bb.Max, ImGui::GetColorU32(field_color), 0.0f);
-  window->DrawList->AddRect(field_bb.Min, field_bb.Max, ImGui::GetColorU32(border_color), 0.0f, 0, 1.0f);
-  window->DrawList->AddRectFilled(track_bb.Min, track_bb.Max, ImGui::GetColorU32(with_alpha(k_text_soft, 0.18f)), 0.0f);
-  window->DrawList->AddRectFilled(track_bb.Min, fill_max, ImGui::GetColorU32(k_accent), 0.0f);
-  window->DrawList->AddRectFilled(value_bb.Min, value_bb.Max, ImGui::GetColorU32(with_alpha(k_bg_panel, 0.95f)), 0.0f);
-  window->DrawList->AddLine(ImVec2(value_bb.Min.x, value_bb.Min.y + 2.0f), ImVec2(value_bb.Min.x, value_bb.Max.y - 2.0f), ImGui::GetColorU32(with_alpha(k_line, 0.85f)), 1.0f);
-  window->DrawList->AddRectFilled(knob_bb.Min, knob_bb.Max, ImGui::GetColorU32(lerp_color(k_text_muted, k_text, active_anim * 0.7f + hover_anim * 0.3f)), 0.0f);
-  window->DrawList->AddText(font_regular(), font_regular()->LegacySize, ImVec2(value_bb.GetCenter().x - (value_size.x * 0.5f), value_bb.GetCenter().y - (value_size.y * 0.5f)), ImGui::GetColorU32(active_anim > 0.0f ? k_text : k_text_muted), value_buffer);
+  const bool changed = slider_scalar_compact<float>(label, value, minimum, maximum, format, ImGuiDataType_Float);
   cat_bind::bindable_slider_float(label, value, changed, minimum, maximum, format);
   return changed;
 }
 
 inline bool slider_int(const char* label, int* value, int minimum, int maximum, const char* format = "%d") {
-  ImGuiWindow* window = ImGui::GetCurrentWindow();
-  if (window == nullptr || window->SkipItems || label == nullptr || value == nullptr || format == nullptr) return false;
-
-  ImGuiContext& g = *GImGui;
-  field_label(label);
-  ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 4.0f);
-  const ImGuiID id = window->GetID(label);
-  const ImVec2 pos = window->DC.CursorPos;
-  const float available_width = ImGui::CalcItemWidth();
-  const float track_width = ImMax(120.0f, available_width);
-  const ImRect field_bb(pos, ImVec2(pos.x + track_width, pos.y + 24.0f));
-  const ImRect total_bb(pos, field_bb.Max);
-  ImRect grab_bb{};
-
-  ImGui::ItemSize(total_bb);
-  if (!ImGui::ItemAdd(total_bb, id)) return false;
-
-  char value_buffer[32]{};
-  ImFormatString(value_buffer, IM_ARRAYSIZE(value_buffer), format, *value);
-  const ImVec2 value_size = ImGui::CalcTextSize(value_buffer);
-  const float value_width = slider_value_box_width(format, minimum, maximum, *value);
-  const ImRect value_bb(ImVec2(field_bb.Max.x - value_width - 4.0f, field_bb.Min.y + 3.0f), ImVec2(field_bb.Max.x - 4.0f, field_bb.Max.y - 3.0f));
-  const ImRect track_bb(ImVec2(field_bb.Min.x + 8.0f, field_bb.Min.y + 11.0f), ImVec2(value_bb.Min.x - 8.0f, field_bb.Min.y + 13.0f));
-
-  const bool hovered = ImGui::ItemHoverable(field_bb, id, ImGuiItemFlags_None);
-  const bool clicked = hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
-  if (clicked || g.NavActivateId == id) {
-    if (clicked) ImGui::SetKeyOwner(ImGuiKey_MouseLeft, id);
-    ImGui::SetActiveID(id, window);
-    ImGui::SetFocusID(id, window);
-    ImGui::FocusWindow(window);
-    g.ActiveIdUsingNavDirMask |= (1 << ImGuiDir_Left) | (1 << ImGuiDir_Right);
-  }
-
-  const bool changed = ImGui::SliderBehavior(track_bb, id, ImGuiDataType_S32, value, &minimum, &maximum, format, ImGuiSliderFlags_None, &grab_bb);
-  if (changed) ImGui::MarkItemEdited(id);
-
-  const float hover_anim = storage_anim(id, "slider_hover", hovered ? 1.0f : 0.0f, 12.0f);
-  const float active_anim = storage_anim(id, "slider_active", g.ActiveId == id ? 1.0f : 0.0f, 12.0f);
-  const ImVec4 field_color = lerp_color(k_frame, k_frame_hover, hover_anim * 0.6f);
-  const ImVec4 border_color = lerp_color(k_line, k_accent, (hover_anim * 0.35f) + (active_anim * 0.55f));
-  const float fill_x = grab_bb.Max.x > track_bb.Min.x ? grab_bb.GetCenter().x : track_bb.Min.x;
-  const ImVec2 fill_max(fill_x, track_bb.Max.y);
-  const ImRect knob_bb(ImVec2(fill_x - 1.0f, track_bb.Min.y - 5.0f), ImVec2(fill_x + 1.0f, track_bb.Max.y + 5.0f));
-
-  window->DrawList->AddRectFilled(field_bb.Min, field_bb.Max, ImGui::GetColorU32(field_color), 0.0f);
-  window->DrawList->AddRect(field_bb.Min, field_bb.Max, ImGui::GetColorU32(border_color), 0.0f, 0, 1.0f);
-  window->DrawList->AddRectFilled(track_bb.Min, track_bb.Max, ImGui::GetColorU32(with_alpha(k_text_soft, 0.18f)), 0.0f);
-  window->DrawList->AddRectFilled(track_bb.Min, fill_max, ImGui::GetColorU32(k_accent), 0.0f);
-  window->DrawList->AddRectFilled(value_bb.Min, value_bb.Max, ImGui::GetColorU32(with_alpha(k_bg_panel, 0.95f)), 0.0f);
-  window->DrawList->AddLine(ImVec2(value_bb.Min.x, value_bb.Min.y + 2.0f), ImVec2(value_bb.Min.x, value_bb.Max.y - 2.0f), ImGui::GetColorU32(with_alpha(k_line, 0.85f)), 1.0f);
-  window->DrawList->AddRectFilled(knob_bb.Min, knob_bb.Max, ImGui::GetColorU32(lerp_color(k_text_muted, k_text, active_anim * 0.7f + hover_anim * 0.3f)), 0.0f);
-  window->DrawList->AddText(font_regular(), font_regular()->LegacySize, ImVec2(value_bb.GetCenter().x - (value_size.x * 0.5f), value_bb.GetCenter().y - (value_size.y * 0.5f)), ImGui::GetColorU32(active_anim > 0.0f ? k_text : k_text_muted), value_buffer);
+  const bool changed = slider_scalar_compact<int>(label, value, minimum, maximum, format, ImGuiDataType_S32);
   cat_bind::bindable_slider_int(label, value, changed, minimum, maximum, format);
   return changed;
 }
@@ -1068,9 +1137,9 @@ inline bool input_text(const char* label, std::string* value) {
   if (label == nullptr || value == nullptr) return false;
 
   field_label(label);
-  ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 4.0f);
+  ImGui::SetCursorPosY(ImGui::GetCursorPosY() + scaled(4.0f));
   const std::string item_id = std::string("##") + label;
-  ImGui::SetNextItemWidth(ImMax(80.0f, ImGui::GetContentRegionAvail().x - 10.0f));
+  ImGui::SetNextItemWidth(ImMax(scaled(80.0f), ImGui::GetContentRegionAvail().x - scaled(10.0f)));
   const bool hide_text = ImGui::GetActiveID() != ImGui::GetID(item_id.c_str());
   ImGui::PushStyleColor(ImGuiCol_FrameBg, k_frame);
   ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, k_frame_hover);
@@ -1078,7 +1147,7 @@ inline bool input_text(const char* label, std::string* value) {
   ImGui::PushStyleColor(ImGuiCol_Border, k_line);
   ImGui::PushStyleColor(ImGuiCol_TextSelectedBg, with_alpha(k_accent, 0.30f));
   ImGui::PushStyleColor(ImGuiCol_Text, hide_text ? ImVec4(k_text.x, k_text.y, k_text.z, 0.0f) : k_text);
-  ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, 4.0f));
+  ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, scaled(ImVec2(8.0f, 4.0f)));
   ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
   const bool changed = ImGui::InputText(item_id.c_str(), value);
   const bool is_active = ImGui::IsItemActive();
@@ -1087,7 +1156,7 @@ inline bool input_text(const char* label, std::string* value) {
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
     const ImVec2 rect_min = ImGui::GetItemRectMin();
     const ImVec2 rect_max = ImGui::GetItemRectMax();
-    const ImRect clip_bb(ImVec2(rect_min.x + 8.0f, rect_min.y + 2.0f), ImVec2(rect_max.x - 8.0f, rect_max.y - 2.0f));
+    const ImRect clip_bb(ImVec2(rect_min.x + scaled(8.0f), rect_min.y + scaled(2.0f)), ImVec2(rect_max.x - scaled(8.0f), rect_max.y - scaled(2.0f)));
     const ImVec4 preview_color = is_hovered ? k_text : k_text_muted;
     const std::string preview_text = ellipsize_text(value->c_str(), clip_bb.GetWidth());
     draw_list->AddRectFilled(
@@ -1096,7 +1165,7 @@ inline bool input_text(const char* label, std::string* value) {
       ImGui::GetColorU32(is_hovered ? k_frame_hover : k_frame),
       0.0f);
     ImGui::PushClipRect(clip_bb.Min, clip_bb.Max, true);
-    draw_list->AddText(font_regular(), font_regular()->LegacySize, ImVec2(clip_bb.Min.x, rect_min.y + 4.0f), ImGui::GetColorU32(preview_color), preview_text.c_str());
+    draw_list->AddText(font_regular(), font_regular()->LegacySize, ImVec2(clip_bb.Min.x, rect_min.y + scaled(4.0f)), ImGui::GetColorU32(preview_color), preview_text.c_str());
     ImGui::PopClipRect();
   }
   ImGui::PopStyleVar(2);
@@ -1108,9 +1177,9 @@ inline bool input_text(const char* label, char* value, int capacity) {
   if (label == nullptr || value == nullptr || capacity <= 0) return false;
 
   field_label(label);
-  ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 4.0f);
+  ImGui::SetCursorPosY(ImGui::GetCursorPosY() + scaled(4.0f));
   const std::string item_id = std::string("##") + label;
-  ImGui::SetNextItemWidth(ImMax(80.0f, ImGui::GetContentRegionAvail().x - 10.0f));
+  ImGui::SetNextItemWidth(ImMax(scaled(80.0f), ImGui::GetContentRegionAvail().x - scaled(10.0f)));
   const bool hide_text = ImGui::GetActiveID() != ImGui::GetID(item_id.c_str());
   ImGui::PushStyleColor(ImGuiCol_FrameBg, k_frame);
   ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, k_frame_hover);
@@ -1118,7 +1187,7 @@ inline bool input_text(const char* label, char* value, int capacity) {
   ImGui::PushStyleColor(ImGuiCol_Border, k_line);
   ImGui::PushStyleColor(ImGuiCol_TextSelectedBg, with_alpha(k_accent, 0.30f));
   ImGui::PushStyleColor(ImGuiCol_Text, hide_text ? ImVec4(k_text.x, k_text.y, k_text.z, 0.0f) : k_text);
-  ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, 4.0f));
+  ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, scaled(ImVec2(8.0f, 4.0f)));
   ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
   const bool changed = ImGui::InputText(item_id.c_str(), value, capacity);
   const bool is_active = ImGui::IsItemActive();
@@ -1127,7 +1196,7 @@ inline bool input_text(const char* label, char* value, int capacity) {
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
     const ImVec2 rect_min = ImGui::GetItemRectMin();
     const ImVec2 rect_max = ImGui::GetItemRectMax();
-    const ImRect clip_bb(ImVec2(rect_min.x + 8.0f, rect_min.y + 2.0f), ImVec2(rect_max.x - 8.0f, rect_max.y - 2.0f));
+    const ImRect clip_bb(ImVec2(rect_min.x + scaled(8.0f), rect_min.y + scaled(2.0f)), ImVec2(rect_max.x - scaled(8.0f), rect_max.y - scaled(2.0f)));
     const ImVec4 preview_color = is_hovered ? k_text : k_text_muted;
     const std::string preview_text = ellipsize_text(value, clip_bb.GetWidth());
     draw_list->AddRectFilled(
@@ -1136,7 +1205,7 @@ inline bool input_text(const char* label, char* value, int capacity) {
       ImGui::GetColorU32(is_hovered ? k_frame_hover : k_frame),
       0.0f);
     ImGui::PushClipRect(clip_bb.Min, clip_bb.Max, true);
-    draw_list->AddText(font_regular(), font_regular()->LegacySize, ImVec2(clip_bb.Min.x, rect_min.y + 4.0f), ImGui::GetColorU32(preview_color), preview_text.c_str());
+    draw_list->AddText(font_regular(), font_regular()->LegacySize, ImVec2(clip_bb.Min.x, rect_min.y + scaled(4.0f)), ImGui::GetColorU32(preview_color), preview_text.c_str());
     ImGui::PopClipRect();
   }
   ImGui::PopStyleVar(2);
@@ -1149,10 +1218,10 @@ inline bool color_picker(const char* label, float* color) {
   if (window == nullptr || window->SkipItems || label == nullptr || color == nullptr) return false;
 
   field_label(label);
-  ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 4.0f);
+  ImGui::SetCursorPosY(ImGui::GetCursorPosY() + scaled(4.0f));
   const ImGuiID id = window->GetID(label);
   const ImVec2 pos = window->DC.CursorPos;
-  const ImVec2 size = ImGui::CalcItemSize(ImVec2(ImGui::CalcItemWidth(), 24.0f), 42.0f, 24.0f);
+  const ImVec2 size = ImGui::CalcItemSize(ImVec2(ImGui::CalcItemWidth(), scaled(24.0f)), scaled(42.0f), scaled(24.0f));
   const ImRect box_bb(pos, ImVec2(pos.x + size.x, pos.y + size.y));
 
   ImGui::ItemSize(box_bb);
@@ -1227,6 +1296,8 @@ static void get_input(SDL_Event* event) {
 static void set_imgui_theme(void) {
   cat_menu::ensure_fonts();
   ImGuiStyle* style = &ImGui::GetStyle();
+  const float scale = cat_menu::ui_scale();
+  *style = ImGuiStyle();
   style->WindowPadding = ImVec2(5.0f, 5.0f);
   style->FramePadding = ImVec2(4.0f, 2.0f);
   style->ItemSpacing = ImVec2(5.0f, 4.0f);
@@ -1269,6 +1340,7 @@ static void set_imgui_theme(void) {
   style->Colors[ImGuiCol_ScrollbarBg] = cat_menu::k_bg_panel;
   style->Colors[ImGuiCol_ScrollbarGrab] = cat_menu::k_frame_hover;
   style->Colors[ImGuiCol_ScrollbarGrabHovered] = cat_menu::k_accent;
+  style->ScaleAllSizes(scale);
 }
 
 static ImU32 cathook_watermark_rainbow_color() {
@@ -1467,13 +1539,36 @@ static void draw_aimbot_content() {
   cat_menu::end_flow_layout();
 }
 
+static void draw_medic_content();
+
 static void draw_combat_tab() {
+  enum combat_page_id
+  {
+    combat_page_aimbot,
+    combat_page_medic
+  };
+
+  static int combat_subtab = combat_page_aimbot;
+
   cat_menu::begin_tab_strip("##combat_subtabs", cat_menu::k_subtab_strip_height, false, true, cat_menu::k_tab_strip_padding_x, false);
-  cat_menu::subtab_button("Aimbot", true);
+  if (cat_menu::subtab_button("Aimbot", combat_subtab == combat_page_aimbot)) {
+    combat_subtab = combat_page_aimbot;
+  }
+  ImGui::SameLine(0.0f, 0.0f);
+  if (cat_menu::subtab_button("Medic", combat_subtab == combat_page_medic)) {
+    combat_subtab = combat_page_medic;
+  }
   cat_menu::end_tab_strip();
   ImGui::Dummy(ImVec2(0.0f, 4.0f));
 
-  draw_aimbot_content();
+  switch (combat_subtab) {
+    case combat_page_aimbot:
+      draw_aimbot_content();
+      break;
+    case combat_page_medic:
+      draw_medic_content();
+      break;
+  }
 }
 
 static uint32_t group_active_bit(const int index) {
@@ -2136,7 +2231,6 @@ static void draw_chat_content() {
 }
 
 static void draw_queue_content() {
-  const char* class_items[] = { "Undefined", "Scout", "Sniper", "Soldier", "Demoman", "Medic", "Heavy", "Pyro", "Spy", "Engineer" };
   const char* queue_mode_items[] = {
     "MvM Practice",
     "MvM Mann Up",
@@ -2162,11 +2256,6 @@ static void draw_queue_content() {
   };
 
   cat_menu::begin_flow_layout("queue_layout", 3);
-  cat_menu::flow_panel("Class", 0, 104.0f, [&]() {
-    cat_menu::checkbox("Auto class select", &config.misc.automation.auto_class_select);
-    cat_menu::combo("Preferred class", (int*)&config.misc.automation.class_selected, class_items, IM_ARRAYSIZE(class_items));
-    cat_menu::checkbox("Don't join class during warmup", &config.misc.automation.auto_class_dont_join_during_warmup);
-  });
   cat_menu::flow_panel("Queue", 1, 248.0f, [&]() {
     cat_menu::combo("Mode", (int*)&config.misc.automation.queue_mode, queueing_mode_items, IM_ARRAYSIZE(queueing_mode_items));
     if (config.misc.automation.queue_mode == Misc::Automation::queueing_mode::BOOST) {
@@ -2193,6 +2282,7 @@ static void draw_queue_content() {
 }
 
 static void draw_automation_utilities_content() {
+  const char* class_items[] = { "Undefined", "Scout", "Sniper", "Soldier", "Demoman", "Medic", "Heavy", "Pyro", "Spy", "Engineer" };
   const char* voice_command_spam_items[] = {
     "Off",
     "Random",
@@ -2219,6 +2309,11 @@ static void draw_automation_utilities_content() {
   };
 
   cat_menu::begin_flow_layout("automation_utilities_layout", 3);
+  cat_menu::flow_panel("Class", 0, 104.0f, [&]() {
+    cat_menu::checkbox("Auto class select", &config.misc.automation.auto_class_select);
+    cat_menu::combo("Preferred class", (int*)&config.misc.automation.class_selected, class_items, IM_ARRAYSIZE(class_items));
+    cat_menu::checkbox("Don't join class during warmup", &config.misc.automation.auto_class_dont_join_during_warmup);
+  });
   cat_menu::flow_panel("General", 0, 190.0f, [&]() {
     cat_menu::checkbox("Anti AFK", &config.misc.automation.anti_afk);
     cat_menu::checkbox("Anti autobalance", &config.misc.automation.anti_autobalance);
@@ -2349,7 +2444,6 @@ static void draw_automation_tab() {
     automation_page_utilities,
     automation_page_autoitem,
     automation_page_chat,
-    automation_page_medic,
     automation_page_navbot,
     automation_page_ipc
   };
@@ -2371,10 +2465,6 @@ static void draw_automation_tab() {
   ImGui::SameLine(0.0f, 0.0f);
   if (cat_menu::subtab_button("Chat", automation_subtab == automation_page_chat)) {
     automation_subtab = automation_page_chat;
-  }
-  ImGui::SameLine(0.0f, 0.0f);
-  if (cat_menu::subtab_button("Medic", automation_subtab == automation_page_medic)) {
-    automation_subtab = automation_page_medic;
   }
   ImGui::SameLine(0.0f, 0.0f);
   if (cat_menu::subtab_button("NavBot", automation_subtab == automation_page_navbot)) {
@@ -2399,9 +2489,6 @@ static void draw_automation_tab() {
       break;
     case automation_page_chat:
       draw_chat_content();
-      break;
-    case automation_page_medic:
-      draw_medic_content();
       break;
     case automation_page_navbot:
       draw_navbot_content();
@@ -2627,6 +2714,7 @@ static void draw_debug_content() {
         config.misc.menu.custom_font.clear();
       }
     }
+    cat_menu::combo("Menu scale", &config.misc.menu.dpi_scale, cat_menu::k_dpi_scale_labels.data(), static_cast<int>(cat_menu::k_dpi_scale_labels.size()));
     cat_menu::checkbox("Draw all entities", &config.debug.debug_render_all_entities);
     cat_menu::checkbox("Show active flag IDs", &config.debug.show_active_flag_ids_of_players);
     
@@ -2775,7 +2863,7 @@ inline void push_window_style() {
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 0.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
-  ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f, 3.0f));
+  ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, scaled(ImVec2(6.0f, 3.0f)));
   ImGui::PushStyleColor(ImGuiCol_Text, k_text);
   ImGui::PushStyleColor(ImGuiCol_CheckMark, k_text);
   ImGui::PushStyleColor(ImGuiCol_FrameBg, k_frame);
@@ -2805,9 +2893,13 @@ inline bool begin_chrome_window(window_id id, const ImVec2& default_size, const 
   window_state& state = windows(id);
   if (!state.open || state.minimized) return false;
 
-  ImGui::SetNextWindowSize(default_size, ImGuiCond_FirstUseEver);
-  ImGui::SetNextWindowSizeConstraints(default_size, ImVec2(FLT_MAX, FLT_MAX));
-  ImGui::SetNextWindowPos(default_pos, ImGuiCond_FirstUseEver);
+  const ImVec2 scaled_default_size = scaled(default_size);
+  const ImVec2 scaled_default_pos = scaled(default_pos);
+  const float title_height = scaled(k_title_height);
+
+  ImGui::SetNextWindowSize(scaled_default_size, ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowSizeConstraints(scaled_default_size, ImVec2(FLT_MAX, FLT_MAX));
+  ImGui::SetNextWindowPos(scaled_default_pos, ImGuiCond_FirstUseEver);
   ImGui::SetNextWindowBgAlpha(0.0f);
   if (state.focus_request) {
     ImGui::SetNextWindowFocus();
@@ -2828,17 +2920,17 @@ inline bool begin_chrome_window(window_id id, const ImVec2& default_size, const 
   ImVec2 max = ImVec2(pos.x + size.x, pos.y + size.y);
   dl->AddRectFilled(pos, max, ImGui::GetColorU32(k_bg_outer), 0.0f);
   dl->AddRect(pos, max, ImGui::GetColorU32(k_line), 0.0f, 0, 1.0f);
-  dl->AddLine(ImVec2(pos.x, pos.y + k_title_height), ImVec2(max.x, pos.y + k_title_height), ImGui::GetColorU32(k_line), 1.0f);
+  dl->AddLine(ImVec2(pos.x, pos.y + title_height), ImVec2(max.x, pos.y + title_height), ImGui::GetColorU32(k_line), 1.0f);
 
   const char* title = window_title(id);
   const ImVec2 title_size = font_regular()->CalcTextSizeA(font_regular()->LegacySize, FLT_MAX, 0.0f, title);
-  dl->AddText(font_regular(), font_regular()->LegacySize, ImVec2(pos.x + 6.0f, pos.y + ((k_title_height - title_size.y) * 0.5f)), ImGui::GetColorU32(k_text), title);
+  dl->AddText(font_regular(), font_regular()->LegacySize, ImVec2(pos.x + scaled(6.0f), pos.y + ((title_height - title_size.y) * 0.5f)), ImGui::GetColorU32(k_text), title);
 
-  ImGui::SetCursorPos(ImVec2(size.x - 36.0f, (k_title_height - 14.0f) * 0.5f));
+  ImGui::SetCursorPos(ImVec2(size.x - scaled(36.0f), (title_height - scaled(14.0f)) * 0.5f));
   if (chrome_icon_button("##win_min", chrome_icon::minimize)) {
     state.minimized = true;
   }
-  ImGui::SetCursorPos(ImVec2(size.x - 18.0f, (k_title_height - 14.0f) * 0.5f));
+  ImGui::SetCursorPos(ImVec2(size.x - scaled(18.0f), (title_height - scaled(14.0f)) * 0.5f));
   if (chrome_icon_button("##win_close", chrome_icon::close)) {
     state.open = false;
   }
@@ -2851,8 +2943,9 @@ inline void end_chrome_window() {
   ImVec2 pos = ImGui::GetWindowPos();
   ImVec2 size = ImGui::GetWindowSize();
   ImVec2 max = ImVec2(pos.x + size.x, pos.y + size.y);
+  const float title_height = scaled(k_title_height);
   dl->AddRect(pos, max, ImGui::GetColorU32(k_line), 0.0f, 0, 1.0f);
-  dl->AddLine(ImVec2(pos.x, pos.y + k_title_height), ImVec2(max.x, pos.y + k_title_height), ImGui::GetColorU32(k_line), 1.0f);
+  dl->AddLine(ImVec2(pos.x, pos.y + title_height), ImVec2(max.x, pos.y + title_height), ImGui::GetColorU32(k_line), 1.0f);
   ImGui::End();
   pop_window_style();
 }
@@ -2860,6 +2953,7 @@ inline void end_chrome_window() {
 } // namespace cat_menu
 
 static void draw_settings_window(void) {
+  set_imgui_theme();
   enforce_insider_settings_lock(config);
 
   if (!cat_menu::begin_chrome_window(cat_menu::window_id::settings, cat_menu::k_menu_size, ImVec2(80.0f, 70.0f))) {
@@ -2869,19 +2963,21 @@ static void draw_settings_window(void) {
   enum cathook_tab_id
   {
     cathook_tab_combat,
+    cathook_tab_exploits,
     cathook_tab_visuals,
     cathook_tab_movement,
     cathook_tab_automation,
-    cathook_tab_exploits,
     cathook_tab_system
   };
   static int tab = cathook_tab_combat;
 
   draw_beta_notice();
 
-  ImGui::SetCursorPos(ImVec2(0.0f, cat_menu::k_title_height));
+  ImGui::SetCursorPos(ImVec2(0.0f, cat_menu::scaled(cat_menu::k_title_height)));
   cat_menu::begin_tab_strip("##nav", cat_menu::k_tab_strip_height, false, false, cat_menu::k_tab_strip_padding_x);
   if (cat_menu::nav_button("Combat", tab == cathook_tab_combat)) tab = cathook_tab_combat;
+  ImGui::SameLine(0.0f, 0.0f);
+  if (cat_menu::nav_button("Exploits", tab == cathook_tab_exploits)) tab = cathook_tab_exploits;
   ImGui::SameLine(0.0f, 0.0f);
   if (cat_menu::nav_button("Visuals", tab == cathook_tab_visuals)) tab = cathook_tab_visuals;
   ImGui::SameLine(0.0f, 0.0f);
@@ -2889,20 +2985,18 @@ static void draw_settings_window(void) {
   ImGui::SameLine(0.0f, 0.0f);
   if (cat_menu::nav_button("Automation", tab == cathook_tab_automation)) tab = cathook_tab_automation;
   ImGui::SameLine(0.0f, 0.0f);
-  if (cat_menu::nav_button("Exploits", tab == cathook_tab_exploits)) tab = cathook_tab_exploits;
-  ImGui::SameLine(0.0f, 0.0f);
   if (cat_menu::nav_button("System", tab == cathook_tab_system)) tab = cathook_tab_system;
   cat_menu::end_tab_strip();
 
-  ImGui::SetCursorPos(ImVec2(cat_menu::k_strip_inset_x, cat_menu::k_title_height + cat_menu::k_tab_strip_height));
+  ImGui::SetCursorPos(ImVec2(cat_menu::scaled(cat_menu::k_strip_inset_x), cat_menu::scaled(cat_menu::k_title_height + cat_menu::k_tab_strip_height)));
   ImGui::BeginChild("##content", ImVec2(-cat_menu::k_strip_inset_x, 0.0f), false, ImGuiWindowFlags_NoBackground);
 
   switch (tab) {
   case cathook_tab_combat:    draw_combat_tab(); break;
+  case cathook_tab_exploits:  draw_exploits_content(); break;
   case cathook_tab_visuals:   draw_visuals_tab(); break;
   case cathook_tab_movement:  draw_movement_content(); break;
   case cathook_tab_automation: draw_automation_tab(); break;
-  case cathook_tab_exploits:  draw_exploits_content(); break;
   case cathook_tab_system:    draw_system_tab(); break;
   }
 
@@ -2913,13 +3007,14 @@ static void draw_settings_window(void) {
 }
 
 static void draw_player_window(void) {
+  set_imgui_theme();
   if (!cat_menu::begin_chrome_window(cat_menu::window_id::players, ImVec2(640.0f, 460.0f), ImVec2(120.0f, 110.0f))) {
     return;
   }
 
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 8.0f));
-  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(6.0f, 6.0f));
-  ImGui::SetCursorPos(ImVec2(0.0f, cat_menu::k_title_height));
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, cat_menu::scaled(ImVec2(8.0f, 8.0f)));
+  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, cat_menu::scaled(ImVec2(6.0f, 6.0f)));
+  ImGui::SetCursorPos(ImVec2(0.0f, cat_menu::scaled(cat_menu::k_title_height)));
   ImGui::BeginChild("##player_content", ImVec2(0.0f, 0.0f), false, ImGuiWindowFlags_NoBackground);
   cat_menu::draw_player_window_content();
   ImGui::EndChild();
