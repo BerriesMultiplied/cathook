@@ -117,7 +117,8 @@ function updateData() {
 function commandButtonCallback() {
     var cmdz = prompt('Enter a command');
     if (cmdz) {
-		const target = parseInt($(this).parent().parent().find('.client-id').text());
+		const row = $(this).closest('tr');
+		const target = Number.parseInt(String(row.attr('data-ipc-id') || row.find('.client-id').text()), 10);
 		if (!Number.isFinite(target)) {
 			status.error('Bot IPC id is not available yet');
 			return;
@@ -392,10 +393,9 @@ function updateIPCData(row, id, data, state, ipc_observed_at) {
 	var observed_at = Number(ipc_observed_at);
 	var observed_age = observed_at ? Math.floor((Date.now() - observed_at) / 1000) : 0;
 	var time = Number.isFinite(heartbeat) ? Math.floor(Date.now() / 1000 - heartbeat) : 0;
+	row.toggleClass('stale', observed_age > 30);
 	if (observed_age > 30) {
-		row.find('.active').text('N/A');
-		row.find('.connected').text('N/A');
-		row.find('.client-status').removeClass('error').addClass('warning').text('Query stale ' + observed_age);
+		row.find('.client-status').removeClass('error').addClass('warning').text('Query stale ' + observed_age + 's (last known)');
 		return;
 	} else if (!data.heartbeat || time < 4) {
 		row.find('.client-status').removeClass('error warning').text('OK ' + time);
@@ -422,6 +422,7 @@ function updateIPCData(row, id, data, state, ipc_observed_at) {
 	}
 	row.find('.client-pid').text(data.pid);
 	row.find('.client-id').text(id);
+	row.attr('data-ipc-id', id);
 	row.find('.client-name').text(data.name);
 	row.find('.client-total').text(accumulated.score || 0);
 	var hitrate = Math.floor((accumulated.shots ? accumulated.hits / accumulated.shots : 0) * 100);
@@ -445,6 +446,7 @@ function updateIPCData(row, id, data, state, ipc_observed_at) {
 	}
 	if (data.connected) {
 		row.toggleClass('disconnected', false);
+		row.toggleClass('stale', observed_age > 30);
 		row.find('.client-uptime-server').text(format(Date.now() - data.ts_connected * 1000));
 		row.find('.client-ip').text(ingame.server || 'N/A');
 		row.find('.client-alive').text(ingame.life_state ? 'Dead' : 'Alive');
@@ -473,6 +475,7 @@ function updateUserData(bot, data) {
 	row.find('.client-state').text(STATE[data.state]);
 	row.find('.client-restarts').text(data.restarts);
 	if (data.state === 5 && data.ipc) {
+		row.attr('data-ipc-id', data.ipcID);
 		row.attr('data-pid', data.ipc.pid);
 		row.find('.client-pid').text(data.ipc.pid);
 		const profile_url = data.profile_url || steam_id.profile_url_from_account_id32(data.ipc.friendid);
