@@ -393,7 +393,10 @@ function updateIPCData(row, id, data, state, ipc_observed_at) {
 	var observed_age = observed_at ? Math.floor((Date.now() - observed_at) / 1000) : 0;
 	var time = Number.isFinite(heartbeat) ? Math.floor(Date.now() / 1000 - heartbeat) : 0;
 	if (observed_age > 30) {
+		row.find('.active').text('N/A');
+		row.find('.connected').text('N/A');
 		row.find('.client-status').removeClass('error').addClass('warning').text('Query stale ' + observed_age);
+		return;
 	} else if (!data.heartbeat || time < 4) {
 		row.find('.client-status').removeClass('error warning').text('OK ' + time);
 	} else if (time < 45) {
