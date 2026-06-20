@@ -287,13 +287,23 @@ inline bool proj_aim_predicted_explosion_can_damage(Player* localplayer,
 inline projectile_sim_launch proj_aim_launch_from_intercept(Player* localplayer,
   Weapon* weapon,
   const LocalPredictionInterceptResult& intercept,
-  const projectile_sim_profile& profile) {
+  const projectile_sim_profile& profile,
+  user_cmd* user_cmd = nullptr,
+  bool apply_random_angles = false) {
   projectile_sim_launch launch{};
   if (localplayer == nullptr || weapon == nullptr || !intercept.valid || !profile.valid) {
     return launch;
   }
 
-  return projectile_sim_build_launch_from_angles(localplayer, weapon, intercept.aim_angles, profile);
+  if (user_cmd == nullptr) {
+    return projectile_sim_build_launch_from_angles(localplayer, weapon, intercept.aim_angles, profile);
+  }
+
+  auto launch_cmd = *user_cmd;
+  launch_cmd.view_angles = intercept.aim_angles;
+  projectile_sim_launch_options options{};
+  options.apply_random_angles = apply_random_angles;
+  return projectile_sim_build_launch_from_cmd(localplayer, weapon, &launch_cmd, profile, options);
 }
 
 inline float proj_aim_segment_point_distance(const Vec3& start,
@@ -590,7 +600,9 @@ inline bool proj_aim_intercept_trace_matches_launch(const projectile_sim_launch&
 inline bool proj_aim_trace_path(Player* localplayer,
   Player* target,
   Weapon* weapon,
-  const LocalPredictionInterceptResult& intercept) {
+  const LocalPredictionInterceptResult& intercept,
+  user_cmd* user_cmd = nullptr,
+  bool apply_random_angles = false) {
   if (localplayer == nullptr || target == nullptr || weapon == nullptr || engine_trace == nullptr || !intercept.valid || !intercept.trace.valid) {
     return false;
   }
@@ -605,7 +617,7 @@ inline bool proj_aim_trace_path(Player* localplayer,
     std::max(intercept.intercept_time + sim_profile.params.time_step, sim_profile.params.time_step));
   sim_profile.lifetime = sim_profile.params.max_time;
 
-  const projectile_sim_launch launch = proj_aim_launch_from_intercept(localplayer, weapon, intercept, sim_profile);
+  const projectile_sim_launch launch = proj_aim_launch_from_intercept(localplayer, weapon, intercept, sim_profile, user_cmd, apply_random_angles);
   if (!launch.valid) {
     return false;
   }
@@ -647,7 +659,9 @@ inline bool proj_aim_trace_path(Player* localplayer,
 inline bool proj_aim_trace_simple_path(Player* localplayer,
   Player* target,
   Weapon* weapon,
-  const LocalPredictionInterceptResult& intercept) {
+  const LocalPredictionInterceptResult& intercept,
+  user_cmd* user_cmd = nullptr,
+  bool apply_random_angles = false) {
   if (localplayer == nullptr || target == nullptr || weapon == nullptr || engine_trace == nullptr || !intercept.valid) {
     return false;
   }
@@ -662,7 +676,7 @@ inline bool proj_aim_trace_simple_path(Player* localplayer,
     std::max(intercept.intercept_time + sim_profile.params.time_step, sim_profile.params.time_step));
   sim_profile.lifetime = sim_profile.params.max_time;
 
-  const projectile_sim_launch launch = proj_aim_launch_from_intercept(localplayer, weapon, intercept, sim_profile);
+  const projectile_sim_launch launch = proj_aim_launch_from_intercept(localplayer, weapon, intercept, sim_profile, user_cmd, apply_random_angles);
   if (!launch.valid || intercept.intercept_time <= 0.0f) {
     return false;
   }
@@ -702,7 +716,9 @@ inline bool proj_aim_trace_splash_path(Player* localplayer,
   uint32_t hitbox_mask,
   Vec3* explosion_origin_out = nullptr,
   const Vec3* predicted_target_origin = nullptr,
-  bool validate_damage = true) {
+  bool validate_damage = true,
+  user_cmd* user_cmd = nullptr,
+  bool apply_random_angles = false) {
   if (localplayer == nullptr || target == nullptr || weapon == nullptr || engine_trace == nullptr || !intercept.valid || splash_radius <= 0.0f) {
     return false;
   }
@@ -717,7 +733,7 @@ inline bool proj_aim_trace_splash_path(Player* localplayer,
     std::max(intercept.intercept_time + sim_profile.params.time_step, sim_profile.params.time_step));
   sim_profile.lifetime = sim_profile.params.max_time;
 
-  const projectile_sim_launch launch = proj_aim_launch_from_intercept(localplayer, weapon, intercept, sim_profile);
+  const projectile_sim_launch launch = proj_aim_launch_from_intercept(localplayer, weapon, intercept, sim_profile, user_cmd, apply_random_angles);
   const projectile_sim_result sim_result = projectile_sim_run(
     launch,
     sim_profile,

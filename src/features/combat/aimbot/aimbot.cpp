@@ -325,13 +325,11 @@ bool projectile_ready(const aimbot_run_context& ctx) {
   if (!ctx.target.projectile_direct && !ctx.target.projectile_splash) {
     return true;
   }
-  if (!aimbot_mode_uses_visible_steering()) {
-    return aim_targeting::projectile_solution_ready(ctx.local, ctx.weapon, ctx.cmd, ctx.target, ctx.projectile_angles);
-  }
-  if (aimbot_calculate_fov(ctx.projectile_angles, ctx.applied_angles) > aimbot_projectile_visible_settle_fov(ctx.target)) {
+  if (aimbot_mode_uses_visible_steering() &&
+      aimbot_calculate_fov(ctx.projectile_angles, ctx.applied_angles) > aimbot_projectile_visible_settle_fov(ctx.target)) {
     return false;
   }
-  return aim_targeting::projectile_solution_ready(ctx.local, ctx.weapon, ctx.cmd, ctx.target, ctx.applied_angles);
+  return aim_targeting::projectile_solution_ready(ctx.local, ctx.weapon, ctx.cmd, ctx.target, ctx.projectile_angles);
 }
 
 bool hitscan_settled(const aimbot_run_context& ctx) {

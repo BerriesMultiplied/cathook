@@ -446,7 +446,11 @@ inline bool projectile_solution_ready(Player* localplayer,
   if (!profile.valid || profile.params.speed <= 0.0f || candidate.projectile_intercept_time <= 0.0f) return false;
 
   if (weapon->is_flamethrower()) {
-    const projectile_sim_launch launch = projectile_sim_build_launch_from_angles(localplayer, weapon, applied_view_angles, profile);
+    auto launch_cmd = *user_cmd;
+    launch_cmd.view_angles = applied_view_angles;
+    projectile_sim_launch_options launch_options{};
+    launch_options.apply_random_angles = true;
+    const projectile_sim_launch launch = projectile_sim_build_launch_from_cmd(localplayer, weapon, &launch_cmd, profile, launch_options);
     const float hull_radius = projectile_flamethrower_hull_radius(weapon);
     if (!launch.valid || distance_3d(launch.origin, candidate.aim_position) > projectile_flamethrower_effective_range(weapon) + hull_radius) {
       return false;
@@ -467,7 +471,7 @@ inline bool projectile_solution_ready(Player* localplayer,
   adjusted_intercept.target_velocity = candidate.projectile_target_velocity;
 
   if (candidate.projectile_direct) {
-    return proj_aim_trace_simple_path(localplayer, candidate.player, weapon, adjusted_intercept);
+    return proj_aim_trace_simple_path(localplayer, candidate.player, weapon, adjusted_intercept, user_cmd, true);
   }
 
   const uint32_t hitbox_mask = proj_aim_effective_hitbox_mask(localplayer, weapon, candidate.player);
@@ -482,7 +486,10 @@ inline bool projectile_solution_ready(Player* localplayer,
     candidate.projectile_splash_radius,
     hitbox_mask,
     nullptr,
-    predicted_target_origin);
+    predicted_target_origin,
+    true,
+    user_cmd,
+    true);
 }
 
 }

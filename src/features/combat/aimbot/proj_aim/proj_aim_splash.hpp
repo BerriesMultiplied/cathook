@@ -388,7 +388,7 @@ inline aimbot_candidate proj_aim_find_splash_candidate(Player* localplayer,
       }
 
       Vec3 explosion_origin{};
-      if (!proj_aim_trace_splash_path(localplayer, player, weapon, intercept, effective_splash_radius, hitbox_mask, &explosion_origin, &impact_target_origin, false)) {
+      if (!proj_aim_trace_splash_path(localplayer, player, weapon, intercept, effective_splash_radius, hitbox_mask, &explosion_origin, &impact_target_origin, false, user_cmd)) {
         if (config.aimbot.projectile_debug) {
           ++proj_aim_current_debug_stats.splash_trace_rejects;
         }

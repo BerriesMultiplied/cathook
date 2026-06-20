@@ -20,6 +20,12 @@ V  o o  V  file: src/features/combat/aimbot/proj_aim/proj_aim_find_candidate.hpp
 #include "proj_aim_budget.hpp"
 #include "proj_aim_splash.hpp"
 
+inline LocalPredictionEntityPath proj_aim_predict_target_path(Player* localplayer,
+  Weapon* weapon,
+  Player* player,
+  const proj_aim_weapon_profile& profile,
+  float horizon_seconds);
+
 inline Vec3 proj_aim_simple_target_velocity(Player* player) {
   if (player == nullptr) {
     return Vec3{};
@@ -74,28 +80,6 @@ inline size_t proj_aim_simple_direct_points(Player* localplayer,
     return left.priority < right.priority;
   });
   return point_count;
-}
-
-inline LocalPredictionEntityPath proj_aim_simple_debug_path(Player* target,
-  const Vec3& base_origin,
-  const Vec3& target_velocity,
-  float horizon_seconds) {
-  LocalPredictionEntityPath path{};
-  if (target == nullptr) {
-    return path;
-  }
-
-  path.valid = true;
-  path.used_movement_sim = false;
-  path.used_game_engine_movement = false;
-  path.used_strafe_prediction = false;
-  path.start_time = 0.0f;
-  path.time_step = std::max(horizon_seconds, static_cast<float>(TICK_INTERVAL));
-  path.final_velocity = target_velocity;
-  path.positions.reserve(2);
-  path.positions.emplace_back(base_origin);
-  path.positions.emplace_back(base_origin + (target_velocity * path.time_step));
-  return path;
 }
 
 inline bool proj_aim_flamethrower_trace(Player* localplayer,
@@ -224,156 +208,10 @@ inline aimbot_candidate proj_aim_find_flamethrower_candidate(Player* localplayer
   return candidate;
 }
 
-inline LocalPredictionInterceptResult proj_aim_simple_projectile_intercept(Player* localplayer,
-  Weapon* weapon,
-  const proj_aim_weapon_profile& weapon_profile,
-  const Vec3& target_base_origin,
-  const Vec3& target_velocity,
-  const Vec3& target_offset) {
-  LocalPredictionInterceptResult result{};
-  if (localplayer == nullptr || weapon == nullptr || weapon_profile.params.speed <= 0.0f) {
-    return result;
-  }
-
-  projectile_sim_profile sim_profile = projectile_sim_profile_for_weapon(localplayer, weapon);
-  if (!sim_profile.valid || sim_profile.params.speed <= 0.0f) {
-    return result;
-  }
-
-  projectile_sim_limit_horizon(&sim_profile, weapon_profile.params.max_time);
-
-  const Vec3 initial_target = target_base_origin + target_offset;
-  const Vec3 shoot_pos = localplayer->get_shoot_pos();
-  float estimate_time = std::clamp(
-    distance_3d(shoot_pos, initial_target) / std::max(sim_profile.params.speed, 1.0f),
-    sim_profile.params.time_step,
-    sim_profile.params.max_time);
-
-  float best_score = FLT_MAX;
-  float best_time = 0.0f;
-  float best_miss = FLT_MAX;
-  float best_distance = FLT_MAX;
-  Vec3 best_target_base{};
-  Vec3 best_target{};
-  projectile_sim_launch best_launch{};
-
-  constexpr int iteration_count = 3;
-  for (int iteration = 0; iteration < iteration_count; ++iteration) {
-    const Vec3 predicted_base = target_base_origin + (target_velocity * estimate_time);
-    const Vec3 predicted_target = predicted_base + target_offset;
-    float iteration_score = FLT_MAX;
-    float iteration_time = estimate_time;
-    projectile_sim_launch iteration_launch{};
-
-    const int arc_branch_count = local_prediction_projectile_arc_branch_count(sim_profile.params.gravity > 0.0f);
-    for (int arc_branch = 0; arc_branch < arc_branch_count; ++arc_branch) {
-      const bool high_arc = local_prediction_projectile_arc_high_branch(sim_profile.params.gravity > 0.0f, arc_branch);
-      projectile_sim_launch candidate_launch{};
-      float flight_time = 0.0f;
-      if (!projectile_sim_solve_launch_to_point(
-          localplayer,
-          weapon,
-          sim_profile,
-          predicted_target,
-          high_arc,
-          &candidate_launch,
-          &flight_time)) {
-        continue;
-      }
-
-      if (!candidate_launch.valid || flight_time <= 0.0f || flight_time > sim_profile.params.max_time) {
-        continue;
-      }
-
-      projectile_sim_profile verification_profile = sim_profile;
-      verification_profile.lifetime = std::min(
-        verification_profile.lifetime,
-        flight_time + verification_profile.params.time_step);
-
-      const projectile_sim_result sim_result = projectile_sim_run(candidate_launch, verification_profile);
-      if (!sim_result.valid || sim_result.steps.empty()) {
-        continue;
-      }
-
-      float final_time = 0.0f;
-      float final_miss = FLT_MAX;
-      if (!projectile_sim_closest_approach_to_linear_target(
-          sim_result,
-          target_base_origin + target_offset,
-          target_velocity,
-          &final_time,
-          &final_miss)) {
-        continue;
-      }
-
-      const Vec3 final_base = target_base_origin + (target_velocity * final_time);
-      const Vec3 final_target = final_base + target_offset;
-      const float time_error = std::fabs(final_time - estimate_time);
-      const float arc_bias = local_prediction_projectile_arc_score_bias(sim_profile, high_arc, final_time);
-      const float score = final_miss + (time_error * sim_profile.params.speed) + arc_bias;
-      if (score < iteration_score) {
-        iteration_score = score;
-        iteration_time = final_time;
-        iteration_launch = candidate_launch;
-      }
-      if (score < best_score) {
-        best_score = score;
-        best_time = final_time;
-        best_miss = final_miss;
-        best_distance = distance_3d(shoot_pos, final_target);
-        best_target_base = final_base;
-        best_target = final_target;
-        best_launch = candidate_launch;
-      }
-    }
-
-    if (!iteration_launch.valid) {
-      break;
-    }
-    estimate_time = iteration_time;
-  }
-
-  constexpr float player_hull_extra = 24.0f;
-  if (!best_launch.valid || best_miss > projectile_sim_direct_tolerance(sim_profile) + player_hull_extra) {
-    return {};
-  }
-
-  result.valid = true;
-  result.has_target_base_origin = true;
-  result.intercept_time = best_time;
-  result.intercept_distance = best_distance;
-  result.miss_distance = best_miss;
-  result.aim_angles = best_launch.angles;
-  result.target_origin = best_target;
-  result.target_base_origin = best_target_base;
-  result.target_offset = target_offset;
-  result.target_velocity = target_velocity;
-  result.trace.valid = true;
-  result.trace.steps.reserve(3);
-  result.trace.steps.emplace_back(LocalPredictionProjectileStep{
-    .time = 0.0f,
-    .position = best_launch.origin,
-    .velocity = projectile_sim_initial_velocity(best_launch, sim_profile)
-  });
-  if (best_time * 0.5f > sim_profile.params.time_step) {
-    result.trace.steps.emplace_back(LocalPredictionProjectileStep{
-      .time = best_time * 0.5f,
-      .position = projectile_sim_position_at_time(best_launch, sim_profile, best_time * 0.5f),
-      .velocity = Vec3{}
-    });
-  }
-  result.trace.steps.emplace_back(LocalPredictionProjectileStep{
-    .time = best_time,
-    .position = projectile_sim_position_at_time(best_launch, sim_profile, best_time),
-    .velocity = Vec3{}
-  });
-  return result;
-}
-
 inline aimbot_candidate proj_aim_find_simple_candidate(Player* localplayer,
   Weapon* weapon,
   Player* player,
-  user_cmd*,
+  user_cmd* user_cmd,
   const Vec3& original_view_angles) {
   aimbot_candidate candidate{};
   if (localplayer == nullptr || weapon == nullptr || player == nullptr) {
@@ -392,9 +230,11 @@ inline aimbot_candidate proj_aim_find_simple_candidate(Player* localplayer,
   proj_aim_budget_guard budget_scope{};
   proj_aim_budget_begin_for_distance(distance_3d(localplayer->get_shoot_pos(), player->get_origin()));
 
-  const Vec3 target_velocity = proj_aim_simple_target_velocity(player);
-  const projectile_timing_context timing_context = proj_aim_build_timing_context(player);
-  const Vec3 target_base_origin = player->get_origin() + (target_velocity * timing_context.clamped_lead_time);
+  LocalPredictionEntityPath target_path = proj_aim_predict_target_path(localplayer, weapon, player, profile, profile.params.max_time);
+  if (!target_path.valid || target_path.positions.empty()) {
+    return candidate;
+  }
+
   const uint32_t configured_hitbox_mask = config.aimbot.projectile_hitboxes;
   const uint32_t hitbox_mask = proj_aim_effective_hitbox_mask(localplayer, weapon, player);
   std::array<proj_aim_direct_point, 3> direct_points{};
@@ -402,7 +242,7 @@ inline aimbot_candidate proj_aim_find_simple_candidate(Player* localplayer,
 
   LocalPredictionEntityPath debug_path{};
   if (config.aimbot.projectile_debug) {
-    debug_path = proj_aim_simple_debug_path(player, target_base_origin, target_velocity, profile.params.max_time);
+    debug_path = target_path;
     proj_aim_reset_debug_stats(weapon, player, debug_path, configured_hitbox_mask, hitbox_mask);
     proj_aim_current_debug_stats.direct_points = static_cast<int>(direct_point_count);
   }
@@ -415,13 +255,13 @@ inline aimbot_candidate proj_aim_find_simple_candidate(Player* localplayer,
       ++proj_aim_current_debug_stats.direct_solves;
     }
 
-    LocalPredictionInterceptResult intercept = proj_aim_simple_projectile_intercept(
+    LocalPredictionInterceptResult intercept = local_prediction_find_projectile_intercept(
       localplayer,
       weapon,
-      profile,
-      target_base_origin,
-      target_velocity,
-      sample.offset);
+      target_path,
+      sample.offset,
+      user_cmd,
+      profile.params.max_time);
     if (!intercept.valid || intercept.intercept_time < profile.arm_time) {
       continue;
     }
@@ -434,7 +274,7 @@ inline aimbot_candidate proj_aim_find_simple_candidate(Player* localplayer,
       continue;
     }
 
-    if (!proj_aim_trace_simple_path(localplayer, player, weapon, intercept)) {
+    if (!proj_aim_trace_simple_path(localplayer, player, weapon, intercept, user_cmd)) {
       if (config.aimbot.projectile_debug) {
         ++proj_aim_current_debug_stats.direct_trace_rejects;
       }
@@ -594,7 +434,7 @@ inline aimbot_candidate proj_aim_find_candidate(Player* localplayer, Weapon* wea
         continue;
       }
 
-      if (!proj_aim_trace_path(localplayer, player, weapon, intercept)) {
+      if (!proj_aim_trace_path(localplayer, player, weapon, intercept, user_cmd)) {
         if (config.aimbot.projectile_debug) {
           ++proj_aim_current_debug_stats.direct_trace_rejects;
         }

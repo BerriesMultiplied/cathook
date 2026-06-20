@@ -1,6 +1,11 @@
 #ifndef PROJECTILE_SIM_HPP
 #define PROJECTILE_SIM_HPP
 
+#include <climits>
+#include <dlfcn.h>
+
+#include "MD5/MD5.hpp"
+#include "features/combat/random_crits/crit_hack.hpp"
 #include "features/movement/local_prediction/move_sim.hpp"
 #include "features/combat/aimbot/projectile/projectile_types.hpp"
 #include "features/combat/aimbot/projectile/projectile_live_data.hpp"
@@ -18,6 +23,155 @@ inline bool local_prediction_flip_projectile_offset_y() {
 
   return cl_flipviewmodels != nullptr && cl_flipviewmodels->get_int() != 0;
 }
+
+inline bool projectile_sim_init_random() {
+  using random_seed_fn = void (*)(int);
+  using random_float_fn = float (*)(float, float);
+
+  static random_seed_fn random_seed = nullptr;
+  static random_float_fn random_float = nullptr;
+  static bool initialized = false;
+  if (!initialized) {
+    initialized = true;
+    random_seed = reinterpret_cast<random_seed_fn>(dlsym(RTLD_DEFAULT, "RandomSeed"));
+    random_float = reinterpret_cast<random_float_fn>(dlsym(RTLD_DEFAULT, "RandomFloat"));
+  }
+
+  return random_seed != nullptr && random_float != nullptr;
+}
+
+inline uint32_t projectile_sim_crc32_process_byte(uint32_t crc, uint8_t data) {
+  crc ^= data;
+  for (int index = 0; index < 8; ++index) {
+    if (crc & 1U) {
+      crc = (crc >> 1U) ^ 0xEDB88320U;
+    } else {
+      crc >>= 1U;
+    }
+  }
+  return crc;
+}
+
+inline uint32_t projectile_sim_crc32_process_buffer(uint32_t crc, const void* data, int size) {
+  const auto* bytes = static_cast<const uint8_t*>(data);
+  for (int index = 0; index < size; ++index) {
+    crc = projectile_sim_crc32_process_byte(crc, bytes[index]);
+  }
+  return crc;
+}
+
+inline int projectile_sim_seed_file_line_hash(int seed, const char* name, int additional_seed) {
+  uint32_t crc = 0xFFFFFFFFU;
+  crc = projectile_sim_crc32_process_buffer(crc, &seed, sizeof(seed));
+  crc = projectile_sim_crc32_process_buffer(crc, &additional_seed, sizeof(additional_seed));
+  if (name != nullptr) {
+    crc = projectile_sim_crc32_process_buffer(crc, name, static_cast<int>(std::strlen(name)));
+  }
+  return static_cast<int>(~crc);
+}
+
+inline projectile_sim_profile projectile_sim_profile_for_weapon(Player* localplayer, Weapon* weapon);
+
+inline bool projectile_sim_is_syringe_weapon(Weapon* weapon) {
+  if (weapon == nullptr) {
+    return false;
+  }
+
+  switch (weapon->get_def_id()) {
+  case Medic_m_SyringeGun:
+  case Medic_m_SyringeGunR:
+  case Medic_m_TheBlutsauger:
+  case Medic_m_TheOverdose:
+    return true;
+  default:
+    return false;
+  }
+}
+
+inline bool projectile_sim_has_pipe_random_velocity(Weapon* weapon) {
+  if (weapon == nullptr) {
+    return false;
+  }
+
+  switch (weapon->get_def_id()) {
+  case Demoman_m_GrenadeLauncher:
+  case Demoman_m_GrenadeLauncherR:
+  case Demoman_m_TheLochnLoad:
+  case Demoman_m_TheLooseCannon:
+  case Demoman_m_FestiveGrenadeLauncher:
+  case Demoman_m_TheIronBomber:
+  case Demoman_s_StickybombLauncher:
+  case Demoman_s_StickybombLauncherR:
+  case Demoman_s_FestiveStickybombLauncher:
+  case Demoman_s_TheScottishResistance:
+  case Demoman_s_TheQuickiebombLauncher:
+    return true;
+  default:
+    return false;
+  }
+}
+
+inline Vec3 projectile_sim_random_angle_offset(Player* localplayer, Weapon* weapon, user_cmd* user_cmd, const Vec3& view_angles) {
+  if (localplayer == nullptr || weapon == nullptr || user_cmd == nullptr || user_cmd->command_number <= 0) {
+    return Vec3{};
+  }
+
+  if (!projectile_sim_is_syringe_weapon(weapon) && !projectile_sim_has_pipe_random_velocity(weapon)) {
+    return Vec3{};
+  }
+
+  if (!projectile_sim_init_random()) {
+    return Vec3{};
+  }
+
+  const int cmd_num = crit_hack::predict_command_number(user_cmd);
+  const int command_seed = MD5_PseudoRandom(static_cast<unsigned int>(cmd_num)) & INT_MAX;
+  using random_seed_fn = void (*)(int);
+  using random_float_fn = float (*)(float, float);
+  static random_seed_fn random_seed = reinterpret_cast<random_seed_fn>(dlsym(RTLD_DEFAULT, "RandomSeed"));
+  static random_float_fn random_float = reinterpret_cast<random_float_fn>(dlsym(RTLD_DEFAULT, "RandomFloat"));
+  if (random_seed == nullptr || random_float == nullptr) {
+    return Vec3{};
+  }
+
+  random_seed(projectile_sim_seed_file_line_hash(command_seed, "SelectWeightedSequence", 0));
+  for (int index = 0; index < 6; ++index) {
+    random_float(0.0f, 1.0f);
+  }
+
+  if (projectile_sim_is_syringe_weapon(weapon)) {
+    return Vec3{
+      random_float(-1.5f, 1.5f),
+      random_float(-1.5f, 1.5f),
+      0.0f
+    };
+  }
+
+  projectile_sim_profile profile = projectile_sim_profile_for_weapon(localplayer, weapon);
+  if (!profile.valid || profile.params.speed <= 0.0f) {
+    return Vec3{};
+  }
+
+  Vec3 forward{};
+  Vec3 right{};
+  Vec3 up{};
+  angle_vectors(view_angles, &forward, &right, &up);
+  const Vec3 velocity = (forward * profile.params.speed) + (up * profile.initial_lift);
+  const Vec3 velocity_random = velocity +
+    (right * random_float(-10.0f, 10.0f)) +
+    (up * random_float(-10.0f, 10.0f));
+  if (local_prediction_vec3_is_zero(velocity) || local_prediction_vec3_is_zero(velocity_random)) {
+    return Vec3{};
+  }
+
+  return local_prediction_direction_to_angles(local_prediction_normalize(velocity_random)) -
+    local_prediction_direction_to_angles(local_prediction_normalize(velocity));
+}
+
+struct projectile_sim_launch_options {
+  bool interp = false;
+  bool apply_random_angles = false;
+};
 
 
 
@@ -715,13 +869,16 @@ inline projectile_sim_profile projectile_sim_profile_for_weapon(Player* localpla
 inline projectile_sim_launch projectile_sim_build_launch_from_angles(Player* localplayer,
   Weapon* weapon,
   const Vec3& angles,
-  const projectile_sim_profile& profile) {
+  const projectile_sim_profile& profile,
+  bool interp = false) {
   projectile_sim_launch launch{};
   if (localplayer == nullptr || weapon == nullptr || !profile.valid || engine_trace == nullptr) {
     return launch;
   }
 
-  const Vec3 shoot_pos = localplayer->get_shoot_pos();
+  const Vec3 shoot_pos = interp
+    ? localplayer->get_origin() + localplayer->get_view_offset()
+    : localplayer->get_shoot_pos();
   launch.angles = angles;
   launch.inherited_velocity = profile.inherit_velocity ? localplayer->get_velocity() : Vec3{};
 
@@ -785,6 +942,23 @@ inline projectile_sim_launch projectile_sim_build_launch_from_angles(Player* loc
   return launch;
 }
 
+inline projectile_sim_launch projectile_sim_build_launch_from_cmd(Player* localplayer,
+  Weapon* weapon,
+  user_cmd* user_cmd,
+  const projectile_sim_profile& profile,
+  const projectile_sim_launch_options& options = {}) {
+  if (user_cmd == nullptr) {
+    return {};
+  }
+
+  Vec3 angles = user_cmd->view_angles;
+  if (options.apply_random_angles) {
+    angles += projectile_sim_random_angle_offset(localplayer, weapon, user_cmd, angles);
+  }
+
+  return projectile_sim_build_launch_from_angles(localplayer, weapon, angles, profile, options.interp);
+}
+
 inline projectile_sim_launch projectile_sim_build_launch(Player* localplayer,
   Weapon* weapon,
   user_cmd* user_cmd,
@@ -793,7 +967,7 @@ inline projectile_sim_launch projectile_sim_build_launch(Player* localplayer,
     return {};
   }
 
-  return projectile_sim_build_launch_from_angles(localplayer, weapon, user_cmd->view_angles, profile);
+  return projectile_sim_build_launch_from_cmd(localplayer, weapon, user_cmd, profile);
 }
 
 inline void projectile_sim_limit_horizon(projectile_sim_profile* profile, float max_time) {
