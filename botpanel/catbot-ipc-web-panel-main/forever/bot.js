@@ -3434,11 +3434,18 @@ class Bot extends EventEmitter {
     }
 
     steam_boot_in_progress() {
-        return this.state === STATE.STARTING && !!this.procFirejailSteam && !this.steamClientInitialized;
+        return this.start_slot_in_use() && !this.steamClientInitialized;
     }
 
     start_slot_in_use() {
-        return this.state === STATE.STARTING && !!this.procFirejailSteam;
+        if (this.state !== STATE.STARTING || !this.procFirejailSteam)
+            return false;
+
+        const timeout = steam_login_timeout();
+        if (timeout && this.time_steam_login_timeout_started && Date.now() > this.time_steam_login_timeout_started + timeout)
+            return false;
+
+        return true;
     }
 
     ipc_identity_missing() {
@@ -3871,8 +3878,8 @@ class Bot extends EventEmitter {
 
             this.procFirejailSteam = adopted_process(steam_root.pid);
             this.time_steamWorking = 0;
-            this.time_steam_launch_started = 0;
-            this.time_steam_login_timeout_started = 0;
+            this.time_steam_launch_started = Date.now();
+            this.time_steam_login_timeout_started = Date.now();
             this.time_steamAssumeReady = 0;
             this.time_steamStatusLog = 0;
             if (game_root) {
