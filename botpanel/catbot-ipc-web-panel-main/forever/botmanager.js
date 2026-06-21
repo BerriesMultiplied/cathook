@@ -77,9 +77,9 @@ class BotManager {
     process_table_cache_ms() {
         const count = this.bots.length;
         if (count > 60)
-            return 4000;
+            return 15000;
         if (count > 30)
-            return 2500;
+            return 10000;
         return Number.parseInt(process.env.CAT_PROCESS_TABLE_CACHE_MS || '1500', 10);
     }
 
@@ -367,7 +367,7 @@ class BotManager {
         return { ids: assigned_ids };
     }
 
-    apply_ipc_query_result(data, query_time, process_table, children_by_parent) {
+    apply_ipc_query_result(data, query_time) {
         if (!data || data.status !== 'success' || !data.result)
             return false;
 
@@ -375,13 +375,26 @@ class BotManager {
         this.consecutive_ipc_failures = 0;
         this.lastQuery = data;
 
-        const bots_by_owned_pid = new Map();
         const bots_by_ipc_id = new Map();
         for (const bot of this.bots) {
             if (bot.ipcID >= 0)
                 bots_by_ipc_id.set(String(bot.ipcID), bot);
-            bot.index_owned_processes(process_table, children_by_parent, bots_by_owned_pid);
         }
+
+        let process_table = null;
+        let children_by_parent = null;
+        let bots_by_owned_pid = null;
+        const ensure_process_context = () => {
+            if (process_table)
+                return;
+
+            Bot.set_process_table_cache_ms(this.process_table_cache_ms());
+            process_table = Bot.read_process_table();
+            children_by_parent = Bot.build_process_children_by_parent(process_table);
+            bots_by_owned_pid = new Map();
+            for (const bot of this.bots)
+                bot.index_owned_processes(process_table, children_by_parent, bots_by_owned_pid);
+        };
 
         for (var q in data.result) {
             const peer = data.result[q];
@@ -390,9 +403,10 @@ class BotManager {
             const assigned_bot = bots_by_ipc_id.get(String(q));
             if (assigned_bot) {
                 best_bot = assigned_bot;
-                best_score = assigned_bot.ipc_peer_match_score(q, peer, process_table, bots_by_owned_pid.get(peer && peer.pid), children_by_parent);
+                best_score = assigned_bot.ipc_peer_match_score(q, peer, process_table, undefined, children_by_parent);
             }
             if (!best_bot || best_score <= 0) {
+                ensure_process_context();
                 const owner_bot = peer && peer.pid ? bots_by_owned_pid.get(peer.pid) : null;
                 if (owner_bot) {
                     best_bot = owner_bot;
@@ -400,6 +414,7 @@ class BotManager {
                 }
             }
             if (!best_bot || best_score <= 0) {
+                ensure_process_context();
                 const owner_bot = peer && peer.pid ? bots_by_owned_pid.get(peer.pid) : null;
                 for (var b of this.bots) {
                     const score = b.ipc_peer_match_score(q, peer, process_table, owner_bot || null, children_by_parent);
@@ -410,8 +425,12 @@ class BotManager {
                 }
             }
 
-            if (best_bot)
-                best_bot.accept_ipc_peer(q, peer, process_table, children_by_parent);
+            if (best_bot) {
+                if (!process_table)
+                    best_bot.emit('ipc-data', { id: q, data: peer });
+                else
+                    best_bot.accept_ipc_peer(q, peer, process_table, children_by_parent);
+            }
         }
 
         if (this.ipc_queries_healthy()) {
@@ -450,9 +469,6 @@ class BotManager {
             return;
         }
 
-        Bot.set_process_table_cache_ms(this.process_table_cache_ms());
-        const process_table = Bot.read_process_table();
-        const children_by_parent = Bot.build_process_children_by_parent(process_table);
         const query_args = this.build_ipc_query_args();
 
         this.query_in_progress = true;
@@ -461,7 +477,7 @@ class BotManager {
                 self.query_in_progress = false;
                 try {
                     const query_time = Date.now();
-                    if (!self.apply_ipc_query_result(data, query_time, process_table, children_by_parent))
+                    if (!self.apply_ipc_query_result(data, query_time))
                         self.record_ipc_query_failure(data && data.error ? data.error : 'bad IPC query response');
                 } catch (error) {
                     self.record_ipc_query_failure(error.message);
@@ -505,10 +521,9 @@ class BotManager {
         this.granted_starts_this_tick = 0;
         this.refresh_start_lane();
 
-        const bots_by_id_desc = this.bots.slice().sort((left, right) => right.botid - left.botid);
-        for (const b of bots_by_id_desc) {
-            var i = this.bots.indexOf(b);
-            if (i < 0)
+        for (let i = this.bots.length - 1; i >= 0; i--) {
+            const b = this.bots[i];
+            if (!b)
                 continue;
             if (b.start_slot_in_use())
                 Bot.currentlyStartingGames++;
