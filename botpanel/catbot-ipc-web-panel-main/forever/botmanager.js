@@ -2,7 +2,6 @@ const fs = require('fs');
 const Bot = require('./bot');
 const BanTracker = require('./ban_tracker');
 const steam_id = require('../steam_id');
-const config = require('./config');
 
 class BotManager {
     constructor(cc) {
@@ -12,8 +11,8 @@ class BotManager {
         } catch (e) { }
         this.bots = [];
         this.cc = cc;
-        this.quota = Number.isSafeInteger(config.bot_quota) ? config.bot_quota : 0;
-        this.wanted_quota = this.quota;
+        this.quota = 0;
+        this.wanted_quota = 0;
         this.lastQuery = {};
         this.ban_tracker = new BanTracker(this);
         this.updateTimeout = null;
@@ -33,11 +32,6 @@ class BotManager {
         this.granted_starts_this_tick = 0;
         this.last_start_wave_time = 0;
         this.last_steam_boot_time = 0;
-        if (this.quota > 0) {
-            this.recover_existing_until = Date.now() + 30000;
-            this.enforceQuota();
-            this.apply_quota_run_state();
-        }
         this.schedule_update(1000);
         this.schedule_ipc_query(this.ipc_query_interval_ms());
     }
@@ -169,7 +163,6 @@ class BotManager {
     }
 
     higher_bot_blocks_steam_start(bot) {
-        const queued_bots = new Set(this.start_lane);
         for (const other of this.bots) {
             if (other.botid <= bot.botid)
                 continue;
@@ -181,8 +174,7 @@ class BotManager {
                 return true;
             if (other.procFirejailSteam || other.procFirejailGame)
                 continue;
-            if (queued_bots.has(other))
-                return true;
+            return true;
         }
         return false;
     }
@@ -594,15 +586,6 @@ class BotManager {
         return true;
     }
 
-    apply_quota_run_state() {
-        for (let index = 0; index < this.bots.length; index++) {
-            const bot = this.bots[index];
-            bot.shouldRun = index < this.quota;
-            if (!bot.shouldRun)
-                bot.shouldRestart = false;
-        }
-    }
-
     next_bot_id_for_fill() {
         const used_ids = new Set();
         for (const bot of this.bots)
@@ -642,15 +625,8 @@ class BotManager {
 
         this.wanted_quota = quota;
         this.quota = quota;
-        config.bot_quota = quota;
-        try {
-            config.save_settings();
-        } catch (error) {
-            this.log_exception('failed to save bot quota', error);
-        }
         this.recover_existing_until = Date.now() + 5000;
         this.enforceQuota();
-        this.apply_quota_run_state();
         this.rebuild_snapshots();
         this.schedule_update(0);
         this.schedule_ipc_query(0);
