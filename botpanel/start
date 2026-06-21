@@ -105,6 +105,28 @@ fix_workspace_permissions() {
     \) -exec chmod 0755 {} +
 }
 
+workspace_permissions_need_fix() {
+    local path
+
+    for path in \
+        "$repo_root/obj" \
+        "$repo_root/bin" \
+        "$repo_root/botpanel/catbot-ipc-server-main/bin" \
+        "$repo_root/botpanel/cat-steamtxtmode/bin"; do
+        if [ -e "$path" ] && [ ! -w "$path" ]; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+ensure_workspace_permissions() {
+    if workspace_permissions_need_fix; then
+        fix_workspace_permissions
+    fi
+}
+
 need_command() {
     ! command -v "$1" >/dev/null 2>&1
 }
@@ -1321,6 +1343,7 @@ fi
 
 source_os_release
 install_missing_dependencies
+ensure_workspace_permissions
 select_display_backend
 ensure_binaries
 install_runtime

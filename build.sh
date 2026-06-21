@@ -146,6 +146,38 @@ restore_git_permissions() {
     fi
 }
 
+workspace_permissions_need_fix() {
+    local path
+
+    for path in \
+        "$project_root/obj" \
+        "$project_root/bin" \
+        "$project_root/libs/funchook" \
+        "$project_root/botpanel/catbot-ipc-server-main/bin" \
+        "$project_root/botpanel/cat-steamtxtmode/bin"; do
+        if [ -e "$path" ] && [ ! -w "$path" ]; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+fix_workspace_permissions() {
+    local target_uid
+    local target_gid
+
+    target_uid="${SUDO_UID:-$(id -u)}"
+    target_gid="${SUDO_GID:-$(id -g)}"
+
+    run_as_root chown -R "$target_uid:$target_gid" \
+        "$project_root/obj" \
+        "$project_root/bin" \
+        "$project_root/libs/funchook" \
+        "$project_root/botpanel/catbot-ipc-server-main/bin" \
+        "$project_root/botpanel/cat-steamtxtmode/bin" 2>/dev/null || true
+}
+
 run_git() {
     if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_UID:-}" ] && command -v sudo >/dev/null 2>&1; then
         sudo -H -u "#$SUDO_UID" git -C "$project_root" "$@"
@@ -447,6 +479,9 @@ selected_mode="$(choose_build_mode)" || {
 update_project_if_needed
 require_root_for_install
 # ensure_funchook
+if workspace_permissions_need_fix; then
+    fix_workspace_permissions
+fi
 build_cat "$selected_mode"
 
 clear_execstack_if_needed "$project_root/bin/libcathook.so"
