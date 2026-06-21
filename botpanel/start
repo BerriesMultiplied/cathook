@@ -717,13 +717,12 @@ fix_install_permissions() {
     target_uid="$(id -u)"
     target_gid="$(id -g)"
 
-    if [ -d "$install_root" ]; then
-        run_as_root chmod -R u=rwX,go=rX "$install_root" 2>/dev/null || true
-    fi
+    run_as_root chmod 0755 "$install_root" "$install_root/bin" "$install_root/ipc" "$install_root/ipc/bin" 2>/dev/null || true
+    run_as_root chmod 0755 "$install_root/bin"/*.so "$install_root/ipc/bin"/* 2>/dev/null || true
 
-    for path in "$install_root/configs" "$install_root/logs" "$install_root/ipc"; do
+    for path in "$install_root/configs" "$install_root/logs"; do
         if [ -e "$path" ]; then
-            run_as_root chown -R "$target_uid:$target_gid" "$path" 2>/dev/null || true
+            run_as_root chown "$target_uid:$target_gid" "$path" 2>/dev/null || true
         fi
     done
 }
@@ -1404,7 +1403,6 @@ ensure_workspace_permissions
 select_display_backend
 ensure_binaries
 install_runtime
-fix_install_permissions
 ensure_node_dependencies
 ensure_web_bundle
 ensure_accounts_file
