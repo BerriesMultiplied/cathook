@@ -1884,7 +1884,6 @@ bool initialize_game_runtime() {
   rv = funchook_install(funchook, 0);
   error_assert(rv != 0, "Non-VMT related hooks failed\n");
 
-  nographics::try_install_studio_render_crash_guard();
 
   install_sdl_hooks();
   

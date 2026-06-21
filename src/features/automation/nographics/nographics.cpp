@@ -78,33 +78,8 @@ constexpr int mdl_cache_touch_all_data_index = 17;
 constexpr int mdl_cache_touch_all_data_extra_index = 45;
 constexpr const char* client_module_name = "tf/bin/linux64/client.so";
 constexpr int engine_frame_usleep_call_offset = 0x56;
-constexpr int client_achievement_save_thread_start_call_offset = 0x2C1;
 constexpr int relative_jump_size = 5;
 constexpr int fs_async_err_fileopen = -1;
-
-constexpr float studio_render_identity_matrix[12] = {
-  1.0f, 0.0f, 0.0f, 0.0f,
-  0.0f, 1.0f, 0.0f, 0.0f,
-  0.0f, 0.0f, 1.0f, 0.0f,
-};
-
-alignas(16) char studio_render_matrix_multiply_sentinel[64]{};
-
-void write_studio_render_identity_matrix(double* output_matrix)
-{
-  if (output_matrix == nullptr)
-  {
-    return;
-  }
-
-  std::memcpy(output_matrix, studio_render_identity_matrix, sizeof(studio_render_identity_matrix));
-}
-
-bool tf2_textmode_cpu_patches_enabled()
-{
-  const char* value = std::getenv("CAT_NOGRAPHICS_TF2_CPU_PATCHES");
-  return value != nullptr && std::strcmp(value, "1") == 0;
-}
 
 using find_first_fn = const char* (*)(void*, const char*, file_find_handle_t*);
 using find_next_fn = const char* (*)(void*, file_find_handle_t);
@@ -118,8 +93,6 @@ using read_file_fn = bool (*)(void*, const char*, const char*, void*, int, int, 
 using texture_load_bits_fn = void* (*)(void*, const char*, char**);
 using get_scratch_vtf_texture_fn = void* (*)(void*);
 using handle_file_load_failed_texture_fn = void* (*)(void*, void*);
-using studio_render_blend_bones_fn = void (*)(double*, std::uint32_t*, int, std::int64_t, const double*);
-using studio_render_matrix_multiply_fn = void* (*)(const double*, const double*, double*);
 using create_render_target_texture_fn = Texture* (*)(void*, int, int, render_target_size_mode, image_format, material_render_target_depth);
 using create_named_render_target_texture_ex_fn = Texture* (*)(void*, const char*, int, int, render_target_size_mode, image_format, material_render_target_depth, unsigned int, unsigned int);
 using create_named_render_target_texture_fn = Texture* (*)(void*, const char*, int, int, render_target_size_mode, image_format, material_render_target_depth, bool, bool);
@@ -174,8 +147,6 @@ read_file_fn read_file_original = nullptr;
 texture_load_bits_fn texture_load_bits_original = nullptr;
 get_scratch_vtf_texture_fn get_scratch_vtf_texture = nullptr;
 handle_file_load_failed_texture_fn handle_file_load_failed_texture = nullptr;
-studio_render_blend_bones_fn studio_render_blend_bones_original = nullptr;
-studio_render_matrix_multiply_fn studio_render_matrix_multiply_original = nullptr;
 create_render_target_texture_fn create_render_target_texture_original = nullptr;
 create_named_render_target_texture_ex_fn create_named_render_target_texture_ex_original = nullptr;
 create_named_render_target_texture_fn create_named_render_target_texture_original = nullptr;
@@ -197,16 +168,12 @@ void* studio_render_interface = nullptr;
 void** studio_render_vtable = nullptr;
 void** mdl_cache_vtable = nullptr;
 funchook_t* texture_load_bits_funchook = nullptr;
-funchook_t* studio_render_blend_bones_funchook = nullptr;
-funchook_t* studio_render_matrix_multiply_funchook = nullptr;
 bool file_system_hooked = false;
 bool material_system_render_target_hooked = false;
 bool studio_render_hooked = false;
 bool mdl_cache_touch_all_data_hooked = false;
 bool texture_load_bits_hooked = false;
 bool texture_load_bits_hook_failed = false;
-bool studio_render_blend_bones_hooked = false;
-bool studio_render_matrix_multiply_hooked = false;
 bool material_stub_enabled = false;
 bool render_patches_applied = false;
 bool optional_render_patches_applied = false;
@@ -215,7 +182,6 @@ bool render_patches_initialized = false;
 bool render_patches_ready = false;
 bool engine_render_patches_initialized = false;
 bool materialsystem_render_patches_initialized = false;
-bool client_textmode_cpu_patches_initialized = false;
 std::atomic_bool startup_patch_running = false;
 std::array<convar_override, 55> nographics_convar_overrides{ {
   { "mat_norendering", 0, nullptr, 0, false },
@@ -431,19 +397,10 @@ byte_patch particle_precache_patch{};
 byte_patch particle_effect_create_patch{};
 byte_patch view_render_patch{};
 byte_patch replay_screenshot_patch{};
-byte_patch youtube_system_init_patch{};
-byte_patch replay_layoff_frame_patch{};
 byte_patch steam_rich_presence_patch{};
-byte_patch achievement_save_thread_start_patch{};
-byte_patch achievement_save_global_state_patch{};
-byte_patch tf_steam_stats_upload_stats_patch{};
-byte_patch achievement_progress_event_patch{};
-byte_patch abuse_report_notification_patch{};
-byte_patch abuse_incident_poll_patch{};
 byte_patch cl_decay_lights_patch{};
 byte_patch fps_max_min_patch{};
 byte_patch engine_frame_usleep_patch{};
-byte_patch engine_client_process_voice_data_patch{};
 byte_patch mod_load_lighting_patch{};
 byte_patch mod_load_worldlights_patch{};
 byte_patch mod_load_texinfo_material_branch_patch{};
@@ -469,12 +426,6 @@ byte_patch econ_item_definition_index_patch{};
 byte_patch studio_render_draw_model_wrapper_patch{};
 byte_patch econ_panel_flex_primary_patch{};
 byte_patch econ_panel_flex_attachments_patch{};
-byte_patch ragdoll_lru_update_patch{};
-byte_patch particle_mgr_simulate_undrawn_patch{};
-byte_patch temp_ents_update_patch{};
-byte_patch rope_manager_draw_render_cache_patch{};
-byte_patch init_caption_dictionary_patch{};
-byte_patch parse_particle_effects_map_patch{};
 
 char normalize_path_char(const char value)
 {
@@ -902,32 +853,6 @@ void add_files_to_cache_hook(void* this_ptr, file_cache_handle_t cache_id, const
     path_id);
 }
 
-void studio_render_blend_bones_hook(
-  double* output_matrices,
-  std::uint32_t* studio_mesh,
-  int bone_mask,
-  std::int64_t unused,
-  const double* bone_matrices)
-{
-  if (output_matrices == nullptr || studio_mesh == nullptr || bone_matrices == nullptr)
-  {
-    return;
-  }
-
-  studio_render_blend_bones_original(output_matrices, studio_mesh, bone_mask, unused, bone_matrices);
-}
-
-void* studio_render_matrix_multiply_hook(const double* left, const double* right, double* output)
-{
-  if (left == nullptr || right == nullptr || output == nullptr)
-  {
-    write_studio_render_identity_matrix(output);
-    return studio_render_matrix_multiply_sentinel;
-  }
-
-  return studio_render_matrix_multiply_original(left, right, output);
-}
-
 void* texture_load_bits_hook(void* this_ptr, const char* cache_file_name, char** resolved_filename)
 {
   if (should_skip_texture_file(cache_file_name) &&
@@ -1185,10 +1110,6 @@ void initialize_engine_render_patches()
   initialize_optional_patch(video_mode_setup_startup_graphic_patch, "engine.so", sigs::video_mode_setup_startup_graphic, 0, { 0xC3 }, "video_mode_setup_startup_graphic");
   initialize_optional_patch(cl_decay_lights_patch, "engine.so", sigs::cl_decay_lights, 0, { 0xC3 }, "cl_decay_lights");
   initialize_optional_patch(fps_max_min_patch, "engine.so", sigs::engine_fps_max_min_clamp, 7, { 0x90, 0xE9 }, "engine_fps_max_min_clamp");
-  if (tf2_textmode_cpu_patches_enabled())
-  {
-    initialize_optional_patch(engine_client_process_voice_data_patch, "engine.so", sigs::engine_client_process_voice_data, 0, { 0xB0, 0x01, 0xC3 }, "engine_client_process_voice_data");
-  }
   initialize_optional_patch(engine_frame_usleep_patch, "engine.so", sigs::engine_frame_busy_wait, engine_frame_usleep_call_offset, { 0x90, 0x90, 0x90, 0x90, 0x90 }, "engine_frame_usleep");
   initialize_optional_patch(mod_load_lighting_patch, "engine.so", sigs::mod_load_lighting, 0, { 0x31, 0xC0, 0xC3 }, "mod_load_lighting");
   initialize_optional_patch(mod_load_worldlights_patch, "engine.so", sigs::mod_load_worldlights, 0, { 0x31, 0xC0, 0xC3 }, "mod_load_worldlights");
@@ -1223,42 +1144,10 @@ void initialize_materialsystem_render_patches()
   initialize_optional_patch(material_system_swap_buffers_patch, "materialsystem.so", sigs::material_system_swap_buffers, 0, { 0xC3 }, "material_system_swap_buffers");
 }
 
-void initialize_client_textmode_cpu_patches()
-{
-  if (client_textmode_cpu_patches_initialized || !module_is_loaded(client_module_name))
-  {
-    return;
-  }
-
-  if (!tf2_textmode_cpu_patches_enabled())
-  {
-    client_textmode_cpu_patches_initialized = true;
-    return;
-  }
-
-  bool initialized_any_patch = false;
-  initialized_any_patch = initialize_optional_patch(youtube_system_init_patch, client_module_name, sigs::client_youtube_system_init, 0, { 0x31, 0xC0, 0xC3 }, "client_youtube_system_init") || initialized_any_patch;
-  initialized_any_patch = initialize_optional_patch(replay_layoff_frame_patch, client_module_name, sigs::client_replay_layoff_frame, 0, { 0x31, 0xC0, 0xC3 }, "client_replay_layoff_frame") || initialized_any_patch;
-  initialized_any_patch = initialize_optional_patch(achievement_save_thread_start_patch, client_module_name, sigs::client_achievement_mgr_post_init, client_achievement_save_thread_start_call_offset, { 0x90, 0x90, 0x90, 0x90, 0x90 }, "client_achievement_save_thread_start") || initialized_any_patch;
-  initialized_any_patch = initialize_optional_patch(achievement_save_global_state_patch, client_module_name, sigs::client_achievement_save_global_state, 0, { 0xC6, 0x87, 0x84, 0x02, 0x00, 0x00, 0x00, 0xC3 }, "client_achievement_save_global_state") || initialized_any_patch;
-  initialized_any_patch = initialize_optional_patch(tf_steam_stats_upload_stats_patch, client_module_name, sigs::client_tf_steam_stats_upload_stats, 0, { 0xC7, 0x47, 0x24, 0x00, 0x00, 0x00, 0x4F, 0xC3 }, "client_tf_steam_stats_upload_stats") || initialized_any_patch;
-  initialized_any_patch = initialize_optional_patch(achievement_progress_event_patch, client_module_name, sigs::client_achievement_progress_event, 0, { 0xC3 }, "client_achievement_progress_event") || initialized_any_patch;
-  initialized_any_patch = initialize_optional_patch(abuse_report_notification_patch, client_module_name, sigs::client_abuse_report_notification, 0, { 0xC3 }, "client_abuse_report_notification") || initialized_any_patch;
-  initialized_any_patch = initialize_optional_patch(abuse_incident_poll_patch, client_module_name, sigs::client_abuse_incident_poll, 0, { 0xB0, 0x01, 0xC3 }, "client_abuse_incident_poll") || initialized_any_patch;
-  initialized_any_patch = initialize_optional_patch(ragdoll_lru_update_patch, client_module_name, sigs::client_ragdoll_lru_update, 0, { 0xC3 }, "client_ragdoll_lru_update") || initialized_any_patch;
-  initialized_any_patch = initialize_optional_patch(particle_mgr_simulate_undrawn_patch, client_module_name, sigs::client_particle_mgr_simulate_undrawn, 0, { 0xC3 }, "client_particle_mgr_simulate_undrawn") || initialized_any_patch;
-  initialized_any_patch = initialize_optional_patch(temp_ents_update_patch, client_module_name, sigs::client_temp_ents_update, 0, { 0xC3 }, "client_temp_ents_update") || initialized_any_patch;
-  initialized_any_patch = initialize_optional_patch(rope_manager_draw_render_cache_patch, client_module_name, sigs::client_rope_manager_draw_render_cache, 0, { 0xC3 }, "client_rope_manager_draw_render_cache") || initialized_any_patch;
-  initialized_any_patch = initialize_optional_patch(init_caption_dictionary_patch, client_module_name, sigs::client_init_caption_dictionary, 0, { 0x31, 0xC0, 0xC3 }, "client_init_caption_dictionary") || initialized_any_patch;
-  initialized_any_patch = initialize_optional_patch(parse_particle_effects_map_patch, client_module_name, sigs::client_parse_particle_effects_map, 0, { 0xC3 }, "client_parse_particle_effects_map") || initialized_any_patch;
-  client_textmode_cpu_patches_initialized = initialized_any_patch;
-}
-
 void initialize_optional_render_patches()
 {
   initialize_engine_render_patches();
   initialize_materialsystem_render_patches();
-  initialize_client_textmode_cpu_patches();
 }
 
 void restore_optional_render_patches()
@@ -1268,7 +1157,6 @@ void restore_optional_render_patches()
   cl_decay_lights_patch.restore();
   fps_max_min_patch.restore();
   engine_frame_usleep_patch.restore();
-  engine_client_process_voice_data_patch.restore();
   mod_load_lighting_patch.restore();
   mod_load_worldlights_patch.restore();
   mod_load_texinfo_material_branch_patch.restore();
@@ -1284,20 +1172,6 @@ void restore_optional_render_patches()
   v_render_view_patch.restore();
   material_system_begin_frame_patch.restore();
   material_system_swap_buffers_patch.restore();
-  youtube_system_init_patch.restore();
-  replay_layoff_frame_patch.restore();
-  achievement_save_thread_start_patch.restore();
-  achievement_save_global_state_patch.restore();
-  tf_steam_stats_upload_stats_patch.restore();
-  achievement_progress_event_patch.restore();
-  abuse_report_notification_patch.restore();
-  abuse_incident_poll_patch.restore();
-  ragdoll_lru_update_patch.restore();
-  particle_mgr_simulate_undrawn_patch.restore();
-  temp_ents_update_patch.restore();
-  rope_manager_draw_render_cache_patch.restore();
-  init_caption_dictionary_patch.restore();
-  parse_particle_effects_map_patch.restore();
   optional_render_patches_applied = false;
 }
 
@@ -1333,7 +1207,6 @@ bool apply_optional_render_patches()
   applied_any_patch = apply_optional_patch(video_mode_setup_startup_graphic_patch, "video_mode_setup_startup_graphic") || applied_any_patch;
   applied_any_patch = apply_optional_patch(cl_decay_lights_patch, "cl_decay_lights") || applied_any_patch;
   applied_any_patch = apply_optional_patch(fps_max_min_patch, "engine_fps_max_min_clamp") || applied_any_patch;
-  applied_any_patch = apply_optional_patch(engine_client_process_voice_data_patch, "engine_client_process_voice_data") || applied_any_patch;
   if (config.misc.exploits.no_engine_sleep)
   {
     applied_any_patch = apply_optional_patch(engine_frame_usleep_patch, "engine_frame_usleep") || applied_any_patch;
@@ -1357,20 +1230,6 @@ bool apply_optional_render_patches()
   applied_any_patch = apply_optional_patch(v_render_view_patch, "v_render_view") || applied_any_patch;
   applied_any_patch = apply_optional_patch(material_system_begin_frame_patch, "material_system_begin_frame") || applied_any_patch;
   applied_any_patch = apply_optional_patch(material_system_swap_buffers_patch, "material_system_swap_buffers") || applied_any_patch;
-  applied_any_patch = apply_optional_patch(youtube_system_init_patch, "client_youtube_system_init") || applied_any_patch;
-  applied_any_patch = apply_optional_patch(replay_layoff_frame_patch, "client_replay_layoff_frame") || applied_any_patch;
-  applied_any_patch = apply_optional_patch(achievement_save_thread_start_patch, "client_achievement_save_thread_start") || applied_any_patch;
-  applied_any_patch = apply_optional_patch(achievement_save_global_state_patch, "client_achievement_save_global_state") || applied_any_patch;
-  applied_any_patch = apply_optional_patch(tf_steam_stats_upload_stats_patch, "client_tf_steam_stats_upload_stats") || applied_any_patch;
-  applied_any_patch = apply_optional_patch(achievement_progress_event_patch, "client_achievement_progress_event") || applied_any_patch;
-  applied_any_patch = apply_optional_patch(abuse_report_notification_patch, "client_abuse_report_notification") || applied_any_patch;
-  applied_any_patch = apply_optional_patch(abuse_incident_poll_patch, "client_abuse_incident_poll") || applied_any_patch;
-  applied_any_patch = apply_optional_patch(ragdoll_lru_update_patch, "client_ragdoll_lru_update") || applied_any_patch;
-  applied_any_patch = apply_optional_patch(particle_mgr_simulate_undrawn_patch, "client_particle_mgr_simulate_undrawn") || applied_any_patch;
-  applied_any_patch = apply_optional_patch(temp_ents_update_patch, "client_temp_ents_update") || applied_any_patch;
-  applied_any_patch = apply_optional_patch(rope_manager_draw_render_cache_patch, "client_rope_manager_draw_render_cache") || applied_any_patch;
-  applied_any_patch = apply_optional_patch(init_caption_dictionary_patch, "client_init_caption_dictionary") || applied_any_patch;
-  applied_any_patch = apply_optional_patch(parse_particle_effects_map_patch, "client_parse_particle_effects_map") || applied_any_patch;
   optional_render_patches_applied = optional_render_patches_applied || applied_any_patch;
   return applied_any_patch;
 }
@@ -1652,169 +1511,9 @@ void restore_render_patches()
 
 void disable_file_system_hooks();
 void disable_texture_load_hook();
-void disable_studio_render_blend_bones_guard();
-void disable_studio_render_matrix_multiply_guard();
-void install_studio_render_crash_guards_internal();
 void disable_material_system_render_target_hooks();
 void disable_studio_render_hooks();
 void disable_mdl_cache_touch_all_data_hook();
-
-void enable_studio_render_blend_bones_guard()
-{
-  if (studio_render_blend_bones_hooked || !module_is_loaded("studiorender.so"))
-  {
-    return;
-  }
-
-  studio_render_blend_bones_original =
-    reinterpret_cast<studio_render_blend_bones_fn>(
-      sigscan_module("studiorender.so", sigs::studio_render_blend_bones));
-  if (studio_render_blend_bones_original == nullptr)
-  {
-    return;
-  }
-
-  studio_render_blend_bones_funchook = funchook_create();
-  if (studio_render_blend_bones_funchook == nullptr)
-  {
-    studio_render_blend_bones_original = nullptr;
-    print("[nographics] studio render blend bones guard create failed\n");
-    return;
-  }
-
-  int result = funchook_prepare(
-    studio_render_blend_bones_funchook,
-    reinterpret_cast<void**>(&studio_render_blend_bones_original),
-    reinterpret_cast<void*>(studio_render_blend_bones_hook));
-  if (result != 0)
-  {
-    funchook_destroy(studio_render_blend_bones_funchook);
-    studio_render_blend_bones_funchook = nullptr;
-    studio_render_blend_bones_original = nullptr;
-    print("[nographics] studio render blend bones guard prepare failed result=%d\n", result);
-    return;
-  }
-
-  result = funchook_install(studio_render_blend_bones_funchook, 0);
-  if (result != 0)
-  {
-    funchook_destroy(studio_render_blend_bones_funchook);
-    studio_render_blend_bones_funchook = nullptr;
-    studio_render_blend_bones_original = nullptr;
-    print("[nographics] studio render blend bones guard install failed result=%d\n", result);
-    return;
-  }
-
-  studio_render_blend_bones_hooked = true;
-  print("[nographics] studio render blend bones guard enabled\n");
-}
-
-void disable_studio_render_blend_bones_guard()
-{
-  if (studio_render_blend_bones_funchook == nullptr)
-  {
-    studio_render_blend_bones_hooked = false;
-    return;
-  }
-
-  if (studio_render_blend_bones_hooked)
-  {
-    const int result = funchook_uninstall(studio_render_blend_bones_funchook, 0);
-    if (result != 0)
-    {
-      print("[nographics] studio render blend bones guard uninstall failed result=%d\n", result);
-    }
-  }
-
-  funchook_destroy(studio_render_blend_bones_funchook);
-  studio_render_blend_bones_funchook = nullptr;
-  studio_render_blend_bones_original = nullptr;
-  studio_render_blend_bones_hooked = false;
-}
-
-void enable_studio_render_matrix_multiply_guard()
-{
-  if (studio_render_matrix_multiply_hooked || !module_is_loaded("studiorender.so"))
-  {
-    return;
-  }
-
-  studio_render_matrix_multiply_original =
-    reinterpret_cast<studio_render_matrix_multiply_fn>(
-      sigscan_module("studiorender.so", sigs::studio_render_matrix_multiply));
-  if (studio_render_matrix_multiply_original == nullptr)
-  {
-    return;
-  }
-
-  studio_render_matrix_multiply_funchook = funchook_create();
-  if (studio_render_matrix_multiply_funchook == nullptr)
-  {
-    studio_render_matrix_multiply_original = nullptr;
-    print("[nographics] studio render matrix multiply guard create failed\n");
-    return;
-  }
-
-  int result = funchook_prepare(
-    studio_render_matrix_multiply_funchook,
-    reinterpret_cast<void**>(&studio_render_matrix_multiply_original),
-    reinterpret_cast<void*>(studio_render_matrix_multiply_hook));
-  if (result != 0)
-  {
-    funchook_destroy(studio_render_matrix_multiply_funchook);
-    studio_render_matrix_multiply_funchook = nullptr;
-    studio_render_matrix_multiply_original = nullptr;
-    print("[nographics] studio render matrix multiply guard prepare failed result=%d\n", result);
-    return;
-  }
-
-  result = funchook_install(studio_render_matrix_multiply_funchook, 0);
-  if (result != 0)
-  {
-    funchook_destroy(studio_render_matrix_multiply_funchook);
-    studio_render_matrix_multiply_funchook = nullptr;
-    studio_render_matrix_multiply_original = nullptr;
-    print("[nographics] studio render matrix multiply guard install failed result=%d\n", result);
-    return;
-  }
-
-  studio_render_matrix_multiply_hooked = true;
-  print("[nographics] studio render matrix multiply guard enabled\n");
-}
-
-void disable_studio_render_matrix_multiply_guard()
-{
-  if (studio_render_matrix_multiply_funchook == nullptr)
-  {
-    studio_render_matrix_multiply_hooked = false;
-    return;
-  }
-
-  if (studio_render_matrix_multiply_hooked)
-  {
-    const int result = funchook_uninstall(studio_render_matrix_multiply_funchook, 0);
-    if (result != 0)
-    {
-      print("[nographics] studio render matrix multiply guard uninstall failed result=%d\n", result);
-    }
-  }
-
-  funchook_destroy(studio_render_matrix_multiply_funchook);
-  studio_render_matrix_multiply_funchook = nullptr;
-  studio_render_matrix_multiply_original = nullptr;
-  studio_render_matrix_multiply_hooked = false;
-}
-
-void install_studio_render_crash_guards_internal()
-{
-  if (!module_is_loaded("studiorender.so"))
-  {
-    return;
-  }
-
-  enable_studio_render_blend_bones_guard();
-  enable_studio_render_matrix_multiply_guard();
-}
 
 void enable_texture_load_hook()
 {
@@ -2223,11 +1922,6 @@ void resolve_material_system_interface()
 
 void resolve_studio_render_interface()
 {
-  if (tf2_textmode_cpu_patches_enabled())
-  {
-    install_studio_render_crash_guards_internal();
-  }
-
   if (studio_render_interface != nullptr || !module_is_loaded("studiorender.so"))
   {
     return;
@@ -2247,16 +1941,6 @@ void resolve_mdl_cache_interface()
 }
 
 } // namespace
-
-void try_install_studio_render_crash_guard()
-{
-  if (!tf2_textmode_cpu_patches_enabled())
-  {
-    return;
-  }
-
-  install_studio_render_crash_guards_internal();
-}
 
 void initialize()
 {
@@ -2285,11 +1969,6 @@ void prepare_startup_patches()
 {
   if constexpr (textmode_build)
   {
-    if (!tf2_textmode_cpu_patches_enabled())
-    {
-      return;
-    }
-
     if (startup_patch_running.exchange(true, std::memory_order_acq_rel))
     {
       return;
@@ -2327,11 +2006,6 @@ void prepare_render_patches()
 
 void on_library_loaded(const char* library_path)
 {
-  if (library_basename(library_path) == "studiorender.so")
-  {
-    try_install_studio_render_crash_guard();
-  }
-
   if constexpr (textmode_build)
   {
     if (is_startup_patch_module(library_path))
@@ -2345,7 +2019,6 @@ void update()
 {
   sync_nographics_toggles();
   initialize();
-  try_install_studio_render_crash_guard();
 
   const bool enabled = textmode_build || config.misc.exploits.null_graphics;
   if (enabled)
@@ -2391,8 +2064,6 @@ void shutdown()
   disable_mdl_cache_touch_all_data_hook();
   disable_texture_load_hook();
   disable_file_system_hooks();
-  disable_studio_render_blend_bones_guard();
-  disable_studio_render_matrix_multiply_guard();
 }
 
 bool is_enabled()

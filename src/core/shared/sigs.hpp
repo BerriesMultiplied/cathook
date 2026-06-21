@@ -146,8 +146,6 @@ constexpr const char* engine_fps_max_min_clamp =
   "0F 2F 05 ? ? ? ? 0F 83 ? ? ? ? 48 8D 3D ? ? ? ? 31 C0 F3 0F 11 4D";
 constexpr const char* engine_frame_busy_wait =
   "B8 D1 07 00 00 0F 1F 00 F3 90 F3 90 F3 90 F3 90 83 E8 01 75 F3";
-constexpr const char* engine_client_process_voice_data =
-  "55 BA 00 10 00 00 48 89 E5 41 57 41 56 4C 8D BD ? ? ? ? 41 55 41 54 49 89 FC 53 48 89 F3 48 81 EC B8 10 00 00 48 63 4E 30 48 89 BD ? ? ? ? 48 8D 7E 40 4C 89 FE E8 ? ? ? ? 44 8B 6B 28";
 constexpr const char* mod_load_lighting =
   "55 48 89 E5 41 54 4C 8B 25 ? ? ? ? 53 48 63 37 85 F6 75 ? 49 C7 84 24 ? ? ? ? ? ? ? ?";
 constexpr const char* mod_load_worldlights =
@@ -200,24 +198,10 @@ constexpr const char* view_render_render =
   "55 31 C0 48 89 E5 41 57 49 89 FF 41 56 41 55 41 54 53 48 81 EC ? ? ? ? 48 8B 1D ? ? ? ? 48 89 B5 ? ? ? ? 48 C7 85 ? ? ? ? ? ? ? ?";
 constexpr const char* replay_screenshot_render =
   "55 48 89 E5 41 57 41 56 41 55 41 54 53 48 81 EC ? ? ? ? 48 83 3F ?";
-constexpr const char* client_youtube_system_init =
-  "55 48 89 E5 53 48 89 FB 48 81 EC 28 01 00 00 E8 ? ? ? ? 48 8B 15 ? ? ? ? 48 B9 02 00 00 00 FF FF FF FF 48 89 83 ? ? ? ? 48 89 C7";
-constexpr const char* client_replay_layoff_frame =
-  "55 31 C0 48 89 E5 41 57 41 56 41 55 41 54 53 48 89 FB 48 81 EC 88 01 00 00";
 constexpr const char* client_update_steam_rich_presence =
   "55 48 89 E5 41 57 41 56 41 55 49 89 FD 41 54 53 48 81 EC ? ? ? ? 48 8B 1D ? ? ? ? 48 C7 85 ? ? ? ? ? ? ? ? 48 8B 3B 48 85 FF";
 constexpr const char* client_achievement_mgr_post_init =
   "55 48 89 E5 41 57 41 56 41 55 49 89 FD 41 54 48 8D 3D ? ? ? ? 53 48 83 EC 28 E8 ? ? ? ? 84 C0";
-constexpr const char* client_achievement_save_global_state =
-  "55 31 C0 48 89 E5 41 57 41 56 41 55 41 54 53 48 89 FB 48 83 EC 38 4C 8B 25 ? ? ? ? 89 75 AC";
-constexpr const char* client_tf_steam_stats_upload_stats =
-  "55 48 89 E5 41 57 41 56 41 55 41 54 53 48 81 EC 28 01 00 00 4C 8D 3D ? ? ? ? 48 89 BD ? ? ? ? 49 8B 07 48 83 78 30 00";
-constexpr const char* client_achievement_progress_event =
-  "55 48 8D 15 ? ? ? ? 48 8D 35 ? ? ? ? 48 89 E5 41 56 41 55 41 54 49 89 FC 48 83 EC 08 48 8B 07 FF 50 48 48 8D 35 ? ? ? ?";
-constexpr const char* client_abuse_report_notification =
-  "55 48 89 E5 41 56 66 41 0F 7E C6 41 55 41 89 F5 41 54 53 48 89 FB 48 8D 3D ? ? ? ? E8 ? ? ? ? BF 48 10 00 00";
-constexpr const char* client_abuse_incident_poll =
-  "55 48 89 E5 41 57 41 56 41 55 49 89 FD 41 54 53 48 81 EC 18 01 00 00 44 8B 5F 18 45 85 DB 0F 8E ? ? ? ?";
 constexpr const char* replay_ui_nullcheck_0 =
   "48 8D 05 ? ? ? ? 48 8B 38 48 8B 07 FF 50 38 84 C0 74 ? 48 8D 05 ? ? ? ? 48 8B 38 48 8B 07 FF 90 90 01 00 00";
 constexpr const char* replay_ui_nullcheck_1 =
@@ -252,26 +236,10 @@ constexpr const char* character_info_open_armory =
   "55 31 FF 48 89 E5 E8 ? ? ? ? 48 8D 15 ? ? ? ? 48 89 C7 48 05 30 03 00 00 48 85 FF 48 0F 45 F8 48 8B 07 48 8B 00 48 39 D0 75 ? 5D 48 81 EF 30 03 00 00 31 D2 BE 03 00 00 00";
 constexpr const char* studio_render_draw_model_wrapper =
   "55 48 89 E5 41 57 41 56 41 55 41 54 53 48 81 EC 18 03 00 00 4C 8D 25 ? ? ? ? 48 89 95";
-constexpr const char* studio_render_blend_bones =
-  "55 48 89 E5 41 57 41 56 41 55 41 54 53 48 83 EC 48 44 8B B6 98 00 00 00";
-constexpr const char* studio_render_matrix_multiply =
-  "F3 0F 7E 4F 10 F3 0F 7E 3E F3 0F 7E 46 10 0F 16 4F 18 F3 0F 7E 66 20 0F 16 7E 08 44 0F 28 D9";
 constexpr const char* client_econ_panel_flex_primary =
   "80 BF 08 1C 00 00 00 74 07 31 C0 C3 0F 1F 40 00 55 48 89 E5 41 57 41 56 4C 8D B7 98 15 00 00 41 55 41 54 49 89 FC";
 constexpr const char* client_econ_panel_flex_attachments =
   "55 48 89 E5 41 57 41 56 41 55 41 54 53 48 81 EC 08 19 00 00 8B 87 30 1C 00 00 48 89 B5";
-constexpr const char* client_ragdoll_lru_update =
-  "55 48 89 E5 41 57 41 56 41 55 41 54 53 48 89 FB 48 83 EC 48 4C 8B 25 ? ? ? ? 48 C7 45 C8 00";
-constexpr const char* client_particle_mgr_simulate_undrawn =
-  "55 31 C0 48 89 E5 41 56 41 55 41 54 53 48 89 FB 48 83 EC 20 4C 8B 25 ? ? ? ? 48 C7 45 C8 00 00 00 00 49 8B 7C 24 18 48 85 FF 74 ? 48 83 EC 08 45 31 C0 31 C9 48 8D 05 ? ? ? ? 31 D2 50 48 8D 05 ? ? ? ? 50 48 8D 05 ? ? ? ? 50 48 8D 05 ? ? ? ? 50 48 8D 75 C8 31 C0 68 CA 05 00 00";
-constexpr const char* client_temp_ents_update =
-  "55 31 C0 48 89 E5 41 57 41 56 41 55 41 54 49 89 FC 53 48 83 EC 38 48 8B 1D ? ? ? ? 48 C7 45 B8 00 00 00 00 48 8B 7B 18 48 85 FF 74 ? 48 83 EC 08 45 31 C0 31 C9 48 8D 05 ? ? ? ? 31 D2 50 48 8D 05 ? ? ? ? 50 48 8D 05 ? ? ? ? 50 48 8D 05 ? ? ? ? 50 48 8D 75 B8 31 C0 68 34 09 00 00";
-constexpr const char* client_rope_manager_draw_render_cache =
-  "55 48 89 E5 41 57 49 89 FF 41 56 41 55 41 54 53 89 F3 48 81 EC A8 04 00 00 48 8B 05 ? ? ? ?";
-constexpr const char* client_init_caption_dictionary =
-  "55 48 89 E5 41 57 41 56 41 55 41 54 53 48 81 EC B8 11 00 00 66 83 BF 2C 03";
-constexpr const char* client_parse_particle_effects_map =
-  "55 48 89 E5 41 56 41 55 49 89 FD BF 48 00 00 00 41 54 53 48 83 EC 10 E8 ? ? ? ? 48 8D 35 ? ? ? ? 48 89 C7 49 89 C4 E8 ? ? ? ? 48 8D 05 ? ? ? ? 48 8D 0D ? ? ? ? 4C 89 E7";
 
 } // namespace sigs
 
