@@ -4,6 +4,7 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 setup_root="$script_dir"
 repo_root="$(cd -- "$script_dir/.." && pwd)"
+start_lock="/tmp/catbot-panel-start.lock"
 ipc_server_root="$setup_root/catbot-ipc-server-main"
 web_panel_root="$setup_root/catbot-ipc-web-panel-main"
 accounts_file="$setup_root/accounts.txt"
@@ -20,6 +21,12 @@ for system_path_entry in /usr/local/sbin /usr/sbin /sbin; do
     esac
 done
 export PATH
+
+exec 9>"$start_lock"
+if ! flock -n 9; then
+    echo "botpanel/start is already running. Stop the other ./start process first." >&2
+    exit 1
+fi
 
 if [ "$requested_visible_windows" = "1" ]; then
     visible_windows=1
