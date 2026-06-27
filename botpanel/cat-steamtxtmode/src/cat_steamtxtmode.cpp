@@ -600,7 +600,7 @@ __attribute__((constructor)) void cat_steamtxtmode_init()
   cfg.hide_x11 = env_flag("CAT_STM_HIDE_X11", true);
   cfg.no_gl = env_flag("CAT_STM_NO_GL", true);
   cfg.no_vsync = env_flag("CAT_STM_NO_VSYNC", true);
-  cfg.no_audio = env_flag("CAT_STM_NO_AUDIO", true);
+  cfg.no_audio = env_flag("CAT_STM_NO_AUDIO", false);
   cfg.webhelper_trim = env_flag("CAT_STM_WEBHELPER_TRIM", true);
   cfg.webhelper_single = env_flag("CAT_STM_WEBHELPER_SINGLE", true);
   cfg.loop_sleep = env_flag("CAT_STM_LOOP_SLEEP", true);

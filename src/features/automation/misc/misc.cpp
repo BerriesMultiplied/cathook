@@ -159,11 +159,11 @@ text_file_cache chatspam_file_cache{};
 text_file_cache killsay_file_cache{};
 
 const std::array<std::string_view, 5> builtin_chatspam_cathook = {
-  "Cathook on Linux",
-  "GNU/Linux is the best OS",
-  "Open source TF2 tooling is fun",
-  "cathook.club",
-  "Free software, free frags"
+  "BOT ROLLING IN PROGRESS - KEEP DISTANCE",
+  "WE ARE THE JOHN FREEMANS. DROP YOUR WEAPONS AND RAISE YOUR ARMS.",
+  "github.com/BerriesMultiplied",
+  "DO NOT RESIST, IT IS ALL FUTILE.",
+  "GOOD SHOT MATE GOOD SHOT MATE GOOD SHOT MATE GOOD SHOT MATE"
 };
 
 const std::array<std::string_view, 3> builtin_chatspam_lmaobox = {
@@ -172,13 +172,17 @@ const std::array<std::string_view, 3> builtin_chatspam_lmaobox = {
   "LMAOBOX - WAY TO THE TOP"
 };
 
-const std::array<std::string_view, 6> builtin_killsay_cathook = {
-  "%name% met the respawn timer.",
+const std::array<std::string_view, 10> builtin_killsay_cathook = {
+  "Don't worry guys, I'm a garbage collector. I'm used to carrying trash.",
+  "%name% is the human equivalent of a participation award.",
+  "I would insult %name%, but nature did a better job.",
   "%name%, perhaps your strategy should include trying.",
-  "That one was for %myteam%.",
-  "%class% down.",
-  "Better luck next life, %name%.",
-  "%killer% sends regards."
+  "Some people get paid to suck, you do it for free, %name%.",
+  "You must really like that respawn timer, %name%."
+  "If your main is %class%, you should give up."
+  "Hey %name%, i see you can't play %class%. Try quitting the game."
+  "%name%@gmail.com to vacreview@valvesoftware.com FOUND CHEATER"
+  "☐ Not rekt ☑ Rekt ☑ Really Rekt ☑ Tyrannosaurus Rekt"
 };
 
 const std::array<std::string_view, 5> builtin_killsay_mlg = {
